@@ -11,6 +11,7 @@ import Profile from '../pages/app/Profile'
 import Projects from '../pages/app/Projects'
 import ProjectWizard from '../pages/app/ProjectWizard'
 import Settings from '../pages/app/Settings'
+import ArchitectureCanvas from '../pages/app/ArchitectureCanvas'
 
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth()
@@ -69,6 +70,7 @@ export default function AppRoutes() {
           <Route path='/app/profile' element={<Profile />} />
           <Route path='/app/projects' element={<Projects />} />
           <Route path='/app/projects/:id' element={<ProjectWizard />} />
+          <Route path='/app/projects/:id/canvas' element={<ArchitectureCanvas />} />
           <Route path='/app/settings' element={<Settings />} />
         </Route>
       </Route>

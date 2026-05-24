@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 
 const totalSteps = 4
 
 export default function ProjectWizard() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const [step, setStep] = useState(0)
 
   const isFirst = step === 0
@@ -251,6 +252,11 @@ export default function ProjectWizard() {
               <button
                 key={item}
                 type='button'
+                onClick={() => {
+                  if (item === 'Draw on canvas' && id) {
+                    navigate(`/app/projects/${id}/canvas`)
+                  }
+                }}
                 className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-2 font-semibold hover:border-orange-500'
               >
                 {item}
