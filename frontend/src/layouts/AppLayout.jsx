@@ -3,18 +3,18 @@ import { useAuth } from '../context/AuthContext'
 
 function linkClass({ isActive }) {
   return isActive
-    ? 'rounded-md bg-sky-100 px-3 py-2 text-sky-700 font-semibold'
-    : 'rounded-md px-3 py-2 text-slate-700 hover:bg-slate-100'
+    ? 'border-l-2 border-orange-500 px-3 py-2 text-orange-500 font-semibold'
+    : 'border-l-2 border-transparent px-3 py-2 text-[#F5F5F5] hover:text-orange-500'
 }
 
 export default function AppLayout() {
   const { logout } = useAuth()
 
   return (
-    <div className='min-h-screen bg-slate-50'>
+    <div className='min-h-screen bg-[#0E0E0E] text-[#F5F5F5]'>
       <div className='mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 p-4 md:grid-cols-[240px_1fr]'>
-        <aside className='rounded-xl border border-slate-200 bg-white p-4'>
-          <h2 className='mb-4 text-lg font-bold text-slate-900'>Clyro App</h2>
+        <aside className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] p-4 shadow-[0_0_0_1px_#2A2A2A]'>
+          <h2 className='mb-4 text-lg font-bold text-[#F5F5F5]'>Clyro App</h2>
           <nav className='flex flex-col gap-2'>
             <NavLink to='/app/dashboard' className={linkClass}>
               Dashboard
@@ -39,13 +39,13 @@ export default function AppLayout() {
           <button
             type='button'
             onClick={logout}
-            className='mt-6 w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700'
+            className='mt-6 w-full rounded-md border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-sm font-semibold text-[#F5F5F5] hover:border-orange-500 hover:text-orange-500'
           >
             Sign Out (Mock)
           </button>
         </aside>
 
-        <section className='rounded-xl border border-slate-200 bg-white p-6'>
+        <section className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] p-6 shadow-[0_0_0_1px_#2A2A2A]'>
           <Outlet />
         </section>
       </div>
