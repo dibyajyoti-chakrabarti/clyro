@@ -267,6 +267,27 @@ export default function ProjectWizard() {
             </button>
           </div>
 
+          <div className='rounded-xl border border-[#2A2A2A] bg-[#0E0E0E] p-6 text-center text-[#737373]'>
+            Select a canvas above to preview
+          </div>
+        </div>
+      </section>
+
+      <section className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] shadow-[0_0_0_1px_#2A2A2A]'>
+        <div className='flex items-center justify-between border-b border-[#2A2A2A] bg-[#0E0E0E] px-5 py-3'>
+          <p className='text-sm font-semibold uppercase tracking-wide text-[#737373]'>
+            <span className='mr-2 text-orange-500'>•</span>Step 3: Map codebase to architecture
+          </p>
+          <div className='flex items-center gap-2 text-xs'>
+            <span className='rounded-full border border-[#2A2A2A] bg-[#1A1A1A] px-2 py-1 text-orange-500'>3 mapped</span>
+            <span className='rounded-full border border-red-500/40 bg-[#1A1A1A] px-2 py-1 text-red-500'>1 unresolved</span>
+          </div>
+        </div>
+        <div className='space-y-5 p-5'>
+          <p className='text-[#737373]'>
+            Clyro auto-mapped your code to your architecture nodes. Review and fix anything that looks off.
+          </p>
+
           <div className='grid gap-4 rounded-xl border border-[#2A2A2A] p-4 lg:grid-cols-2'>
             <div className='rounded-xl border border-[#2A2A2A] bg-[#0E0E0E] p-4'>
               <p className='mb-3 text-sm font-semibold text-[#737373]'>Architecture Nodes</p>
@@ -298,7 +319,7 @@ export default function ProjectWizard() {
                     <p className='font-semibold'>{module}</p>
                   </div>
                 ))}
-                <div className='rounded-lg border border-[#2A2A2A] px-3 py-2 text-sm text-[#737373]'>No match found</div>
+                <div className='rounded-lg border border-[#2A2A2A] px-3 py-2 text-sm text-[#737373]'>No match found • Drag module to link</div>
               </div>
             </div>
           </div>
@@ -313,6 +334,70 @@ export default function ProjectWizard() {
             </button>
             <button type='button' className='rounded-xl bg-orange-500 px-5 py-2 font-semibold text-[#F5F5F5] hover:bg-orange-600'>
               Confirm mapping
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] shadow-[0_0_0_1px_#2A2A2A]'>
+        <div className='flex items-center justify-between border-b border-[#2A2A2A] bg-[#0E0E0E] px-5 py-3'>
+          <p className='text-sm font-semibold uppercase tracking-wide text-[#737373]'>
+            <span className='mr-2 text-orange-500'>•</span>Step 4: AI Clarification
+          </p>
+        </div>
+        <div className='space-y-5 p-5'>
+          <div className='rounded-xl border border-[#2A2A2A] bg-[#0E0E0E] p-4'>
+            <p className='font-semibold'>Clyro has analysed your system</p>
+            <p className='text-sm text-[#737373]'>API Backend · AWS · {'<$50/mo'} · Solo · Priority: Cost efficiency</p>
+          </div>
+
+          <div className='space-y-3'>
+            <p className='font-semibold text-[#737373]'>2 QUESTIONS BEFORE PROVISIONING</p>
+
+            <div className='rounded-xl border border-[#2A2A2A] p-4'>
+              <p className='font-semibold'>1. Your data pipeline node isn&apos;t linked to code. Is it an external service?</p>
+              <div className='mt-3 flex flex-wrap gap-2'>
+                {[`Yes, it's Fivetran`, `No, I'll add the code`, 'Skip for now'].map((choice) => (
+                  <button key={choice} type='button' className='rounded-xl border border-[#2A2A2A] px-3 py-2 hover:border-orange-500'>
+                    {choice}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className='rounded-xl border border-[#2A2A2A] p-4'>
+              <p className='font-semibold'>2. Should the API be publicly accessible or private (VPC only)?</p>
+              <div className='mt-3 flex flex-wrap gap-2'>
+                {['Public', 'Private (VPC only)'].map((choice) => (
+                  <button key={choice} type='button' className='rounded-xl border border-[#2A2A2A] px-3 py-2 hover:border-orange-500'>
+                    {choice}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className='rounded-xl border border-[#2A2A2A] bg-[#0E0E0E] p-4'>
+            <p className='mb-3 font-semibold'>Provision summary</p>
+            <div className='grid gap-3 md:grid-cols-3'>
+              <div>
+                <p className='text-sm text-[#737373]'>Resources</p>
+                <p className='text-4xl font-semibold'>12</p>
+              </div>
+              <div>
+                <p className='text-sm text-[#737373]'>Est. cost</p>
+                <p className='text-4xl font-semibold'>$34/mo</p>
+              </div>
+              <div>
+                <p className='text-sm text-[#737373]'>Region</p>
+                <p className='text-4xl font-semibold'>ap-south-1</p>
+              </div>
+            </div>
+          </div>
+
+          <div className='flex justify-end'>
+            <button type='button' className='rounded-xl bg-orange-500 px-6 py-3 font-semibold text-[#F5F5F5] hover:bg-orange-600'>
+              Provision
             </button>
           </div>
         </div>
