@@ -1,43 +1,39 @@
 import { Link } from 'react-router-dom'
+import Button from '../../components/ui/Button'
+import Card from '../../components/ui/Card'
+import Input from '../../components/ui/Input'
+import { GitHubIcon, GoogleIcon } from '../../components/ui/BrandIcons'
 import { useAuth } from '../../context/AuthContext'
 
 export default function Login() {
   const { login } = useAuth()
 
   return (
-    <div className='mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-6'>
-      <h1 className='mb-6 text-2xl font-bold'>Sign In</h1>
-      <form className='space-y-4'>
-        <div>
-          <label className='mb-1 block text-sm font-medium'>Email</label>
-          <input type='email' className='w-full rounded-md border border-slate-300 px-3 py-2' placeholder='you@company.com' />
-        </div>
-        <div>
-          <label className='mb-1 block text-sm font-medium'>Password</label>
-          <input type='password' className='w-full rounded-md border border-slate-300 px-3 py-2' placeholder='••••••••' />
-        </div>
+    <Card className='mx-auto max-w-md'>
+      <h1 className='text-2xl font-semibold tracking-tight'>Sign In</h1>
+      <p className='mt-2 text-sm font-normal text-text-muted'>Access your Clyro workspace.</p>
 
-        <Link to='/' className='block text-sm text-sky-600 hover:underline'>
+      <form className='mt-6 space-y-4'>
+        <Input label='Email' type='email' placeholder='you@company.com' />
+        <Input label='Password' type='password' placeholder='Enter your password' />
+        <Link to='/' className='inline-block text-xs font-normal text-text-muted hover:text-accent'>
           Forgot password?
         </Link>
-
-        <button
-          type='button'
-          onClick={login}
-          className='w-full rounded-md bg-sky-600 px-4 py-2 font-semibold text-white hover:bg-sky-700'
-        >
-          Sign In (Mock)
-        </button>
+        <Button type='button' variant='primary' className='w-full' onClick={login}>
+          Sign In
+        </Button>
       </form>
 
       <div className='mt-5 space-y-2'>
-        <button type='button' className='w-full rounded-md border border-slate-300 px-4 py-2'>
+        <Button variant='secondary' className='w-full gap-2'>
+          <GoogleIcon />
           Continue with Google
-        </button>
-        <button type='button' className='w-full rounded-md border border-slate-300 px-4 py-2'>
+        </Button>
+        <Button variant='secondary' className='w-full gap-2'>
+          <GitHubIcon />
           Continue with GitHub
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   )
 }

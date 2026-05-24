@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
+import FullscreenLayout from '../layouts/FullscreenLayout'
 import PublicLayout from '../layouts/PublicLayout'
 import { useAuth } from '../context/AuthContext'
 import Landing from '../pages/Landing'
@@ -16,9 +17,7 @@ import ArchitectureCanvas from '../pages/app/ArchitectureCanvas'
 function ProtectedRoute() {
   const { isAuthenticated } = useAuth()
 
-  if (!isAuthenticated) {
-    return <Navigate to='/login' replace />
-  }
+  if (!isAuthenticated) return <Navigate to='/login' replace />
 
   return <Outlet />
 }
@@ -26,9 +25,7 @@ function ProtectedRoute() {
 function PublicOnlyRoute({ children }) {
   const { isAuthenticated } = useAuth()
 
-  if (isAuthenticated) {
-    return <Navigate to='/app/dashboard' replace />
-  }
+  if (isAuthenticated) return <Navigate to='/app/dashboard' replace />
 
   return children
 }
@@ -69,9 +66,12 @@ export default function AppRoutes() {
           <Route path='/app/dashboard' element={<Dashboard />} />
           <Route path='/app/profile' element={<Profile />} />
           <Route path='/app/projects' element={<Projects />} />
+          <Route path='/app/settings' element={<Settings />} />
+        </Route>
+
+        <Route element={<FullscreenLayout />}>
           <Route path='/app/projects/:id' element={<ProjectWizard />} />
           <Route path='/app/projects/:id/canvas' element={<ArchitectureCanvas />} />
-          <Route path='/app/settings' element={<Settings />} />
         </Route>
       </Route>
 

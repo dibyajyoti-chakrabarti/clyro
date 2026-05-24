@@ -1,8 +1,12 @@
+import Card from '../../components/ui/Card'
+
 export default function Settings() {
   return (
-    <div>
-      <h1 className='text-3xl font-bold'>Settings</h1>
-      <p className='mt-3 text-slate-600'>Settings page shell.</p>
+    <div className='space-y-4'>
+      <h1 className='text-2xl font-semibold tracking-tight'>Settings</h1>
+      <Card>
+        <p className='text-sm font-normal text-text-primary'>Settings page shell.</p>
+      </Card>
     </div>
   )
 }
