@@ -198,6 +198,125 @@ export default function ProjectWizard() {
           </div>
         </div>
       </section>
+
+      <section className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] shadow-[0_0_0_1px_#2A2A2A]'>
+        <div className='flex items-center justify-between border-b border-[#2A2A2A] bg-[#0E0E0E] px-5 py-3'>
+          <p className='text-sm font-semibold uppercase tracking-wide text-[#737373]'>
+            <span className='mr-2 text-orange-500'>•</span>Step 1: Source code
+          </p>
+        </div>
+        <div className='space-y-5 p-5'>
+          <p className='text-[#737373]'>Connect your repository so Clyro can understand your codebase.</p>
+
+          <div className='grid gap-3 md:grid-cols-3'>
+            {['GitHub', 'GitLab', 'Bitbucket'].map((provider) => (
+              <button
+                key={provider}
+                type='button'
+                className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-5 text-center font-semibold hover:border-orange-500'
+              >
+                {provider}
+              </button>
+            ))}
+          </div>
+
+          <p className='text-center text-sm text-[#737373]'>or use a URL</p>
+
+          <div className='flex flex-wrap gap-3'>
+            <input
+              type='text'
+              placeholder='https://github.com/your-org/your-repo'
+              className='min-w-[260px] flex-1 rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-2 text-[#F5F5F5] placeholder-[#737373] focus:outline-none focus:ring-1 focus:ring-orange-500'
+            />
+            <button type='button' className='rounded-xl bg-orange-500 px-5 py-2 font-semibold text-[#F5F5F5] hover:bg-orange-600'>
+              Connect
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] shadow-[0_0_0_1px_#2A2A2A]'>
+        <div className='flex items-center justify-between border-b border-[#2A2A2A] bg-[#0E0E0E] px-5 py-3'>
+          <p className='text-sm font-semibold uppercase tracking-wide text-[#737373]'>
+            <span className='mr-2 text-orange-500'>•</span>Step 2: Architecture
+          </p>
+          <span className='rounded-full border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-1 text-xs font-semibold text-[#737373]'>
+            Step 1 complete — 4 services detected
+          </span>
+        </div>
+        <div className='space-y-5 p-5'>
+          <p className='text-[#737373]'>How do you want to provide your architecture?</p>
+          <div className='flex flex-wrap gap-3'>
+            {['Existing canvas', 'Upload image', 'Draw on canvas'].map((item) => (
+              <button
+                key={item}
+                type='button'
+                className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-2 font-semibold hover:border-orange-500'
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+
+          <div className='flex flex-wrap items-center gap-3'>
+            <select className='min-w-[260px] flex-1 rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-2 text-[#F5F5F5] focus:outline-none focus:ring-1 focus:ring-orange-500'>
+              <option>acme-corp — production-v2 (last edited 3 days ago)</option>
+            </select>
+            <button type='button' className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-5 py-2 font-semibold hover:border-orange-500'>
+              Load
+            </button>
+          </div>
+
+          <div className='grid gap-4 rounded-xl border border-[#2A2A2A] p-4 lg:grid-cols-2'>
+            <div className='rounded-xl border border-[#2A2A2A] bg-[#0E0E0E] p-4'>
+              <p className='mb-3 text-sm font-semibold text-[#737373]'>Architecture Nodes</p>
+              <div className='space-y-2'>
+                {[
+                  ['API Gateway', 'entry point', 'Mapped'],
+                  ['Worker service', 'background jobs', 'Mapped'],
+                  ['Frontend', 'Next.js app', 'Mapped'],
+                  ['Data pipeline', 'ETL service', 'Unresolved'],
+                ].map(([name, desc, status]) => (
+                  <div key={name} className='flex items-center justify-between rounded-lg border border-[#2A2A2A] px-3 py-2'>
+                    <div>
+                      <p className='font-semibold'>{name}</p>
+                      <p className='text-xs text-[#737373]'>{desc}</p>
+                    </div>
+                    <span className={status === 'Mapped' ? 'text-xs font-semibold text-orange-500' : 'text-xs font-semibold text-red-500'}>
+                      {status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className='rounded-xl border border-[#2A2A2A] bg-[#0E0E0E] p-4'>
+              <p className='mb-3 text-sm font-semibold text-[#737373]'>Code Modules</p>
+              <div className='space-y-2'>
+                {['/cmd/api', '/cmd/worker', '/apps/web'].map((module) => (
+                  <div key={module} className='rounded-lg border border-[#2A2A2A] px-3 py-2'>
+                    <p className='font-semibold'>{module}</p>
+                  </div>
+                ))}
+                <div className='rounded-lg border border-[#2A2A2A] px-3 py-2 text-sm text-[#737373]'>No match found</div>
+              </div>
+            </div>
+          </div>
+
+          <div className='rounded-xl border border-red-500/40 bg-[#0E0E0E] p-3 text-sm text-[#737373]'>
+            Data pipeline is unresolved. You may need to link it manually or confirm it is an external service.
+          </div>
+
+          <div className='flex items-center justify-between'>
+            <button type='button' className='rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-4 py-2 font-semibold hover:border-orange-500'>
+              Back to Step 2
+            </button>
+            <button type='button' className='rounded-xl bg-orange-500 px-5 py-2 font-semibold text-[#F5F5F5] hover:bg-orange-600'>
+              Confirm mapping
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   )
 }
