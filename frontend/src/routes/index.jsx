@@ -7,6 +7,7 @@ import Landing from '../pages/Landing'
 import Pricing from '../pages/Pricing'
 import Login from '../pages/auth/Login'
 import Signup from '../pages/auth/Signup'
+import VerifyOtp from '../pages/auth/VerifyOtp'
 import Dashboard from '../pages/app/Dashboard'
 import Profile from '../pages/app/Profile'
 import Projects from '../pages/app/Projects'
@@ -15,7 +16,9 @@ import Settings from '../pages/app/Settings'
 import ArchitectureCanvas from '../pages/app/ArchitectureCanvas'
 
 function ProtectedRoute() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
+
+  if (isLoading) return null
 
   if (!isAuthenticated) return <Navigate to='/login' replace />
 
@@ -23,7 +26,9 @@ function ProtectedRoute() {
 }
 
 function PublicOnlyRoute({ children }) {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
+
+  if (isLoading) return null
 
   if (isAuthenticated) return <Navigate to='/app/dashboard' replace />
 
@@ -59,6 +64,7 @@ export default function AppRoutes() {
             </PublicOnlyRoute>
           }
         />
+        <Route path='/verify-otp' element={<VerifyOtp />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>
