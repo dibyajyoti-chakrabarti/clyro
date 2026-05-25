@@ -43,6 +43,7 @@ htmlcov/
 .env
 .env.*
 *.env
+.envrc
 .venv/
 venv/
 ENV/
@@ -67,3 +68,5 @@ staticfiles/
 .dmypy.json
 dmypy.json
 .ipynb_checkpoints/
+.python-version
+coverage.xml
