@@ -8,6 +8,21 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  const refreshAuth = async () => {
+    try {
+      const [currentUser, currentSession] = await Promise.all([
+        getCurrentUser(),
+        fetchAuthSession(),
+      ])
+
+      setUser(currentUser)
+      setSession(currentSession)
+    } catch {
+      setUser(null)
+      setSession(null)
+    }
+  }
+
   useEffect(() => {
     let isMounted = true
 
@@ -56,6 +71,7 @@ export function AuthProvider({ children }) {
     session,
     isAuthenticated: user !== null,
     isLoading,
+    refreshAuth,
     logout,
   }
 

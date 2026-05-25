@@ -10,7 +10,7 @@ import { useAuth } from '../../context/AuthContext'
 export default function Login() {
   const location = useLocation()
   const navigate = useNavigate()
-  useAuth()
+  const { refreshAuth } = useAuth()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -23,6 +23,7 @@ export default function Login() {
 
     try {
       await signIn({ username: email, password })
+      await refreshAuth()
       navigate('/app/dashboard')
     } catch (err) {
       setError(err.message)
