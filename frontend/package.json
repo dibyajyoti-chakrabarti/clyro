@@ -12,6 +12,7 @@
   "dependencies": {
     "@fontsource/geist": "^5.2.9",
     "@tailwindcss/vite": "^4.3.0",
+    "aws-amplify": "^6.17.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.15.1",
