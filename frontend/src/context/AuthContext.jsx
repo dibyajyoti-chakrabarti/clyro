@@ -1,18 +1,67 @@
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { fetchAuthSession, getCurrentUser, signOut } from 'aws-amplify/auth'
 
-const AuthContext = createContext(null)
+export const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [user, setUser] = useState(null)
+  const [session, setSession] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const value = useMemo(
-    () => ({
-      isAuthenticated,
-      login: () => setIsAuthenticated(true),
-      logout: () => setIsAuthenticated(false),
-    }),
-    [isAuthenticated],
-  )
+  useEffect(() => {
+    let isMounted = true
+
+    const loadAuthState = async () => {
+      try {
+        const [currentUser, currentSession] = await Promise.all([
+          getCurrentUser(),
+          fetchAuthSession(),
+        ])
+
+        if (!isMounted) {
+          return
+        }
+
+        setUser(currentUser)
+        setSession(currentSession)
+      } catch {
+        if (!isMounted) {
+          return
+        }
+
+        setUser(null)
+        setSession(null)
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadAuthState()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const logout = async () => {
+    await signOut()
+    setUser(null)
+    setSession(null)
+  }
+
+  const value = {
+    user,
+    session,
+    isAuthenticated: user !== null,
+    isLoading,
+    logout,
+  }
+
+  if (isLoading) {
+    return null
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
