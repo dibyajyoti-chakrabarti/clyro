@@ -161,32 +161,32 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary'>Repository</label>
               <select
-                className='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                className='w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
                 value={selectedRepo}
                 onChange={(event) => {
                   setSelectedRepo(event.target.value)
                   setSelectedBranch('')
                 }}
               >
-                <option value=''>Select a repository...</option>
-                <option value='acme-corp/invoiceapp'>acme-corp/invoiceapp</option>
-                <option value='acme-corp/analytics-dashboard'>acme-corp/analytics-dashboard</option>
-                <option value='acme-corp/internal-tools'>acme-corp/internal-tools</option>
+                <option className='text-black' value=''>Select a repository...</option>
+                <option className='text-black' value='acme-corp/invoiceapp'>acme-corp/invoiceapp</option>
+                <option className='text-black' value='acme-corp/analytics-dashboard'>acme-corp/analytics-dashboard</option>
+                <option className='text-black' value='acme-corp/internal-tools'>acme-corp/internal-tools</option>
               </select>
             </div>
 
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary'>Branch</label>
               <select
-                className='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50'
+                className='w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50'
                 value={selectedBranch}
                 onChange={(event) => setSelectedBranch(event.target.value)}
                 disabled={selectedRepo === ''}
               >
-                <option value=''>Select a branch...</option>
-                <option value='main'>main</option>
-                <option value='staging'>staging</option>
-                <option value='develop'>develop</option>
+                <option className='text-black' value=''>Select a branch...</option>
+                <option className='text-black' value='main'>main</option>
+                <option className='text-black' value='staging'>staging</option>
+                <option className='text-black' value='develop'>develop</option>
               </select>
             </div>
 
