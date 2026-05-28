@@ -1,134 +1,148 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { BitbucketIcon, GitHubIcon, GitLabIcon } from '../../components/ui/BrandIcons'
-import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
-import Card from '../../components/ui/Card'
 
-const steps = ['Use case', 'Source', 'Architecture', 'Mapping', 'Clarify']
-
-function Chip({ selected, children, icon }) {
-  return (
-    <button
-      type='button'
-      className={`rounded-md border px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-        selected ? 'border-accent bg-accent-soft text-accent' : 'border-border bg-surface text-text-primary hover:border-accent'
-      }`}
-    >
-      <span className='inline-flex items-center gap-2'>
-        {icon}
-        {children}
-      </span>
-    </button>
-  )
-}
+const stepConfig = [
+  {
+    number: 1,
+    title: 'Connect your repository',
+    subtitle: 'Crylo scans your code to detect your stack, dependencies, and environment variables.',
+  },
+  {
+    number: 2,
+    title: 'Tell us about your app',
+    subtitle: 'Answer a few questions to shape the infrastructure to your actual needs.',
+  },
+  {
+    number: 3,
+    title: 'Review your architecture',
+    subtitle: 'Inspect and refine the generated architecture before provisioning.',
+  },
+  {
+    number: 4,
+    title: 'Connect AWS & provision',
+    subtitle: 'Link your AWS account, confirm secrets, and deploy your infrastructure.',
+  },
+  {
+    number: 5,
+    title: 'Your infrastructure is live',
+    subtitle: 'Monitor health, performance, and cost in real time.',
+  },
+]
 
 export default function ProjectWizard() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [step, setStep] = useState(0)
+
+  const [step, setStep] = useState(1)
+  const [completedSteps, setCompletedSteps] = useState(() => new Set())
+  const [projectData, setProjectData] = useState({
+    repo: null,
+    intent: {},
+    canvas: null,
+    provision: null,
+  })
+
+  const canAdvance = (currentStep) => {
+    void currentStep
+    return true
+  }
+
+  const currentStepData = stepConfig[step - 1]
+
+  const handleBack = () => {
+    setStep((prev) => Math.max(1, prev - 1))
+  }
+
+  const handleContinue = () => {
+    if (!canAdvance(step)) {
+      return
+    }
+
+    setProjectData((prev) => ({ ...prev }))
+
+    if (step === 5) {
+      navigate('/app/dashboard')
+      return
+    }
+
+    setCompletedSteps((prev) => {
+      const next = new Set(prev)
+      next.add(step)
+      return next
+    })
+
+    setStep((prev) => Math.min(5, prev + 1))
+  }
+
+  const continueLabel = step === 3
+    ? 'Finalize'
+    : step === 4
+      ? 'Provision'
+      : step === 5
+        ? 'Go to dashboard'
+        : 'Continue'
 
   return (
-    <div className='space-y-6'>
+    <div className='relative min-h-[calc(100vh-121px)]'>
       <h1 className='text-2xl font-semibold tracking-tight'>Project {id || 'ABC'} Wizard</h1>
 
-      <Card>
-        <div className='flex flex-wrap gap-2'>
-          {steps.map((label, index) => (
-            <div key={label} className='flex items-center gap-2'>
-              {index < step ? <Badge variant='success'>{index + 1}</Badge> : index === step ? <Badge variant='warning'>{index + 1}</Badge> : <Badge variant='neutral'>{index + 1}</Badge>}
-              <span className='text-xs font-normal text-text-muted'>{label}</span>
-            </div>
-          ))}
+      <div className='fixed inset-x-0 top-[73px] z-20 border-b border-border bg-surface/95 backdrop-blur'>
+        <div className='mx-auto w-full max-w-6xl px-6 py-4'>
+          <div className='flex items-start justify-center gap-6 md:gap-10'>
+            {stepConfig.map((item) => {
+              const isCompleted = completedSteps.has(item.number)
+              const isActive = step === item.number
+              const circleClass = isCompleted
+                ? 'border-accent bg-accent text-background'
+                : isActive
+                  ? 'border-accent bg-surface ring-2 ring-accent/35'
+                  : 'border-border bg-background text-text-muted'
+              const labelClass = isActive ? 'font-medium text-text-primary' : 'font-normal text-text-muted'
+
+              return (
+                <div key={item.number} className='flex flex-col items-center gap-2'>
+                  <div className={`grid h-9 w-9 place-items-center rounded-full border text-sm ${circleClass}`}>
+                    {item.number}
+                  </div>
+                  <p className={`text-center text-xs ${labelClass}`}>{item.title}</p>
+                </div>
+              )
+            })}
+          </div>
         </div>
-      </Card>
+      </div>
 
-      <Card>
-        <h2 className='text-xl font-semibold'>Step {step}: {steps[step]}</h2>
+      <div className='pb-24 pt-36'>
+        <section className='mx-auto flex min-h-[calc(100vh-270px)] w-full max-w-[640px] flex-col'>
+          <div className='w-fit rounded-full border border-border px-3 py-1 text-xs font-normal text-text-muted'>
+            Step {step} of 5
+          </div>
+          <h2 className='mt-4 text-4xl font-semibold tracking-tight'>{currentStepData.title}</h2>
+          <p className='mt-3 text-sm font-normal text-text-muted'>{currentStepData.subtitle}</p>
 
-        {step === 0 ? (
-          <div className='mt-4 space-y-4'>
-            <p className='text-sm font-normal text-text-muted'>What are you building?</p>
-            <div className='grid gap-3 md:grid-cols-3'>
-              {['API backend', 'Full-stack web app', 'Microservices', 'Data pipeline', 'ML inference', 'Internal tool'].map((item, i) => (
-                <Chip key={item} selected={i === 0}>{item}</Chip>
-              ))}
+          <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
+            <div className='grid h-full min-h-[260px] place-items-center rounded-lg border border-border/70 bg-surface'>
+              <p className='text-sm font-normal text-text-muted'>Step {step} content — coming soon</p>
             </div>
           </div>
-        ) : null}
+        </section>
+      </div>
 
-        {step === 1 ? (
-          <div className='mt-4 space-y-4'>
-            <p className='text-sm font-normal text-text-muted'>Connect your source repository.</p>
-            <div className='flex flex-wrap gap-3'>
-              <Chip icon={<GitHubIcon />} selected>GitHub</Chip>
-              <Chip icon={<GitLabIcon />}>GitLab</Chip>
-              <Chip icon={<BitbucketIcon />}>Bitbucket</Chip>
-            </div>
+      <div className='fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur'>
+        <div className='mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4'>
+          <div>
+            {step > 1 ? (
+              <Button variant='ghost' onClick={handleBack}>
+                Back
+              </Button>
+            ) : null}
           </div>
-        ) : null}
-
-        {step === 2 ? (
-          <div className='mt-4 space-y-4'>
-            <p className='text-sm font-normal text-text-muted'>Choose how to provide architecture context.</p>
-            <div className='flex flex-wrap gap-3'>
-              <Chip>Existing canvas</Chip>
-              <Chip>Upload image</Chip>
-              <Chip selected>Draw on canvas</Chip>
-            </div>
-            <Button variant='secondary' onClick={() => navigate(`/app/projects/${id}/canvas`)}>
-              Open Canvas
-            </Button>
-          </div>
-        ) : null}
-
-        {step === 3 ? (
-          <div className='mt-4 space-y-4'>
-            <p className='text-sm font-normal text-text-muted'>Review auto-mapped modules.</p>
-            <div className='grid gap-3 md:grid-cols-2'>
-              <Card className='p-4'>
-                <h3 className='text-base font-semibold'>Architecture Nodes</h3>
-                <div className='mt-3 space-y-2'>
-                  <div className='flex items-center justify-between'><p className='text-sm font-normal'>API Gateway</p><Badge variant='success'>Mapped</Badge></div>
-                  <div className='flex items-center justify-between'><p className='text-sm font-normal'>Worker</p><Badge variant='success'>Mapped</Badge></div>
-                  <div className='flex items-center justify-between'><p className='text-sm font-normal'>Data Pipeline</p><Badge variant='danger'>Unresolved</Badge></div>
-                </div>
-              </Card>
-              <Card className='p-4'>
-                <h3 className='text-base font-semibold'>Code Modules</h3>
-                <div className='mt-3 space-y-2 text-sm font-normal text-text-muted'>
-                  <p>/cmd/api</p>
-                  <p>/cmd/worker</p>
-                  <p>/apps/web</p>
-                </div>
-              </Card>
-            </div>
-          </div>
-        ) : null}
-
-        {step === 4 ? (
-          <div className='mt-4 space-y-4'>
-            <p className='text-sm font-normal text-text-muted'>Answer final clarifications before provisioning.</p>
-            <Card className='p-4'>
-              <h3 className='text-base font-semibold'>Provision Summary</h3>
-              <div className='mt-3 grid gap-3 md:grid-cols-3'>
-                <p className='text-sm font-normal'>Resources: 12</p>
-                <p className='text-sm font-normal'>Est. Cost: $34/mo</p>
-                <p className='text-sm font-normal'>Region: ap-south-1</p>
-              </div>
-            </Card>
-          </div>
-        ) : null}
-
-        <div className='mt-6 flex items-center justify-between'>
-          <Button variant='ghost' disabled={step === 0} onClick={() => setStep((prev) => Math.max(0, prev - 1))}>
-            Back
-          </Button>
-          <Button variant='primary' onClick={() => setStep((prev) => Math.min(4, prev + 1))}>
-            {step === 4 ? 'Provision' : 'Next'}
+          <Button variant='primary' onClick={handleContinue} disabled={!canAdvance(step)}>
+            {continueLabel}
           </Button>
         </div>
-      </Card>
+      </div>
     </div>
   )
 }
