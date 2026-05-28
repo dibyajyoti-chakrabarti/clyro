@@ -1045,6 +1045,555 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
   )
 }
 
+function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
+  const PROVISION_STEPS = [
+    { label: 'Creating VPC and subnets', duration: 800 },
+    { label: 'Configuring security groups', duration: 600 },
+    { label: 'Creating SQS queue', duration: 500 },
+    { label: 'Creating ECR repository', duration: 700 },
+    { label: 'Starting RDS instance', duration: 3000, note: 'This typically takes 3–5 minutes...' },
+    { label: 'Creating ElastiCache cluster', duration: 1200 },
+    { label: 'Creating ECS cluster and task defs', duration: 900 },
+    { label: 'Starting ECS services', duration: 1400 },
+    { label: 'Deploying CloudFront distribution', duration: 1100 },
+    { label: 'Validating ACM certificate', duration: 800 },
+    { label: 'Configuring load balancer', duration: 700 },
+    { label: 'Running health checks', duration: 1000 },
+  ]
+  const costItems = [
+    { label: 'ECS Fargate (backend)', monthly: 34 },
+    { label: 'RDS PostgreSQL', monthly: 45 },
+    { label: 'ElastiCache Redis', monthly: 16 },
+    { label: 'ECS Fargate (worker)', monthly: 18 },
+    { label: 'S3 + CloudFront', monthly: 8 },
+    { label: 'SQS', monthly: 2 },
+    { label: 'ECR storage', monthly: 4 },
+  ]
+
+  const [phase, setPhase] = useState('aws_connect')
+  const [isWaitingRole, setIsWaitingRole] = useState(false)
+  const [roleConnected, setRoleConnected] = useState(false)
+  const [secretFields, setSecretFields] = useState({
+    SECRET_KEY: '',
+    STRIPE_SECRET_KEY: '',
+    SENDGRID_API_KEY: '',
+  })
+  const [showSecrets, setShowSecrets] = useState({
+    SECRET_KEY: false,
+    STRIPE_SECRET_KEY: false,
+    SENDGRID_API_KEY: false,
+  })
+  const [extraVars, setExtraVars] = useState([])
+  const [showTemplate, setShowTemplate] = useState(false)
+  const [provisionStep, setProvisionStep] = useState(0)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [copiedKey, setCopiedKey] = useState('')
+
+  useEffect(() => {
+    setStep4CanContinue(phase === 'success')
+  }, [phase, setStep4CanContinue])
+
+  useEffect(() => {
+    if (phase !== 'provisioning') {
+      return
+    }
+
+    if (provisionStep >= PROVISION_STEPS.length) {
+      setPhase('success')
+      return
+    }
+
+    const timer = setTimeout(() => {
+      setProvisionStep((prev) => prev + 1)
+    }, PROVISION_STEPS[provisionStep].duration)
+
+    return () => clearTimeout(timer)
+  }, [phase, provisionStep])
+
+  useEffect(() => {
+    if (phase !== 'provisioning') {
+      return
+    }
+
+    const timer = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1)
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [phase])
+
+  const allSecretsFilled = Object.values(secretFields).every((value) => value.trim() !== '')
+  const totalCost = costItems.reduce((sum, item) => sum + item.monthly, 0)
+
+  const handleRoleConnect = () => {
+    setIsWaitingRole(true)
+    setRoleConnected(false)
+
+    setTimeout(() => {
+      setIsWaitingRole(false)
+      setRoleConnected(true)
+    }, 2000)
+  }
+
+  const handleCopy = async (key, value) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiedKey(key)
+      setTimeout(() => setCopiedKey(''), 300)
+    } catch {
+      setCopiedKey('')
+    }
+  }
+
+  if (phase === 'aws_connect') {
+    return (
+      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
+        <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6 text-center'>
+          <div className='mx-auto grid h-12 w-12 place-items-center rounded-full border border-border bg-background'>
+            <i className='ti ti-cloud text-lg text-accent' />
+          </div>
+          <h3 className='mt-4 text-2xl font-semibold tracking-tight'>Connect your AWS account</h3>
+          <p className='mt-2 text-sm text-text-muted'>
+            Crylo never stores your credentials. It uses a temporary IAM role that you can revoke at any time.
+          </p>
+          <div className='mx-auto mt-5 max-w-md space-y-2 text-left'>
+            {[
+              'No access keys or secret keys required',
+              'Role can be deleted to immediately revoke access',
+              'Same pattern used by Terraform Cloud and Pulumi',
+            ].map((item) => (
+              <div key={item} className='flex items-center gap-2 text-sm text-text-muted'>
+                <i className='ti ti-check text-green-400' />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className='mt-6'>
+            <Button variant='primary' onClick={handleRoleConnect} disabled={isWaitingRole || roleConnected}>
+              Open AWS CloudFormation console →
+            </Button>
+          </div>
+          {isWaitingRole ? (
+            <div className='mt-3 flex items-center justify-center gap-2 text-xs text-text-muted'>
+              <div className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+              <span>Waiting for role creation...</span>
+            </div>
+          ) : null}
+          {roleConnected ? (
+            <p className='mt-3 text-sm text-green-300'>✓ IAM role connected — arn:aws:iam::123456789012:role/CryloDeployRole</p>
+          ) : null}
+          {roleConnected ? (
+            <Button variant='secondary' className='mt-4' onClick={() => setPhase('env_vars')}>
+              Continue →
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'env_vars') {
+    return (
+      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
+        <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6'>
+          <h3 className='text-lg font-semibold'>Values required from you</h3>
+          <div className='mt-4 space-y-4'>
+            {[
+              { key: 'SECRET_KEY', desc: "Django's cryptographic signing key" },
+              { key: 'STRIPE_SECRET_KEY', desc: 'Your Stripe integration secret' },
+              { key: 'SENDGRID_API_KEY', desc: 'Your email delivery service key' },
+            ].map((field) => (
+              <div key={field.key}>
+                <div className='mb-1 flex items-center justify-between'>
+                  <p className='text-sm font-semibold text-text-primary'>{field.key}</p>
+                  <p className='text-xs text-text-muted'>{field.desc}</p>
+                </div>
+                <div className='flex gap-2'>
+                  <input
+                    type={showSecrets[field.key] ? 'text' : 'password'}
+                    value={secretFields[field.key]}
+                    onChange={(event) => setSecretFields((prev) => ({ ...prev, [field.key]: event.target.value }))}
+                    className='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                  />
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => setShowSecrets((prev) => ({ ...prev, [field.key]: !prev[field.key] }))}
+                  >
+                    {showSecrets[field.key] ? 'Hide' : 'Show'}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <h3 className='mt-7 text-lg font-semibold'>Auto-generated by Crylo</h3>
+          <div className='mt-3 space-y-2'>
+            {[
+              ['DATABASE_URL', 'Generated from your RDS instance'],
+              ['REDIS_URL', 'Generated from your ElastiCache cluster'],
+              ['CELERY_BROKER_URL', 'Generated from your SQS queue'],
+              ['AWS_S3_BUCKET_NAME', 'Generated from your S3 bucket'],
+            ].map(([key, desc]) => (
+              <div key={key} className='flex items-center justify-between rounded-md border border-border bg-background px-3 py-2'>
+                <div>
+                  <p className='text-sm font-semibold text-text-primary'>{key}</p>
+                  <p className='text-xs text-text-muted'>{desc}</p>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <i className='ti ti-lock text-xs text-text-muted' />
+                  <span className='rounded-full border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-300'>Auto-generated</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type='button'
+            className='mt-4 text-xs text-text-muted hover:text-text-primary'
+            disabled={extraVars.length >= 3}
+            onClick={() => setExtraVars((prev) => [...prev, { key: '', value: '' }])}
+          >
+            + Add variable
+          </button>
+          <div className='mt-2 space-y-2'>
+            {extraVars.map((row, index) => (
+              <div key={index} className='grid grid-cols-2 gap-2'>
+                <input
+                  type='text'
+                  placeholder='KEY'
+                  value={row.key}
+                  onChange={(event) => {
+                    const next = [...extraVars]
+                    next[index] = { ...next[index], key: event.target.value }
+                    setExtraVars(next)
+                  }}
+                  className='rounded-md border border-border bg-background px-3 py-2 text-sm'
+                />
+                <input
+                  type='text'
+                  placeholder='VALUE'
+                  value={row.value}
+                  onChange={(event) => {
+                    const next = [...extraVars]
+                    next[index] = { ...next[index], value: event.target.value }
+                    setExtraVars(next)
+                  }}
+                  className='rounded-md border border-border bg-background px-3 py-2 text-sm'
+                />
+              </div>
+            ))}
+          </div>
+
+          <p className='mt-4 text-xs text-text-muted'>
+            Secret values are written directly to AWS Secrets Manager in your account. Crylo never stores them.
+          </p>
+
+          <Button variant='primary' className='mt-5' disabled={!allSecretsFilled} onClick={() => setPhase('review')}>
+            Save & continue →
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'review') {
+    return (
+      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
+        <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6'>
+          <h3 className='text-lg font-semibold'>What Crylo will create</h3>
+          <div className='mt-3 space-y-2'>
+            {[
+              'Django backend on ECS Fargate — 1 task, auto-scaling enabled',
+              'React frontend on S3, served via CloudFront',
+              'PostgreSQL on RDS db.t3.small — single-AZ',
+              'Redis cache on ElastiCache cache.t3.micro',
+              'Celery worker on ECS Fargate — 1 task',
+              'SQS queue for async task processing',
+              'Application Load Balancer with HTTP listener',
+              'VPC with public and private subnets',
+            ].map((item) => (
+              <div key={item} className='flex items-start gap-2 text-sm'>
+                <i className='ti ti-check text-green-400' />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className='mt-6'>
+            <h3 className='text-lg font-semibold'>Final cost estimate</h3>
+            <div className='mt-3 rounded-md border border-border bg-background p-3'>
+              <div className='space-y-1.5'>
+                {costItems.map((item) => (
+                  <div key={item.label} className='flex items-center justify-between text-xs'>
+                    <p className='text-text-muted'>{item.label}</p>
+                    <p className='text-text-primary'>${item.monthly}/mo</p>
+                  </div>
+                ))}
+              </div>
+              <div className='mt-3 border-t border-border pt-2 text-sm font-semibold text-text-primary'>Total: ${totalCost}/month</div>
+              <p className='mt-2 text-xs text-text-muted'>us-east-1 · 730 hrs/month · excl. data transfer</p>
+            </div>
+          </div>
+
+          <div className='mt-6'>
+            <button
+              type='button'
+              className='text-sm font-medium text-accent hover:underline'
+              onClick={() => setShowTemplate((prev) => !prev)}
+            >
+              {showTemplate ? 'Hide CloudFormation template ∨' : 'View CloudFormation template ›'}
+            </button>
+            {showTemplate ? (
+              <pre className='mt-3 max-h-48 overflow-y-auto rounded-md border border-border bg-background p-3 text-xs text-text-muted'>
+{`AWSTemplateFormatVersion: '2010-09-09'
+Description: Crylo generated stack — invoiceapp-prod
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: invoiceapp-prod-cluster
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.t3.small
+      Engine: postgres
+  # ... 47 more resources`}
+              </pre>
+            ) : null}
+          </div>
+
+          <p className='mt-6 text-sm text-amber-300'>
+            ⚠ This will create AWS resources in your account. You will be charged by AWS for these resources.
+          </p>
+          <div className='mt-4 flex items-center gap-4'>
+            <button type='button' className='text-sm text-text-muted hover:text-text-primary' onClick={() => setPhase('env_vars')}>
+              ← Edit architecture
+            </button>
+            <Button variant='primary' onClick={() => setPhase('provisioning')}>
+              Provision →
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (phase === 'provisioning') {
+    return (
+      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
+        <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6'>
+          <h3 className='text-lg font-semibold'>Provisioning infrastructure</h3>
+          <div className='mt-4 space-y-3'>
+            {PROVISION_STEPS.map((item, index) => {
+              const isDone = index < provisionStep
+              const isActive = index === provisionStep
+              const textClass = isDone ? 'text-text-primary' : isActive ? 'text-accent' : 'text-text-muted'
+
+              return (
+                <div key={item.label} className='flex items-start gap-3'>
+                  {isDone ? (
+                    <div className='mt-0.5 grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>
+                      ✓
+                    </div>
+                  ) : isActive ? (
+                    <div className='mt-0.5 h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+                  ) : (
+                    <div className='mt-0.5 h-4 w-4 rounded-full border border-border bg-background' />
+                  )}
+                  <div>
+                    <p className={`text-sm ${textClass}`}>{item.label}</p>
+                    {isActive && item.note ? <p className='text-xs text-text-muted'>{item.note}</p> : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <p className='mt-5 text-xs text-text-muted'>Elapsed: {elapsedSeconds}s</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
+      <div className='mx-auto max-w-2xl rounded-lg border border-green-500/25 bg-surface p-6'>
+        <div className='flex items-center justify-center'>
+          <i className='ti ti-circle-check text-[48px] text-green-400' />
+        </div>
+        <h3 className='mt-4 text-center text-2xl font-semibold tracking-tight'>Your infrastructure is live</h3>
+
+        <div className='mt-6 space-y-2'>
+          {[
+            ['Frontend URL', 'https://app.myproduct.com'],
+            ['Backend API', 'https://api.myproduct.com'],
+            ['CloudFront URL', 'https://d1234abcd.cloudfront.net'],
+          ].map(([label, value]) => (
+            <div key={label} className='flex items-center justify-between rounded-md border border-border bg-background px-3 py-2'>
+              <div>
+                <p className='text-xs text-text-muted'>{label}</p>
+                <p className='text-sm font-medium text-text-primary'>{value}</p>
+              </div>
+              <button
+                type='button'
+                className='flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-text-muted hover:text-text-primary'
+                onClick={() => handleCopy(label, value)}
+              >
+                <i className='ti ti-copy text-xs' />
+                {copiedKey === label ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className='mt-6'>
+          <h4 className='text-sm font-semibold'>Next steps</h4>
+          <div className='mt-2 space-y-2 text-sm text-text-muted'>
+            <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Add this CNAME to your DNS: app.myproduct.com → d1234abcd.cloudfront.net</span></div>
+            <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Set up your CI/CD pipeline to push to ECR on merge to main</span></div>
+            <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Your architecture is saved and visible in the canvas</span></div>
+          </div>
+        </div>
+
+        <Button
+          variant='primary'
+          className='mt-6'
+          onClick={() => {
+            setStep4CanContinue(true)
+            onAdvanceToStepFive()
+          }}
+        >
+          Go to dashboard →
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function StepFivePanel() {
+  const costItems = [
+    { label: 'ECS Fargate (backend)', monthly: 34 },
+    { label: 'RDS PostgreSQL', monthly: 45 },
+    { label: 'ElastiCache Redis', monthly: 16 },
+    { label: 'ECS Fargate (worker)', monthly: 18 },
+    { label: 'S3 + CloudFront', monthly: 8 },
+    { label: 'SQS', monthly: 2 },
+    { label: 'ECR storage', monthly: 4 },
+  ]
+  const healthItems = [
+    ['Django backend', 'healthy', '2 / 2 tasks running'],
+    ['React frontend', 'healthy', 'CloudFront serving'],
+    ['PostgreSQL', 'healthy', 'Available'],
+    ['Redis cache', 'healthy', 'Available'],
+    ['Celery worker', 'degraded', '1 / 2 tasks running'],
+    ['SQS queue', 'healthy', 'Queue processing'],
+  ]
+
+  const statusIcon = (status) => {
+    if (status === 'healthy') return ['ti ti-circle-check', 'text-green-400', 'Healthy']
+    if (status === 'degraded') return ['ti ti-alert-triangle', 'text-amber-300', 'Degraded']
+    return ['ti ti-circle-x', 'text-red-400', 'Unhealthy']
+  }
+
+  return (
+    <div className='mt-8 flex-1 overflow-auto rounded-xl border border-border/70 bg-background/40 p-6'>
+      <div className='mx-auto w-full max-w-5xl space-y-6'>
+        <div>
+          <h3 className='text-lg font-semibold'>Health overview</h3>
+          <div className='mt-3 grid gap-3 md:grid-cols-3'>
+            {healthItems.map(([name, status, detail]) => {
+              const [icon, color, label] = statusIcon(status)
+              return (
+                <div key={name} className='rounded-lg border border-border bg-surface p-3'>
+                  <p className='text-sm font-semibold text-text-primary'>{name}</p>
+                  <div className={`mt-2 flex items-center gap-1 text-sm ${color}`}>
+                    <i className={icon} />
+                    <span>{label}</span>
+                  </div>
+                  <p className='mt-1 text-xs text-text-muted'>{detail}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <h3 className='text-lg font-semibold'>Key metrics</h3>
+          <div className='mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4'>
+            {[
+              ['API response time', 'p50: 120ms', 'p95: 340ms'],
+              ['Request rate', '243 req/min', ''],
+              ['Error rate', '0.3%', ''],
+              ['Backend CPU', '34% avg', ''],
+            ].map(([title, primary, secondary]) => (
+              <div key={title} className='rounded-lg border border-border bg-surface p-3'>
+                <p className='text-xs text-text-muted'>{title}</p>
+                <p className='mt-2 text-2xl font-semibold'>{primary}</p>
+                {secondary ? <p className='mt-1 text-xs text-text-muted'>{secondary}</p> : null}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h3 className='text-lg font-semibold'>Cost</h3>
+          <div className='mt-3 grid gap-3 md:grid-cols-3'>
+            {[
+              ['This month so far', '$67.40'],
+              ['Projected', '$124.00'],
+              ['Last month', '$118.43'],
+            ].map(([k, v]) => (
+              <div key={k} className='rounded-lg border border-border bg-surface p-3'>
+                <p className='text-xs text-text-muted'>{k}</p>
+                <p className='mt-2 text-xl font-semibold text-text-primary'>{v}</p>
+              </div>
+            ))}
+          </div>
+          <div className='mt-3 rounded-lg border border-border bg-surface p-3'>
+            {costItems.map((item) => (
+              <div key={item.label} className='flex items-center justify-between text-xs py-1'>
+                <span className='text-text-muted'>{item.label}</span>
+                <span className='text-text-primary'>${item.monthly}/mo</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className='flex items-center gap-2'>
+            <h3 className='text-lg font-semibold'>Alerts</h3>
+            <span className='rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300'>1</span>
+          </div>
+          <div className='mt-3 rounded-lg border border-amber-500/30 border-l-4 border-l-amber-400 bg-surface p-3'>
+            <div className='flex items-start gap-2'>
+              <i className='ti ti-alert-triangle text-amber-300 mt-0.5' />
+              <div>
+                <p className='text-sm font-medium text-text-primary'>Warning — Your Celery worker is running 1 of 2 expected tasks. Performance may be degraded.</p>
+                <p className='mt-1 text-xs text-text-muted'>2 minutes ago</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className='rounded-lg border border-border bg-surface p-3'>
+          <p className='text-sm text-text-primary'>
+            Stack name: <span className='font-semibold'>invoiceapp-prod</span>
+          </p>
+          <p className='mt-1 text-sm text-text-primary'>
+            Status: <span className='text-green-400'>✅ CREATE_COMPLETE</span>
+          </p>
+          <p className='mt-1 text-xs text-text-muted'>Last updated: Jan 15, 2024 at 14:32 UTC</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ProjectWizard() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -1062,6 +1611,7 @@ export default function ProjectWizard() {
   const [step3Finalized, setStep3Finalized] = useState(false)
   const [step3ShowBanner, setStep3ShowBanner] = useState(false)
   const [step3InputPrefill, setStep3InputPrefill] = useState('')
+  const [step4CanContinue, setStep4CanContinue] = useState(false)
 
   const canAdvance = (currentStep) => {
     if (currentStep === 1) {
@@ -1074,6 +1624,10 @@ export default function ProjectWizard() {
 
     if (currentStep === 3) {
       return step3Finalized
+    }
+
+    if (currentStep === 4) {
+      return step4CanContinue
     }
 
     return true
@@ -1120,7 +1674,7 @@ export default function ProjectWizard() {
         ? 'Go to dashboard'
         : 'Continue'
 
-  const fullWidth = step === 3
+  const fullWidth = step === 3 || step === 5
 
   return (
     <div className='relative min-h-[calc(100vh-121px)]'>
@@ -1185,7 +1739,23 @@ export default function ProjectWizard() {
             />
           ) : null}
 
-          {step !== 1 && step !== 2 && step !== 3 ? (
+          {step === 4 ? (
+            <StepFourPanel
+              setStep4CanContinue={setStep4CanContinue}
+              onAdvanceToStepFive={() => {
+                setCompletedSteps((prev) => {
+                  const next = new Set(prev)
+                  next.add(4)
+                  return next
+                })
+                setStep(5)
+              }}
+            />
+          ) : null}
+
+          {step === 5 ? <StepFivePanel /> : null}
+
+          {step !== 1 && step !== 2 && step !== 3 && step !== 4 && step !== 5 ? (
             <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
               <div className='grid h-full min-h-[260px] place-items-center rounded-lg border border-border/70 bg-surface'>
                 <p className='text-sm font-normal text-text-muted'>Step {step} content — coming soon</p>
@@ -1204,13 +1774,15 @@ export default function ProjectWizard() {
               </Button>
             ) : null}
           </div>
-          <Button
-            variant='primary'
-            onClick={handleContinue}
-            disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
-          >
-            {continueLabel}
-          </Button>
+          {step !== 4 ? (
+            <Button
+              variant='primary'
+              onClick={handleContinue}
+              disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
+            >
+              {continueLabel}
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>
