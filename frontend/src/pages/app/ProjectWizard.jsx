@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 
@@ -329,6 +329,403 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
   )
 }
 
+function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
+  const questions = useMemo(() => ([
+    {
+      id: 'description',
+      moment: 1,
+      question: 'Describe your app in one sentence.',
+      type: 'free',
+      options: [],
+    },
+    {
+      id: 'scale',
+      moment: 1,
+      question: 'How many users do you expect at launch?',
+      type: 'choice',
+      options: [
+        { value: 'solo', label: 'Just me or a small internal team' },
+        { value: 'small', label: 'Small user base - under 1,000 users' },
+        { value: 'medium', label: 'Public product - expecting real traffic' },
+        { value: 'large', label: 'High scale - expecting significant load' },
+      ],
+    },
+    {
+      id: 'criticality',
+      moment: 1,
+      question: 'How critical is uptime for this deployment?',
+      type: 'choice',
+      options: [
+        { value: 'low', label: 'Downtime is acceptable - dev, staging, or side project' },
+        { value: 'medium', label: 'Downtime is bad but not catastrophic - early stage product' },
+        { value: 'high', label: 'It needs to stay up - this is a production business' },
+      ],
+    },
+    {
+      id: 'compute_choice',
+      moment: 2,
+      question: 'Your Django backend will run as a container on AWS. Where do you want it hosted?',
+      type: 'choice',
+      options: [
+        { value: 'ecs_fargate', label: 'ECS Fargate - fully managed, no servers to configure', note: 'Recommended for most teams' },
+        { value: 'ecs_ec2', label: 'ECS on EC2 - more control, slightly cheaper at high scale', note: 'More operational overhead' },
+        { value: 'ec2', label: 'EC2 - you manage the underlying server yourself', note: 'Maximum control, most effort' },
+      ],
+    },
+    {
+      id: 'database_choice',
+      moment: 2,
+      question: 'Which database setup do you want?',
+      type: 'choice',
+      options: [
+        { value: 'rds_postgres', label: 'RDS PostgreSQL - reliable, well-understood, lower cost', note: 'Recommended' },
+        { value: 'aurora_postgres', label: 'Aurora PostgreSQL - higher performance, more scalable', note: 'Higher cost (~2.5x)' },
+      ],
+    },
+    {
+      id: 'worker_compute_choice',
+      moment: 2,
+      question: 'Your background workers were detected. Where should they run?',
+      type: 'choice',
+      options: [
+        { value: 'ecs_fargate', label: 'ECS Fargate - same as your backend, fully managed', note: 'Recommended' },
+        { value: 'ecs_ec2', label: 'ECS on EC2 - more control, cheaper at scale', note: '' },
+        { value: 'ec2', label: 'EC2 - manage the server yourself', note: '' },
+      ],
+    },
+    {
+      id: 'environment',
+      moment: 2,
+      question: 'What environment is this deployment for?',
+      type: 'choice',
+      options: [
+        { value: 'production', label: 'Production' },
+        { value: 'staging', label: 'Staging' },
+        { value: 'development', label: 'Development' },
+      ],
+    },
+    {
+      id: 'domain_has',
+      moment: 3,
+      question: 'Do you have a domain name for this app?',
+      type: 'choice',
+      options: [
+        { value: 'yes', label: 'Yes - I have a domain to point to this' },
+        { value: 'no', label: 'Not yet - give me the AWS-generated URL for now' },
+        { value: 'internal', label: 'No public domain needed - internal use only' },
+      ],
+    },
+    {
+      id: 'domain_name',
+      moment: 3,
+      question: "What's the domain? (e.g. app.myproduct.com)",
+      type: 'free',
+      options: [],
+      condition: (answers) => answers.domain_has === 'yes',
+    },
+  ]), [])
+
+  const [currentQ, setCurrentQ] = useState(0)
+  const [answers, setAnswers] = useState(projectData.intent || {})
+  const [direction, setDirection] = useState('forward')
+  const [isComplete, setIsComplete] = useState(false)
+  const [cardStage, setCardStage] = useState('idle')
+  const [descriptionValue, setDescriptionValue] = useState(projectData.intent?.description || '')
+  const [domainValue, setDomainValue] = useState(projectData.intent?.domain_name || '')
+  const transitionTimerRef = useRef(null)
+  const enterTimerRef = useRef(null)
+
+  useEffect(() => {
+    setStep2CanContinue(isComplete)
+  }, [isComplete, setStep2CanContinue])
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimerRef.current) {
+        clearTimeout(transitionTimerRef.current)
+      }
+      if (enterTimerRef.current) {
+        clearTimeout(enterTimerRef.current)
+      }
+    }
+  }, [])
+
+  const isVisible = (question, currentAnswers) => {
+    if (!question.condition) {
+      return true
+    }
+
+    return question.condition(currentAnswers)
+  }
+
+  const visibleIndexes = questions
+    .map((question, index) => (isVisible(question, answers) ? index : -1))
+    .filter((index) => index !== -1)
+
+  const safeCurrentQ = isComplete
+    ? currentQ
+    : (isVisible(questions[currentQ], answers) ? currentQ : visibleIndexes[0] || 0)
+
+  const activeQuestion = isComplete ? null : questions[safeCurrentQ]
+  const currentVisiblePosition = isComplete ? visibleIndexes.length : visibleIndexes.indexOf(safeCurrentQ)
+  const totalVisible = visibleIndexes.length
+  const questionNumber = isComplete ? totalVisible : currentVisiblePosition + 1
+  const progressPercent = isComplete ? 100 : Math.round((currentVisiblePosition / totalVisible) * 100)
+
+  const getNextIndex = (fromIndex, nextAnswers) => {
+    for (let i = fromIndex + 1; i < questions.length; i += 1) {
+      if (isVisible(questions[i], nextAnswers)) {
+        return i
+      }
+    }
+
+    return questions.length
+  }
+
+  const getPrevIndex = (fromIndex, nextAnswers) => {
+    for (let i = fromIndex - 1; i >= 0; i -= 1) {
+      if (isVisible(questions[i], nextAnswers)) {
+        return i
+      }
+    }
+
+    return 0
+  }
+
+  const transitionTo = (nextIndex, travelDirection) => {
+    if (transitionTimerRef.current) {
+      clearTimeout(transitionTimerRef.current)
+    }
+    if (enterTimerRef.current) {
+      clearTimeout(enterTimerRef.current)
+    }
+
+    setDirection(travelDirection)
+    setCardStage('exit')
+
+    transitionTimerRef.current = setTimeout(() => {
+      setCurrentQ(nextIndex)
+      setCardStage('enter')
+
+      enterTimerRef.current = setTimeout(() => {
+        setCardStage('idle')
+      }, 20)
+    }, 200)
+  }
+
+  const finalizeIntent = (finalAnswers) => {
+    setProjectData((prev) => ({
+      ...prev,
+      intent: finalAnswers,
+    }))
+    setIsComplete(true)
+  }
+
+  const advanceWithAnswers = (nextAnswers) => {
+    const nextIndex = getNextIndex(safeCurrentQ, nextAnswers)
+
+    if (nextIndex >= questions.length) {
+      finalizeIntent(nextAnswers)
+      return
+    }
+
+    transitionTo(nextIndex, 'forward')
+  }
+
+  const handleChoice = (value) => {
+    if (!activeQuestion) {
+      return
+    }
+
+    const nextAnswers = {
+      ...answers,
+      [activeQuestion.id]: value,
+    }
+
+    setAnswers(nextAnswers)
+    setDirection('forward')
+
+    setTimeout(() => {
+      advanceWithAnswers(nextAnswers)
+    }, 300)
+  }
+
+  const handleFreeNext = () => {
+    if (!activeQuestion) {
+      return
+    }
+
+    const value = activeQuestion.id === 'description' ? descriptionValue.trim() : domainValue.trim()
+    if (!value) {
+      return
+    }
+
+    const nextAnswers = {
+      ...answers,
+      [activeQuestion.id]: value,
+    }
+    setAnswers(nextAnswers)
+    advanceWithAnswers(nextAnswers)
+  }
+
+  const handleBack = () => {
+    if (isComplete) {
+      const fallback = visibleIndexes[visibleIndexes.length - 1] || 0
+      setIsComplete(false)
+      setDirection('back')
+      setCurrentQ(fallback)
+      return
+    }
+
+    const prevIndex = getPrevIndex(safeCurrentQ, answers)
+    if (prevIndex === safeCurrentQ) {
+      return
+    }
+
+    transitionTo(prevIndex, 'back')
+  }
+
+  const optionCardClass = (selected) => {
+    if (selected) {
+      return 'border-accent bg-accent-soft/30'
+    }
+
+    return 'border-border bg-background hover:border-accent/60'
+  }
+
+  const cardClass = () => {
+    if (cardStage === 'exit') {
+      return direction === 'forward' ? '-translate-x-full opacity-0' : 'translate-x-full opacity-0'
+    }
+
+    if (cardStage === 'enter') {
+      return direction === 'forward' ? 'translate-x-full opacity-0' : '-translate-x-full opacity-0'
+    }
+
+    return 'translate-x-0 opacity-100'
+  }
+
+  const questionLookup = questions.reduce((acc, q) => {
+    acc[q.id] = q
+    return acc
+  }, {})
+
+  const formatAnswer = (questionId, rawValue) => {
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      return '-'
+    }
+
+    const question = questionLookup[questionId]
+    if (!question || question.type === 'free') {
+      return String(rawValue)
+    }
+
+    const match = question.options.find((item) => item.value === rawValue)
+    return match ? match.label : String(rawValue)
+  }
+
+  const summaryQuestions = questions.filter((q) => {
+    if (q.id === 'domain_name' && answers.domain_has !== 'yes') {
+      return false
+    }
+
+    return answers[q.id] !== undefined
+  })
+
+  return (
+    <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
+      <div className='mx-auto max-w-md'>
+        <div className='text-xs font-normal text-text-muted'>Question {Math.max(1, questionNumber)} of {Math.max(1, totalVisible)}</div>
+        <div className='mt-2 h-1.5 overflow-hidden rounded-full bg-background'>
+          <div
+            className='h-full rounded-full bg-accent transition-all duration-500 ease-out'
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+
+        {!isComplete && currentVisiblePosition > 0 ? (
+          <button
+            type='button'
+            className='mt-4 text-xs font-normal text-text-muted hover:text-text-primary'
+            onClick={handleBack}
+          >
+            {'← Back'}
+          </button>
+        ) : null}
+
+        {isComplete ? (
+          <div className='mt-4 rounded-lg border border-border/70 bg-surface p-5'>
+            <h3 className='text-2xl font-semibold tracking-tight'>All set</h3>
+            <div className='mt-4 overflow-hidden rounded-md border border-border'>
+              <table className='w-full text-left text-sm'>
+                <tbody>
+                  {summaryQuestions.map((question) => (
+                    <tr key={question.id} className='border-t border-border first:border-t-0'>
+                      <td className='px-3 py-2 font-medium text-text-muted'>{question.question}</td>
+                      <td className='px-3 py-2 text-text-primary'>{formatAnswer(question.id, answers[question.id])}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className='mt-4 text-xs font-normal text-text-muted'>Your intent has been saved - your architecture is ready to review</p>
+          </div>
+        ) : (
+          <div className='mt-4 overflow-hidden rounded-lg border border-border/70 bg-surface'>
+            <div className={`p-5 transition-all duration-200 ${cardClass()}`}>
+              <p className='text-base font-medium text-text-primary'>{activeQuestion.question}</p>
+
+              {activeQuestion.type === 'choice' ? (
+                <div className='mt-4 space-y-3'>
+                  {activeQuestion.options.map((option) => (
+                    <button
+                      key={option.value}
+                      type='button'
+                      onClick={() => handleChoice(option.value)}
+                      className={`w-full rounded-lg border p-3 text-left transition-colors ${optionCardClass(answers[activeQuestion.id] === option.value)}`}
+                    >
+                      <p className='text-sm font-medium text-text-primary'>{option.label}</p>
+                      {option.note ? <p className='mt-1 text-xs font-normal text-text-muted'>{option.note}</p> : null}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className='mt-4'>
+                  {activeQuestion.id === 'description' ? (
+                    <textarea
+                      className='min-h-[108px] w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                      placeholder='Tell us what your app does...'
+                      value={descriptionValue}
+                      onChange={(event) => setDescriptionValue(event.target.value)}
+                    />
+                  ) : (
+                    <input
+                      type='text'
+                      className='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                      placeholder='app.myproduct.com'
+                      value={domainValue}
+                      onChange={(event) => setDomainValue(event.target.value)}
+                    />
+                  )}
+
+                  <Button
+                    variant='primary'
+                    className='mt-4'
+                    disabled={(activeQuestion.id === 'description' ? descriptionValue : domainValue).trim() === ''}
+                    onClick={handleFreeNext}
+                  >
+                    Next →
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function ProjectWizard() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -342,10 +739,15 @@ export default function ProjectWizard() {
     provision: null,
   })
   const [step1CanContinue, setStep1CanContinue] = useState(false)
+  const [step2CanContinue, setStep2CanContinue] = useState(false)
 
   const canAdvance = (currentStep) => {
     if (currentStep === 1) {
       return step1CanContinue
+    }
+
+    if (currentStep === 2) {
+      return step2CanContinue
     }
 
     return true
@@ -430,13 +832,23 @@ export default function ProjectWizard() {
               setProjectData={setProjectData}
               setStep1CanContinue={setStep1CanContinue}
             />
-          ) : (
+          ) : null}
+
+          {step === 2 ? (
+            <StepTwoPanel
+              projectData={projectData}
+              setProjectData={setProjectData}
+              setStep2CanContinue={setStep2CanContinue}
+            />
+          ) : null}
+
+          {step !== 1 && step !== 2 ? (
             <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
               <div className='grid h-full min-h-[260px] place-items-center rounded-lg border border-border/70 bg-surface'>
                 <p className='text-sm font-normal text-text-muted'>Step {step} content — coming soon</p>
               </div>
             </div>
-          )}
+          ) : null}
         </section>
       </div>
 
