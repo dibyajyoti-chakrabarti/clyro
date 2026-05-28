@@ -5,7 +5,7 @@ import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import Input from '../../components/ui/Input'
 import { GitHubIcon, GoogleIcon } from '../../components/ui/BrandIcons'
-import { useAuth } from '../../context/AuthContext'
+import useAuth from '../../context/useAuth'
 
 export default function Login() {
   const location = useLocation()

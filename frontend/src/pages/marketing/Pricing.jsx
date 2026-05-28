@@ -1,6 +1,6 @@
-import Badge from '../components/ui/Badge'
-import Button from '../components/ui/Button'
-import Card from '../components/ui/Card'
+import Badge from '../../components/ui/Badge'
+import Button from '../../components/ui/Button'
+import Card from '../../components/ui/Card'
 
 const tiers = [
   { name: 'Free', price: '$0', details: 'For solo builders exploring Clyro.', cta: 'Choose Free' },

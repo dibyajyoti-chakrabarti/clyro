@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import Button from '../components/ui/Button'
-import { useAuth } from '../context/AuthContext'
+import useAuth from '../context/useAuth'
 
 const links = [
   { to: '/app/dashboard', label: 'Dashboard', icon: 'DB' },
