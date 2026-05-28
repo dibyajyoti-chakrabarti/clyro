@@ -726,6 +726,325 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
   )
 }
 
+function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBanner, onDismissStep3Banner }) {
+  const MOCK_CANVAS = {
+    nodes: [
+      { id: 'backend', label: 'Django backend', type: 'service', aws: 'ECS Fargate', source: 'detected' },
+      { id: 'frontend', label: 'React frontend', type: 'static', aws: 'S3 + CloudFront', source: 'detected' },
+      { id: 'db', label: 'PostgreSQL', type: 'database', aws: 'RDS PostgreSQL', source: 'detected' },
+      { id: 'cache', label: 'Redis cache', type: 'cache', aws: 'ElastiCache', source: 'detected' },
+      { id: 'worker', label: 'Celery worker', type: 'worker', aws: 'ECS Fargate', source: 'detected' },
+      { id: 'queue', label: 'Task queue', type: 'queue', aws: 'SQS', source: 'detected' },
+    ],
+    connections: [
+      { from: 'frontend', to: 'backend', label: 'REST API' },
+      { from: 'backend', to: 'db', label: 'reads/writes' },
+      { from: 'backend', to: 'cache', label: 'caching' },
+      { from: 'backend', to: 'worker', label: 'async tasks' },
+      { from: 'worker', to: 'queue', label: 'consumes' },
+    ],
+    cost: [
+      { label: 'ECS Fargate (backend)', monthly: 34 },
+      { label: 'RDS PostgreSQL', monthly: 45 },
+      { label: 'ElastiCache Redis', monthly: 16 },
+      { label: 'ECS Fargate (worker)', monthly: 18 },
+      { label: 'S3 + CloudFront', monthly: 8 },
+      { label: 'SQS', monthly: 2 },
+      { label: 'ECR storage', monthly: 4 },
+    ],
+  }
+
+  const POSITIONS = {
+    frontend: { x: 80, y: 40 },
+    backend: { x: 280, y: 40 },
+    db: { x: 480, y: 40 },
+    cache: { x: 480, y: 180 },
+    worker: { x: 280, y: 220 },
+    queue: { x: 80, y: 220 },
+  }
+
+  const [selectedNode, setSelectedNode] = useState(null)
+  const [chatInput, setChatInput] = useState('')
+  const [chatHistory, setChatHistory] = useState([
+    {
+      role: 'agent',
+      text: 'Your architecture has been generated from your repository scan. You can ask me to explain any component, compare services, or suggest changes.',
+    },
+  ])
+  const chatEndRef = useRef(null)
+  const chatInputRef = useRef(null)
+
+  useEffect(() => {
+    if (!step3InputPrefill) {
+      return
+    }
+
+    setChatInput(step3InputPrefill)
+    if (chatInputRef.current) {
+      chatInputRef.current.focus()
+    }
+    setStep3InputPrefill('')
+  }, [step3InputPrefill, setStep3InputPrefill])
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [chatHistory])
+
+  const iconClassByType = {
+    service: 'ti ti-server',
+    static: 'ti ti-world',
+    database: 'ti ti-database',
+    cache: 'ti ti-bolt',
+    worker: 'ti ti-settings-automation',
+    queue: 'ti ti-stack-2',
+  }
+
+  const accentByType = {
+    service: 'border-l-blue-500',
+    static: 'border-l-purple-500',
+    database: 'border-l-green-500',
+    cache: 'border-l-red-500',
+    worker: 'border-l-orange-500',
+    queue: 'border-l-yellow-500',
+  }
+
+  const replyFor = (message) => {
+    const input = message.toLowerCase()
+
+    if (input.includes('aurora')) {
+      return 'Aurora PostgreSQL offers better read performance and automatic failover, but costs roughly 2.5× more than RDS for your expected scale. Want me to make the switch?'
+    }
+
+    if (input.includes('fargate')) {
+      return 'ECS Fargate is fully managed - AWS handles the underlying servers. You define the container, AWS runs it. No patching, no capacity planning.'
+    }
+
+    if (input.includes('cost')) {
+      return 'Your estimated monthly cost is $127/month. The largest line items are RDS PostgreSQL ($45) and ECS Fargate for the backend ($34).'
+    }
+
+    if (input.includes('redis')) {
+      return 'Your Django settings use Redis for caching. Removing it would mean cache calls fall back to your database, which may affect performance.'
+    }
+
+    return 'I can help you understand, compare, or change any part of this architecture. Try asking about a specific service or asking for suggestions.'
+  }
+
+  const handleSend = () => {
+    const message = chatInput.trim()
+    if (!message) {
+      return
+    }
+
+    setChatHistory((prev) => [...prev, { role: 'user', text: message }])
+    setChatInput('')
+
+    setTimeout(() => {
+      setChatHistory((prev) => [...prev, { role: 'agent', text: replyFor(message) }])
+    }, 1200)
+  }
+
+  const totalCost = MOCK_CANVAS.cost.reduce((sum, item) => sum + item.monthly, 0)
+  const selected = MOCK_CANVAS.nodes.find((node) => node.id === selectedNode) || null
+
+  return (
+    <div className='mt-8 flex h-full min-h-[540px] gap-4'>
+      <div
+        className='relative flex-1 overflow-auto rounded-xl border border-border/70 bg-background'
+        onClick={() => setSelectedNode(null)}
+      >
+        {step3ShowBanner ? (
+          <div className='sticky top-0 z-20 border-b border-green-500/20 bg-green-500/10 px-4 py-3'>
+            <div className='flex items-center justify-between'>
+              <p className='text-sm font-medium text-green-300'>Architecture finalized</p>
+              <button
+                type='button'
+                className='text-xs text-green-300/80 hover:text-green-200'
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onDismissStep3Banner()
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div
+          className='relative min-h-[520px]'
+          style={{
+            backgroundColor: 'transparent',
+            backgroundImage: 'radial-gradient(rgba(148, 163, 184, 0.15) 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+          }}
+        >
+          <svg className='pointer-events-none absolute inset-0 h-full w-full'>
+            <defs>
+              <marker id='arrow-head' markerWidth='8' markerHeight='8' refX='6.5' refY='4' orient='auto'>
+                <path d='M 0 0 L 8 4 L 0 8 z' className='fill-slate-500/70' />
+              </marker>
+            </defs>
+            {MOCK_CANVAS.connections.map((connection) => {
+              const fromPos = POSITIONS[connection.from]
+              const toPos = POSITIONS[connection.to]
+              const x1 = fromPos.x + 88
+              const y1 = fromPos.y + 56
+              const x2 = toPos.x + 88
+              const y2 = toPos.y
+              const midX = (x1 + x2) / 2
+              const midY = (y1 + y2) / 2
+
+              return (
+                <g key={`${connection.from}-${connection.to}`}>
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke='rgba(148, 163, 184, 0.75)'
+                    strokeWidth='1.5'
+                    markerEnd='url(#arrow-head)'
+                  />
+                  <text
+                    x={midX}
+                    y={midY - 4}
+                    textAnchor='middle'
+                    fontSize='10'
+                    fill='rgba(148, 163, 184, 0.9)'
+                  >
+                    {connection.label}
+                  </text>
+                </g>
+              )
+            })}
+          </svg>
+
+          {MOCK_CANVAS.nodes.map((node) => {
+            const pos = POSITIONS[node.id]
+            const isSelected = selectedNode === node.id
+
+            return (
+              <button
+                key={node.id}
+                type='button'
+                className={`absolute w-44 rounded-lg border border-border bg-surface px-3 py-2 text-left shadow-sm transition hover:ring-1 hover:ring-accent ${accentByType[node.type]} border-l-4 ${isSelected ? 'ring-2 ring-blue-500' : ''}`}
+                style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setSelectedNode(node.id)
+                }}
+              >
+                <div className='flex items-center gap-2'>
+                  <i className={`${iconClassByType[node.type]} text-sm text-text-muted`} />
+                  <p className='truncate text-sm font-medium text-text-primary'>{node.label}</p>
+                </div>
+                <div className='mt-3'>
+                  <span className='rounded-full border border-border bg-background px-2 py-1 text-xs text-text-muted'>{node.aws}</span>
+                </div>
+              </button>
+            )
+          })}
+
+          {selected ? (
+            <div
+              className='absolute z-20 w-56 rounded-lg border border-border bg-surface p-3 shadow-lg'
+              style={{ left: `${POSITIONS[selected.id].x}px`, top: `${POSITIONS[selected.id].y + 68}px` }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p className='text-sm font-semibold text-text-primary'>{selected.label}</p>
+              <p className='mt-1 text-xs text-text-muted'>Type: {selected.type}</p>
+              <p className='text-xs text-text-muted'>AWS: {selected.aws}</p>
+              <button
+                type='button'
+                className='mt-3 text-xs font-medium text-accent hover:underline'
+                onClick={() => {
+                  setChatInput(`Tell me about the ${selected.label}`)
+                  if (chatInputRef.current) {
+                    chatInputRef.current.focus()
+                  }
+                }}
+              >
+                Ask agent about this →
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className='flex w-80 flex-col overflow-hidden rounded-xl border border-border bg-surface border-l border-l-border'>
+        <div className='flex min-h-0 flex-1 flex-col'>
+          <div className='flex items-center gap-2 border-b border-border px-4 py-3'>
+            <i className='ti ti-sparkles text-sm text-accent' />
+            <p className='text-sm font-semibold text-text-primary'>Canvas agent</p>
+          </div>
+
+          <div className='min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3'>
+            {chatHistory.map((message, index) => (
+              <div key={`${message.role}-${index}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-[92%] rounded-2xl px-3 py-2 text-sm ${
+                    message.role === 'user'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-background text-text-primary'
+                  }`}
+                >
+                  {message.text}
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+
+          <div className='border-t border-border p-3'>
+            <div className='flex items-center gap-2'>
+              <input
+                ref={chatInputRef}
+                type='text'
+                value={chatInput}
+                onChange={(event) => setChatInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    handleSend()
+                  }
+                }}
+                className='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                placeholder='Ask about this architecture...'
+              />
+              <button
+                type='button'
+                onClick={handleSend}
+                className='grid h-9 w-9 place-items-center rounded-md border border-border bg-background text-text-primary transition hover:border-accent hover:text-accent'
+              >
+                <i className='ti ti-send text-sm' />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className='border-t border-border px-4 py-3'>
+          <div className='flex items-center justify-between'>
+            <p className='text-sm font-semibold text-text-primary'>Estimated cost</p>
+            <p className='text-lg font-semibold text-text-primary'>${totalCost} / month</p>
+          </div>
+          <div className='mt-3 space-y-1.5'>
+            {MOCK_CANVAS.cost.map((item) => (
+              <div key={item.label} className='flex items-center justify-between text-xs'>
+                <p className='text-text-muted'>{item.label}</p>
+                <p className='text-text-primary'>${item.monthly}/mo</p>
+              </div>
+            ))}
+          </div>
+          <p className='mt-3 text-xs text-text-muted'>us-east-1 · 730 hrs/month · excl. data transfer</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ProjectWizard() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -740,6 +1059,9 @@ export default function ProjectWizard() {
   })
   const [step1CanContinue, setStep1CanContinue] = useState(false)
   const [step2CanContinue, setStep2CanContinue] = useState(false)
+  const [step3Finalized, setStep3Finalized] = useState(false)
+  const [step3ShowBanner, setStep3ShowBanner] = useState(false)
+  const [step3InputPrefill, setStep3InputPrefill] = useState('')
 
   const canAdvance = (currentStep) => {
     if (currentStep === 1) {
@@ -748,6 +1070,10 @@ export default function ProjectWizard() {
 
     if (currentStep === 2) {
       return step2CanContinue
+    }
+
+    if (currentStep === 3) {
+      return step3Finalized
     }
 
     return true
@@ -760,6 +1086,12 @@ export default function ProjectWizard() {
   }
 
   const handleContinue = () => {
+    if (step === 3 && !step3Finalized) {
+      setStep3Finalized(true)
+      setStep3ShowBanner(true)
+      return
+    }
+
     if (!canAdvance(step)) {
       return
     }
@@ -781,12 +1113,14 @@ export default function ProjectWizard() {
   }
 
   const continueLabel = step === 3
-    ? 'Finalize'
+    ? (step3Finalized ? 'Continue to step 4' : 'Finalize')
     : step === 4
       ? 'Provision'
       : step === 5
         ? 'Go to dashboard'
         : 'Continue'
+
+  const fullWidth = step === 3
 
   return (
     <div className='relative min-h-[calc(100vh-121px)]'>
@@ -819,7 +1153,7 @@ export default function ProjectWizard() {
       </div>
 
       <div className='pb-24 pt-36'>
-        <section className='mx-auto flex min-h-[calc(100vh-270px)] w-full max-w-[640px] flex-col'>
+        <section className={fullWidth ? 'flex h-[calc(100vh-270px)] flex-col' : 'mx-auto flex min-h-[calc(100vh-270px)] w-full max-w-[640px] flex-col'}>
           <div className='w-fit rounded-full border border-border px-3 py-1 text-xs font-normal text-text-muted'>
             Step {step} of 5
           </div>
@@ -842,7 +1176,16 @@ export default function ProjectWizard() {
             />
           ) : null}
 
-          {step !== 1 && step !== 2 ? (
+          {step === 3 ? (
+            <StepThreePanel
+              step3InputPrefill={step3InputPrefill}
+              setStep3InputPrefill={setStep3InputPrefill}
+              step3ShowBanner={step3ShowBanner}
+              onDismissStep3Banner={() => setStep3ShowBanner(false)}
+            />
+          ) : null}
+
+          {step !== 1 && step !== 2 && step !== 3 ? (
             <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
               <div className='grid h-full min-h-[260px] place-items-center rounded-lg border border-border/70 bg-surface'>
                 <p className='text-sm font-normal text-text-muted'>Step {step} content — coming soon</p>
@@ -861,7 +1204,11 @@ export default function ProjectWizard() {
               </Button>
             ) : null}
           </div>
-          <Button variant='primary' onClick={handleContinue} disabled={!canAdvance(step)}>
+          <Button
+            variant='primary'
+            onClick={handleContinue}
+            disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
+          >
             {continueLabel}
           </Button>
         </div>
