@@ -1,0 +1,23 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: clyro_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: clyro
+      POSTGRES_PASSWORD: clyro
+      POSTGRES_DB: clyro_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - clyro_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clyro -d clyro_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  clyro_db_data:
