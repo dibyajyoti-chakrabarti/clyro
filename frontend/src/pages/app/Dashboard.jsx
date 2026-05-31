@@ -2,7 +2,7 @@ import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 
 export default function Dashboard() {
-  const hasActivity = false
+  const hasActivity = false // TODO: replace with API call — GET /api/dashboard/activity/
 
   return (
     <div className='space-y-6'>
@@ -23,11 +23,12 @@ export default function Dashboard() {
         </div>
       </Card>
 
+      {/* TODO: replace with API call — GET /api/dashboard/stats/ */}
       <div className='grid gap-4 md:grid-cols-3'>
         {[
-          ['Active Projects', '7'],
-          ['Deployments This Week', '19'],
-          ['Estimated Monthly Cost', '$34/mo'],
+          ['Active Projects', '—'],
+          ['Deployments This Week', '—'],
+          ['Estimated Monthly Cost', '—'],
         ].map(([title, value]) => (
           <Card key={title}>
             <p className='text-xs font-normal text-text-muted'>{title}</p>
