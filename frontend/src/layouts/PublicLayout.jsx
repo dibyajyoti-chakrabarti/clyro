@@ -9,7 +9,7 @@ export default function PublicLayout() {
   return (
     <div className='min-h-screen bg-background text-text-primary'>
       <header className='border-b border-border'>
-        <div className='mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4'>
+        <div className='mx-auto flex w-full max-w-[1700px] items-center justify-between px-4 py-4 sm:px-6 lg:px-10 xl:px-12'>
           <NavLink to='/' className='text-xl font-semibold'>
             Clyro
           </NavLink>
@@ -35,7 +35,7 @@ export default function PublicLayout() {
         </div>
       </header>
 
-      <main className='mx-auto w-full max-w-6xl px-6 py-8'>
+      <main className='w-full'>
         <Outlet />
       </main>
     </div>

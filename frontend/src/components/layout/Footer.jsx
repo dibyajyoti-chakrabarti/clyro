@@ -21,8 +21,8 @@ function linkHref(label) {
 
 export default function Footer() {
   return (
-    <footer className='border-t border-white/[0.08] bg-background text-text-muted'>
-      <div className='mx-auto flex w-full max-w-7xl flex-col gap-5 px-5 py-5 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-8'>
+    <footer className='w-full border-t border-white/[0.08] bg-background text-text-muted'>
+      <div className='mx-auto flex w-full max-w-[1700px] flex-col gap-5 px-4 py-5 sm:px-6 md:flex-row md:items-center md:justify-between lg:px-10 xl:px-12'>
         <a
           href='/'
           className='inline-flex items-center gap-2 text-sm font-semibold text-text-primary transition-colors hover:text-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-background'

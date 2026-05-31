@@ -8,7 +8,7 @@ import WhyCrylo from './landing/WhyCrylo'
 
 export default function Landing() {
   return (
-    <main className='space-y-10 md:space-y-12'>
+    <main className='w-full space-y-10 md:space-y-12'>
       <Hero />
       <TrustedBy />
       <HowItWorks />

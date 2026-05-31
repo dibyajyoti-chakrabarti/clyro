@@ -3,8 +3,8 @@ import Button from '../../../components/ui/Button'
 
 export default function CTA() {
   return (
-    <section className="bg-background text-text-primary">
-      <div className="mx-auto max-w-7xl px-5 pb-5 sm:px-6 lg:px-8">
+    <section className="w-full bg-background text-text-primary">
+      <div className="mx-auto w-full max-w-[1700px] px-4 pb-5 sm:px-6 lg:px-10 xl:px-12">
         <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#070b17] px-6 py-5 lg:px-10 lg:py-6">
           {/* Gradient Glow Layer */}
           <div className="pointer-events-none absolute inset-0">

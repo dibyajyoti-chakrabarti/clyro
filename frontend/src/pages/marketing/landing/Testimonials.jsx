@@ -1,11 +1,25 @@
+import { Building2, Layers3, Cloud } from 'lucide-react'
 import Card from '../../../components/ui/Card'
 
-const companies = ['Acme Corp', 'ByteScale', 'CloudWave']
+const companies = [
+  {
+    name: 'Acme Corp',
+    icon: Building2,
+  },
+  {
+    name: 'ByteScale',
+    icon: Layers3,
+  },
+  {
+    name: 'CloudWave',
+    icon: Cloud,
+  },
+]
 
 export default function Testimonials() {
   return (
-    <section className='bg-background text-text-primary'>
-      <div className='mx-auto grid w-full max-w-7xl gap-3 px-5 sm:px-6 lg:grid-cols-[0.85fr_2fr_0.85fr] lg:px-8'>
+    <section className='w-full bg-background text-text-primary'>
+      <div className='mx-auto grid w-full max-w-[1700px] gap-3 px-4 sm:px-6 lg:grid-cols-[0.85fr_2fr_0.85fr] lg:px-10 xl:px-12'>
         <Card className='border-white/[0.07] bg-surface/35 p-3'>
           <h2 className='text-sm font-semibold text-text-primary'>Loved by Builders</h2>
           <p className='mt-2 text-2xl font-bold tracking-normal text-amber-300'>10K+</p>
@@ -42,12 +56,16 @@ export default function Testimonials() {
 
         <Card className='border-white/[0.07] bg-surface/35 p-3'>
           <ul className='space-y-3'>
-            {companies.map((company) => (
-              <li key={company} className='flex items-center gap-2.5 text-xs font-medium text-text-primary/75 sm:text-sm'>
-                <span className='size-3 rounded border border-white/[0.12] bg-white/[0.04]' aria-hidden='true' />
-                {company}
-              </li>
-            ))}
+            {companies.map((company) => {
+              const Icon = company.icon
+
+              return (
+                <li key={company.name} className='flex items-center gap-2.5 text-xs font-medium text-text-primary/75 sm:text-sm'>
+                  <Icon className='h-5 w-5 text-text-muted' aria-hidden='true' />
+                  {company.name}
+                </li>
+              )
+            })}
           </ul>
         </Card>
       </div>
