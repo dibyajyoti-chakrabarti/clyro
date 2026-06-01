@@ -1,4 +1,3 @@
-import Footer from '../../components/layout/Footer'
 import CTA from './landing/CTA'
 import Hero from './landing/Hero'
 import HowItWorks from './landing/HowItWorks'
@@ -12,13 +11,10 @@ export default function Landing() {
       <Hero />
       <TrustedBy />
       <HowItWorks />
-      <div className='bg-[#F6F2EA]'>
         <WhyCrylo />
         <Testimonials />
-      </div>
       <div>
         <CTA />
-        <Footer />
       </div>
     </main>
   )
