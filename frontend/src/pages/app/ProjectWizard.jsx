@@ -30,33 +30,6 @@ const stepConfig = [
   },
 ]
 
-const scanMessages = [
-  'Connecting to repository...',
-  'Pass 1 - reading file tree...',
-  'Pass 2 - reading high-signal files...',
-  'Pass 3 - running detection rules...',
-  'Generating draft architecture...',
-]
-
-const scanDurations = [600, 1200, 1800, 1400, 800]
-
-const detectionItems = [
-  { label: 'Django Backend', target: 'ECS Fargate', source: 'from requirements.txt', mono: 'DJ' },
-  { label: 'React Frontend', target: 'S3 + CloudFront', source: 'from package.json', mono: 'RE' },
-  { label: 'PostgreSQL', target: 'RDS PostgreSQL', source: 'from settings.py', mono: 'PG' },
-  { label: 'Redis Cache', target: 'ElastiCache', source: 'from settings.py', mono: 'RD' },
-  { label: 'Celery Workers', target: 'ECS Fargate', source: 'from celery.py', mono: 'CE' },
-  { label: 'SQS Queue', target: '(from Celery detection)', source: 'from Celery detection', mono: 'SQ' },
-]
-
-const envRows = [
-  { key: 'SECRET_KEY', cls: 'user secret', source: 'settings/base.py' },
-  { key: 'STRIPE_SECRET_KEY', cls: 'user secret', source: 'settings/production.py' },
-  { key: 'DATABASE_URL', cls: 'auto-generated', source: 'from RDS instance' },
-  { key: 'REDIS_URL', cls: 'auto-generated', source: 'from ElastiCache' },
-  { key: 'DEBUG', cls: 'optional', source: 'production default: False' },
-]
-
 function GithubMark() {
   return (
     <div className='grid h-14 w-14 place-items-center rounded-xl border border-border bg-background text-lg font-semibold'>
@@ -83,27 +56,14 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
   const [selectedBranch, setSelectedBranch] = useState(projectData.repo?.branch || '')
   const [scanStep, setScanStep] = useState(0)
   const [blockReason, setBlockReason] = useState('')
+  const [availableRepos, setAvailableRepos] = useState([]) // TODO: fetch from GET /api/github/repos/
+  const [detectionItems, setDetectionItems] = useState([]) // TODO: replace with scan result from API
+  const [envRows, setEnvRows] = useState([]) // TODO: replace with scan result from API
+  const [scanMessages, setScanMessages] = useState([]) // TODO: replace with scan result from API
 
   useEffect(() => {
     setStep1CanContinue(phase === 'results')
   }, [phase, setStep1CanContinue])
-
-  useEffect(() => {
-    if (phase !== 'scanning') {
-      return
-    }
-
-    const timer = setTimeout(() => {
-      if (scanStep >= 4) {
-        setPhase('results')
-        return
-      }
-
-      setScanStep((prev) => prev + 1)
-    }, scanDurations[scanStep])
-
-    return () => clearTimeout(timer)
-  }, [phase, scanStep])
 
   const canScan = selectedRepo !== '' && selectedBranch !== ''
 
@@ -116,11 +76,7 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
       return
     }
 
-    if (selectedRepo === 'acme-corp/internal-tools') {
-      setBlockReason('No requirements.txt found. Crylo requires a requirements.txt to detect your Python dependencies.')
-      setPhase('blocked')
-      return
-    }
+    // TODO: block state comes from scan result status === 'blocked'
 
     setProjectData((prev) => ({
       ...prev,
@@ -130,6 +86,7 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
       },
     }))
     setScanStep(0)
+    // TODO: call POST /api/projects/{id}/scan/ and poll for status
     setPhase('scanning')
   }
 
@@ -169,9 +126,9 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
                 }}
               >
                 <option className='text-black' value=''>Select a repository...</option>
-                <option className='text-black' value='acme-corp/invoiceapp'>acme-corp/invoiceapp</option>
-                <option className='text-black' value='acme-corp/analytics-dashboard'>acme-corp/analytics-dashboard</option>
-                <option className='text-black' value='acme-corp/internal-tools'>acme-corp/internal-tools</option>
+                {availableRepos.map((repo) => (
+                  <option key={repo} className='text-black' value={repo}>{repo}</option>
+                ))}
               </select>
             </div>
 
@@ -208,7 +165,8 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
   }
 
   if (phase === 'scanning') {
-    const progressPercent = Math.round((scanStep / 4) * 100)
+    const total = Math.max(scanMessages.length - 1, 1)
+    const progressPercent = Math.round((scanStep / total) * 100)
 
     return (
       <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
@@ -727,41 +685,8 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
 }
 
 function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBanner, onDismissStep3Banner }) {
-  const MOCK_CANVAS = {
-    nodes: [
-      { id: 'backend', label: 'Django backend', type: 'service', aws: 'ECS Fargate', source: 'detected' },
-      { id: 'frontend', label: 'React frontend', type: 'static', aws: 'S3 + CloudFront', source: 'detected' },
-      { id: 'db', label: 'PostgreSQL', type: 'database', aws: 'RDS PostgreSQL', source: 'detected' },
-      { id: 'cache', label: 'Redis cache', type: 'cache', aws: 'ElastiCache', source: 'detected' },
-      { id: 'worker', label: 'Celery worker', type: 'worker', aws: 'ECS Fargate', source: 'detected' },
-      { id: 'queue', label: 'Task queue', type: 'queue', aws: 'SQS', source: 'detected' },
-    ],
-    connections: [
-      { from: 'frontend', to: 'backend', label: 'REST API' },
-      { from: 'backend', to: 'db', label: 'reads/writes' },
-      { from: 'backend', to: 'cache', label: 'caching' },
-      { from: 'backend', to: 'worker', label: 'async tasks' },
-      { from: 'worker', to: 'queue', label: 'consumes' },
-    ],
-    cost: [
-      { label: 'ECS Fargate (backend)', monthly: 34 },
-      { label: 'RDS PostgreSQL', monthly: 45 },
-      { label: 'ElastiCache Redis', monthly: 16 },
-      { label: 'ECS Fargate (worker)', monthly: 18 },
-      { label: 'S3 + CloudFront', monthly: 8 },
-      { label: 'SQS', monthly: 2 },
-      { label: 'ECR storage', monthly: 4 },
-    ],
-  }
-
-  const POSITIONS = {
-    frontend: { x: 80, y: 40 },
-    backend: { x: 280, y: 40 },
-    db: { x: 480, y: 40 },
-    cache: { x: 480, y: 180 },
-    worker: { x: 280, y: 220 },
-    queue: { x: 80, y: 220 },
-  }
+  const [canvas, setCanvas] = useState(null) // TODO: fetch from GET /api/projects/{id}/canvas/latest/
+  const [nodePositions, setNodePositions] = useState({}) // TODO: persisted in canvas_snapshot
 
   const [selectedNode, setSelectedNode] = useState(null)
   const [chatInput, setChatInput] = useState('')
@@ -771,6 +696,8 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
       text: 'Your architecture has been generated from your repository scan. You can ask me to explain any component, compare services, or suggest changes.',
     },
   ])
+  // TODO: call POST /api/projects/{id}/canvas/agent/ with the user's message
+  const [agentLoading, setAgentLoading] = useState(false)
   const chatEndRef = useRef(null)
   const chatInputRef = useRef(null)
 
@@ -810,28 +737,6 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
     queue: 'border-l-yellow-500',
   }
 
-  const replyFor = (message) => {
-    const input = message.toLowerCase()
-
-    if (input.includes('aurora')) {
-      return 'Aurora PostgreSQL offers better read performance and automatic failover, but costs roughly 2.5× more than RDS for your expected scale. Want me to make the switch?'
-    }
-
-    if (input.includes('fargate')) {
-      return 'ECS Fargate is fully managed - AWS handles the underlying servers. You define the container, AWS runs it. No patching, no capacity planning.'
-    }
-
-    if (input.includes('cost')) {
-      return 'Your estimated monthly cost is $127/month. The largest line items are RDS PostgreSQL ($45) and ECS Fargate for the backend ($34).'
-    }
-
-    if (input.includes('redis')) {
-      return 'Your Django settings use Redis for caching. Removing it would mean cache calls fall back to your database, which may affect performance.'
-    }
-
-    return 'I can help you understand, compare, or change any part of this architecture. Try asking about a specific service or asking for suggestions.'
-  }
-
   const handleSend = () => {
     const message = chatInput.trim()
     if (!message) {
@@ -840,14 +745,14 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
 
     setChatHistory((prev) => [...prev, { role: 'user', text: message }])
     setChatInput('')
-
-    setTimeout(() => {
-      setChatHistory((prev) => [...prev, { role: 'agent', text: replyFor(message) }])
-    }, 1200)
+    // TODO: call POST /api/projects/{id}/canvas/agent/ with the user's message
   }
 
-  const totalCost = MOCK_CANVAS.cost.reduce((sum, item) => sum + item.monthly, 0)
-  const selected = MOCK_CANVAS.nodes.find((node) => node.id === selectedNode) || null
+  const canvasNodes = canvas?.nodes || []
+  const canvasConnections = canvas?.connections || []
+  const canvasCost = canvas?.cost || []
+  const totalCost = canvasCost.reduce((sum, item) => sum + item.monthly, 0)
+  const selected = canvasNodes.find((node) => node.id === selectedNode) || null
 
   return (
     <div className='mt-8 flex h-full min-h-[540px] gap-4'>
@@ -887,9 +792,10 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
                 <path d='M 0 0 L 8 4 L 0 8 z' className='fill-slate-500/70' />
               </marker>
             </defs>
-            {MOCK_CANVAS.connections.map((connection) => {
-              const fromPos = POSITIONS[connection.from]
-              const toPos = POSITIONS[connection.to]
+            {canvasConnections.map((connection) => {
+              const fromPos = nodePositions[connection.from]
+              const toPos = nodePositions[connection.to]
+              if (!fromPos || !toPos) return null
               const x1 = fromPos.x + 88
               const y1 = fromPos.y + 56
               const x2 = toPos.x + 88
@@ -922,8 +828,9 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
             })}
           </svg>
 
-          {MOCK_CANVAS.nodes.map((node) => {
-            const pos = POSITIONS[node.id]
+          {canvasNodes.map((node) => {
+            const pos = nodePositions[node.id]
+            if (!pos) return null
             const isSelected = selectedNode === node.id
 
             return (
@@ -948,10 +855,10 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
             )
           })}
 
-          {selected ? (
+          {selected && nodePositions[selected.id] ? (
             <div
               className='absolute z-20 w-56 rounded-lg border border-border bg-surface p-3 shadow-lg'
-              style={{ left: `${POSITIONS[selected.id].x}px`, top: `${POSITIONS[selected.id].y + 68}px` }}
+              style={{ left: `${nodePositions[selected.id].x}px`, top: `${nodePositions[selected.id].y + 68}px` }}
               onClick={(event) => event.stopPropagation()}
             >
               <p className='text-sm font-semibold text-text-primary'>{selected.label}</p>
@@ -1031,7 +938,7 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
             <p className='text-lg font-semibold text-text-primary'>${totalCost} / month</p>
           </div>
           <div className='mt-3 space-y-1.5'>
-            {MOCK_CANVAS.cost.map((item) => (
+            {canvasCost.map((item) => (
               <div key={item.label} className='flex items-center justify-between text-xs'>
                 <p className='text-text-muted'>{item.label}</p>
                 <p className='text-text-primary'>${item.monthly}/mo</p>
@@ -1046,93 +953,31 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
 }
 
 function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
-  const PROVISION_STEPS = [
-    { label: 'Creating VPC and subnets', duration: 800 },
-    { label: 'Configuring security groups', duration: 600 },
-    { label: 'Creating SQS queue', duration: 500 },
-    { label: 'Creating ECR repository', duration: 700 },
-    { label: 'Starting RDS instance', duration: 3000, note: 'This typically takes 3–5 minutes...' },
-    { label: 'Creating ElastiCache cluster', duration: 1200 },
-    { label: 'Creating ECS cluster and task defs', duration: 900 },
-    { label: 'Starting ECS services', duration: 1400 },
-    { label: 'Deploying CloudFront distribution', duration: 1100 },
-    { label: 'Validating ACM certificate', duration: 800 },
-    { label: 'Configuring load balancer', duration: 700 },
-    { label: 'Running health checks', duration: 1000 },
-  ]
-  const costItems = [
-    { label: 'ECS Fargate (backend)', monthly: 34 },
-    { label: 'RDS PostgreSQL', monthly: 45 },
-    { label: 'ElastiCache Redis', monthly: 16 },
-    { label: 'ECS Fargate (worker)', monthly: 18 },
-    { label: 'S3 + CloudFront', monthly: 8 },
-    { label: 'SQS', monthly: 2 },
-    { label: 'ECR storage', monthly: 4 },
-  ]
-
   const [phase, setPhase] = useState('aws_connect')
   const [isWaitingRole, setIsWaitingRole] = useState(false)
   const [roleConnected, setRoleConnected] = useState(false)
-  const [secretFields, setSecretFields] = useState({
-    SECRET_KEY: '',
-    STRIPE_SECRET_KEY: '',
-    SENDGRID_API_KEY: '',
-  })
-  const [showSecrets, setShowSecrets] = useState({
-    SECRET_KEY: false,
-    STRIPE_SECRET_KEY: false,
-    SENDGRID_API_KEY: false,
-  })
+  const [userSecretVars, setUserSecretVars] = useState([]) // TODO: fetch from GET /api/projects/{id}/env-vars/?classification=user_secret
+  const [generatedVars, setGeneratedVars] = useState([])   // TODO: fetch from GET /api/projects/{id}/env-vars/?classification=generated
+  const [secretValues, setSecretValues] = useState({})
+  const [showSecrets, setShowSecrets] = useState({})
   const [extraVars, setExtraVars] = useState([])
   const [showTemplate, setShowTemplate] = useState(false)
-  const [provisionStep, setProvisionStep] = useState(0)
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [provisioningLog, setProvisioningLog] = useState([]) // TODO: poll GET /api/deployments/{id}/log/
+  const [cfTemplate, setCfTemplate] = useState('') // TODO: fetch from GET /api/deployments/{id}/template/
   const [copiedKey, setCopiedKey] = useState('')
 
   useEffect(() => {
     setStep4CanContinue(phase === 'success')
   }, [phase, setStep4CanContinue])
 
-  useEffect(() => {
-    if (phase !== 'provisioning') {
-      return
-    }
-
-    if (provisionStep >= PROVISION_STEPS.length) {
-      setPhase('success')
-      return
-    }
-
-    const timer = setTimeout(() => {
-      setProvisionStep((prev) => prev + 1)
-    }, PROVISION_STEPS[provisionStep].duration)
-
-    return () => clearTimeout(timer)
-  }, [phase, provisionStep])
-
-  useEffect(() => {
-    if (phase !== 'provisioning') {
-      return
-    }
-
-    const timer = setInterval(() => {
-      setElapsedSeconds((prev) => prev + 1)
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }, [phase])
-
-  const allSecretsFilled = Object.values(secretFields).every((value) => value.trim() !== '')
-  const totalCost = costItems.reduce((sum, item) => sum + item.monthly, 0)
+  const allSecretsFilled = userSecretVars.length === 0 || userSecretVars.every(
+    (field) => (secretValues[field.key_name] || '').trim() !== ''
+  )
 
   const handleRoleConnect = () => {
     setIsWaitingRole(true)
     setRoleConnected(false)
-
-    setTimeout(() => {
-      setIsWaitingRole(false)
-      setRoleConnected(true)
-    }, 2000)
+    // TODO: call POST /api/projects/{id}/aws-connection/verify/
   }
 
   const handleCopy = async (key, value) => {
@@ -1181,7 +1026,8 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
             </div>
           ) : null}
           {roleConnected ? (
-            <p className='mt-3 text-sm text-green-300'>✓ IAM role connected — arn:aws:iam::123456789012:role/CryloDeployRole</p>
+            // TODO: returned from POST /api/projects/{id}/aws-connection/
+            <p className='mt-3 text-sm text-green-300'>✓ IAM role connected — </p>
           ) : null}
           {roleConnected ? (
             <Button variant='secondary' className='mt-4' onClick={() => setPhase('env_vars')}>
@@ -1199,29 +1045,25 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
         <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6'>
           <h3 className='text-lg font-semibold'>Values required from you</h3>
           <div className='mt-4 space-y-4'>
-            {[
-              { key: 'SECRET_KEY', desc: "Django's cryptographic signing key" },
-              { key: 'STRIPE_SECRET_KEY', desc: 'Your Stripe integration secret' },
-              { key: 'SENDGRID_API_KEY', desc: 'Your email delivery service key' },
-            ].map((field) => (
-              <div key={field.key}>
+            {userSecretVars.map((field) => (
+              <div key={field.key_name}>
                 <div className='mb-1 flex items-center justify-between'>
-                  <p className='text-sm font-semibold text-text-primary'>{field.key}</p>
-                  <p className='text-xs text-text-muted'>{field.desc}</p>
+                  <p className='text-sm font-semibold text-text-primary'>{field.key_name}</p>
+                  {field.context_block ? <p className='text-xs text-text-muted'>{field.context_block}</p> : null}
                 </div>
                 <div className='flex gap-2'>
                   <input
-                    type={showSecrets[field.key] ? 'text' : 'password'}
-                    value={secretFields[field.key]}
-                    onChange={(event) => setSecretFields((prev) => ({ ...prev, [field.key]: event.target.value }))}
+                    type={showSecrets[field.key_name] ? 'text' : 'password'}
+                    value={secretValues[field.key_name] || ''}
+                    onChange={(event) => setSecretValues((prev) => ({ ...prev, [field.key_name]: event.target.value }))}
                     className='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
                   />
                   <Button
                     variant='ghost'
                     size='sm'
-                    onClick={() => setShowSecrets((prev) => ({ ...prev, [field.key]: !prev[field.key] }))}
+                    onClick={() => setShowSecrets((prev) => ({ ...prev, [field.key_name]: !prev[field.key_name] }))}
                   >
-                    {showSecrets[field.key] ? 'Hide' : 'Show'}
+                    {showSecrets[field.key_name] ? 'Hide' : 'Show'}
                   </Button>
                 </div>
               </div>
@@ -1230,16 +1072,11 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
 
           <h3 className='mt-7 text-lg font-semibold'>Auto-generated by Crylo</h3>
           <div className='mt-3 space-y-2'>
-            {[
-              ['DATABASE_URL', 'Generated from your RDS instance'],
-              ['REDIS_URL', 'Generated from your ElastiCache cluster'],
-              ['CELERY_BROKER_URL', 'Generated from your SQS queue'],
-              ['AWS_S3_BUCKET_NAME', 'Generated from your S3 bucket'],
-            ].map(([key, desc]) => (
-              <div key={key} className='flex items-center justify-between rounded-md border border-border bg-background px-3 py-2'>
+            {generatedVars.map((field) => (
+              <div key={field.key_name} className='flex items-center justify-between rounded-md border border-border bg-background px-3 py-2'>
                 <div>
-                  <p className='text-sm font-semibold text-text-primary'>{key}</p>
-                  <p className='text-xs text-text-muted'>{desc}</p>
+                  <p className='text-sm font-semibold text-text-primary'>{field.key_name}</p>
+                  {field.production_default ? <p className='text-xs text-text-muted'>{field.production_default}</p> : null}
                 </div>
                 <div className='flex items-center gap-2'>
                   <i className='ti ti-lock text-xs text-text-muted' />
@@ -1272,7 +1109,7 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
                   className='rounded-md border border-border bg-background px-3 py-2 text-sm'
                 />
                 <input
-                  type='text'
+                  type='password'
                   placeholder='VALUE'
                   value={row.value}
                   onChange={(event) => {
@@ -1302,40 +1139,8 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
     return (
       <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
         <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6'>
-          <h3 className='text-lg font-semibold'>What Crylo will create</h3>
-          <div className='mt-3 space-y-2'>
-            {[
-              'Django backend on ECS Fargate — 1 task, auto-scaling enabled',
-              'React frontend on S3, served via CloudFront',
-              'PostgreSQL on RDS db.t3.small — single-AZ',
-              'Redis cache on ElastiCache cache.t3.micro',
-              'Celery worker on ECS Fargate — 1 task',
-              'SQS queue for async task processing',
-              'Application Load Balancer with HTTP listener',
-              'VPC with public and private subnets',
-            ].map((item) => (
-              <div key={item} className='flex items-start gap-2 text-sm'>
-                <i className='ti ti-check text-green-400' />
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className='mt-6'>
-            <h3 className='text-lg font-semibold'>Final cost estimate</h3>
-            <div className='mt-3 rounded-md border border-border bg-background p-3'>
-              <div className='space-y-1.5'>
-                {costItems.map((item) => (
-                  <div key={item.label} className='flex items-center justify-between text-xs'>
-                    <p className='text-text-muted'>{item.label}</p>
-                    <p className='text-text-primary'>${item.monthly}/mo</p>
-                  </div>
-                ))}
-              </div>
-              <div className='mt-3 border-t border-border pt-2 text-sm font-semibold text-text-primary'>Total: ${totalCost}/month</div>
-              <p className='mt-2 text-xs text-text-muted'>us-east-1 · 730 hrs/month · excl. data transfer</p>
-            </div>
-          </div>
+          <h3 className='text-lg font-semibold'>What Clyro will create</h3>
+          {/* TODO: derive review summary from canvas_version + intent_record via API */}
 
           <div className='mt-6'>
             <button
@@ -1347,23 +1152,7 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
             </button>
             {showTemplate ? (
               <pre className='mt-3 max-h-48 overflow-y-auto rounded-md border border-border bg-background p-3 text-xs text-text-muted'>
-{`AWSTemplateFormatVersion: '2010-09-09'
-Description: Crylo generated stack — invoiceapp-prod
-Resources:
-  VPC:
-    Type: AWS::EC2::VPC
-    Properties:
-      CidrBlock: 10.0.0.0/16
-  ECSCluster:
-    Type: AWS::ECS::Cluster
-    Properties:
-      ClusterName: invoiceapp-prod-cluster
-  RDSInstance:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBInstanceClass: db.t3.small
-      Engine: postgres
-  # ... 47 more resources`}
+                {cfTemplate}
               </pre>
             ) : null}
           </div>
@@ -1390,13 +1179,13 @@ Resources:
         <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6'>
           <h3 className='text-lg font-semibold'>Provisioning infrastructure</h3>
           <div className='mt-4 space-y-3'>
-            {PROVISION_STEPS.map((item, index) => {
-              const isDone = index < provisionStep
-              const isActive = index === provisionStep
+            {provisioningLog.map((entry) => {
+              const isDone = entry.status === 'complete'
+              const isActive = entry.status === 'in_progress' || entry.status === 'running'
               const textClass = isDone ? 'text-text-primary' : isActive ? 'text-accent' : 'text-text-muted'
 
               return (
-                <div key={item.label} className='flex items-start gap-3'>
+                <div key={entry.sequence} className='flex items-start gap-3'>
                   {isDone ? (
                     <div className='mt-0.5 grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>
                       ✓
@@ -1407,19 +1196,18 @@ Resources:
                     <div className='mt-0.5 h-4 w-4 rounded-full border border-border bg-background' />
                   )}
                   <div>
-                    <p className={`text-sm ${textClass}`}>{item.label}</p>
-                    {isActive && item.note ? <p className='text-xs text-text-muted'>{item.note}</p> : null}
+                    <p className={`text-sm ${textClass}`}>{entry.plain_message}</p>
                   </div>
                 </div>
               )
             })}
           </div>
-          <p className='mt-5 text-xs text-text-muted'>Elapsed: {elapsedSeconds}s</p>
         </div>
       </div>
     )
   }
 
+  // success phase
   return (
     <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
       <div className='mx-auto max-w-2xl rounded-lg border border-green-500/25 bg-surface p-6'>
@@ -1428,11 +1216,12 @@ Resources:
         </div>
         <h3 className='mt-4 text-center text-2xl font-semibold tracking-tight'>Your infrastructure is live</h3>
 
+        {/* TODO: fetch from GET /api/deployments/{id}/outputs/ */}
         <div className='mt-6 space-y-2'>
           {[
-            ['Frontend URL', 'https://app.myproduct.com'],
-            ['Backend API', 'https://api.myproduct.com'],
-            ['CloudFront URL', 'https://d1234abcd.cloudfront.net'],
+            ['Frontend URL', '—'],
+            ['Backend API', '—'],
+            ['CloudFront URL', '—'],
           ].map(([label, value]) => (
             <div key={label} className='flex items-center justify-between rounded-md border border-border bg-background px-3 py-2'>
               <div>
@@ -1454,7 +1243,7 @@ Resources:
         <div className='mt-6'>
           <h4 className='text-sm font-semibold'>Next steps</h4>
           <div className='mt-2 space-y-2 text-sm text-text-muted'>
-            <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Add this CNAME to your DNS: app.myproduct.com → d1234abcd.cloudfront.net</span></div>
+            <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Point your domain DNS to the CloudFront URL above</span></div>
             <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Set up your CI/CD pipeline to push to ECR on merge to main</span></div>
             <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Your architecture is saved and visible in the canvas</span></div>
           </div>
@@ -1476,23 +1265,9 @@ Resources:
 }
 
 function StepFivePanel() {
-  const costItems = [
-    { label: 'ECS Fargate (backend)', monthly: 34 },
-    { label: 'RDS PostgreSQL', monthly: 45 },
-    { label: 'ElastiCache Redis', monthly: 16 },
-    { label: 'ECS Fargate (worker)', monthly: 18 },
-    { label: 'S3 + CloudFront', monthly: 8 },
-    { label: 'SQS', monthly: 2 },
-    { label: 'ECR storage', monthly: 4 },
-  ]
-  const healthItems = [
-    ['Django backend', 'healthy', '2 / 2 tasks running'],
-    ['React frontend', 'healthy', 'CloudFront serving'],
-    ['PostgreSQL', 'healthy', 'Available'],
-    ['Redis cache', 'healthy', 'Available'],
-    ['Celery worker', 'degraded', '1 / 2 tasks running'],
-    ['SQS queue', 'healthy', 'Queue processing'],
-  ]
+  const [healthItems, setHealthItems] = useState([]) // TODO: poll GET /api/deployments/{id}/health/
+  const [alerts, setAlerts] = useState([]) // TODO: poll GET /api/deployments/{id}/alerts/
+  const [stackStatus, setStackStatus] = useState(null) // TODO: fetch from GET /api/deployments/{id}/stack-status/
 
   const statusIcon = (status) => {
     if (status === 'healthy') return ['ti ti-circle-check', 'text-green-400', 'Healthy']
@@ -1506,7 +1281,7 @@ function StepFivePanel() {
         <div>
           <h3 className='text-lg font-semibold'>Health overview</h3>
           <div className='mt-3 grid gap-3 md:grid-cols-3'>
-            {healthItems.map(([name, status, detail]) => {
+            {healthItems.map(({ name, status, detail }) => {
               const [icon, color, label] = statusIcon(status)
               return (
                 <div key={name} className='rounded-lg border border-border bg-surface p-3'>
@@ -1526,10 +1301,10 @@ function StepFivePanel() {
           <h3 className='text-lg font-semibold'>Key metrics</h3>
           <div className='mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4'>
             {[
-              ['API response time', 'p50: 120ms', 'p95: 340ms'],
-              ['Request rate', '243 req/min', ''],
-              ['Error rate', '0.3%', ''],
-              ['Backend CPU', '34% avg', ''],
+              ['API response time', '—', ''],
+              ['Request rate', '—', ''],
+              ['Error rate', '—', ''],
+              ['Backend CPU', '—', ''],
             ].map(([title, primary, secondary]) => (
               <div key={title} className='rounded-lg border border-border bg-surface p-3'>
                 <p className='text-xs text-text-muted'>{title}</p>
@@ -1544,21 +1319,13 @@ function StepFivePanel() {
           <h3 className='text-lg font-semibold'>Cost</h3>
           <div className='mt-3 grid gap-3 md:grid-cols-3'>
             {[
-              ['This month so far', '$67.40'],
-              ['Projected', '$124.00'],
-              ['Last month', '$118.43'],
+              ['This month so far', '—'],
+              ['Projected', '—'],
+              ['Last month', '—'],
             ].map(([k, v]) => (
               <div key={k} className='rounded-lg border border-border bg-surface p-3'>
                 <p className='text-xs text-text-muted'>{k}</p>
                 <p className='mt-2 text-xl font-semibold text-text-primary'>{v}</p>
-              </div>
-            ))}
-          </div>
-          <div className='mt-3 rounded-lg border border-border bg-surface p-3'>
-            {costItems.map((item) => (
-              <div key={item.label} className='flex items-center justify-between text-xs py-1'>
-                <span className='text-text-muted'>{item.label}</span>
-                <span className='text-text-primary'>${item.monthly}/mo</span>
               </div>
             ))}
           </div>
@@ -1567,28 +1334,36 @@ function StepFivePanel() {
         <div>
           <div className='flex items-center gap-2'>
             <h3 className='text-lg font-semibold'>Alerts</h3>
-            <span className='rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300'>1</span>
+            {alerts.length > 0 ? (
+              <span className='rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300'>{alerts.length}</span>
+            ) : null}
           </div>
-          <div className='mt-3 rounded-lg border border-amber-500/30 border-l-4 border-l-amber-400 bg-surface p-3'>
-            <div className='flex items-start gap-2'>
-              <i className='ti ti-alert-triangle text-amber-300 mt-0.5' />
-              <div>
-                <p className='text-sm font-medium text-text-primary'>Warning — Your Celery worker is running 1 of 2 expected tasks. Performance may be degraded.</p>
-                <p className='mt-1 text-xs text-text-muted'>2 minutes ago</p>
+          <div className='mt-3 space-y-2'>
+            {alerts.map((alert) => (
+              <div key={alert.id} className='rounded-lg border border-amber-500/30 border-l-4 border-l-amber-400 bg-surface p-3'>
+                <div className='flex items-start gap-2'>
+                  <i className='ti ti-alert-triangle text-amber-300 mt-0.5' />
+                  <div>
+                    <p className='text-sm font-medium text-text-primary'>{alert.plain_message}</p>
+                    <p className='mt-1 text-xs text-text-muted'>{alert.fired_at}</p>
+                  </div>
+                </div>
               </div>
-            </div>
+            ))}
           </div>
         </div>
 
-        <div className='rounded-lg border border-border bg-surface p-3'>
-          <p className='text-sm text-text-primary'>
-            Stack name: <span className='font-semibold'>invoiceapp-prod</span>
-          </p>
-          <p className='mt-1 text-sm text-text-primary'>
-            Status: <span className='text-green-400'>✅ CREATE_COMPLETE</span>
-          </p>
-          <p className='mt-1 text-xs text-text-muted'>Last updated: Jan 15, 2024 at 14:32 UTC</p>
-        </div>
+        {stackStatus ? (
+          <div className='rounded-lg border border-border bg-surface p-3'>
+            <p className='text-sm text-text-primary'>
+              Stack name: <span className='font-semibold'>{stackStatus.stackName}</span>
+            </p>
+            <p className='mt-1 text-sm text-text-primary'>
+              Status: <span className='text-green-400'>{stackStatus.status}</span>
+            </p>
+            <p className='mt-1 text-xs text-text-muted'>Last updated: {stackStatus.lastUpdated}</p>
+          </div>
+        ) : null}
       </div>
     </div>
   )

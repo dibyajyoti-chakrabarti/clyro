@@ -4,6 +4,8 @@ import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 
+// TODO: fetch user profile from GET /api/users/me/
+
 function ToggleRow({ label, enabled }) {
   return (
     <div className='flex items-center justify-between rounded-md border border-border bg-background px-3 py-2'>
@@ -15,6 +17,7 @@ function ToggleRow({ label, enabled }) {
 
 export default function Profile() {
   const [confirmAction, setConfirmAction] = useState('')
+  const githubRepos = [] // TODO: fetch from GET /api/github/repos/
 
   return (
     <div className='space-y-6'>
@@ -26,16 +29,17 @@ export default function Profile() {
           <Button variant='link'>Edit</Button>
         </div>
         <div className='mt-4 grid gap-3 text-sm font-normal md:grid-cols-2'>
-          <p className='text-text-muted'>Name</p><p>XYZ</p>
-          <p className='text-text-muted'>Email</p><p>example@mail.com</p>
-          <p className='text-text-muted'>Phone</p><p>+91 9876543210</p>
-          <p className='text-text-muted'>Subscription</p><p>Pro</p>
+          <p className='text-text-muted'>Name</p><p>—</p>
+          <p className='text-text-muted'>Email</p><p>—</p>
+          <p className='text-text-muted'>Phone</p><p>—</p>
+          <p className='text-text-muted'>Subscription</p><p>—</p>
         </div>
       </Card>
 
       <Card>
         <h2 className='text-xl font-semibold'>Account & Security</h2>
         <div className='mt-4 space-y-3'>
+          {/* TODO: wire to user settings API */}
           <ToggleRow label='2FA' enabled />
           <ToggleRow label='Session Alerts' enabled={false} />
           <div className='flex gap-3'>
@@ -48,7 +52,7 @@ export default function Profile() {
       <Card>
         <h2 className='text-xl font-semibold'>GitHub Integration</h2>
         <div className='mt-4 space-y-2'>
-          {['github-repo-1', 'github-repo-2'].map((repo) => (
+          {githubRepos.map((repo) => (
             <div key={repo} className='flex items-center justify-between rounded-md border border-border bg-background px-3 py-2'>
               <p className='text-sm font-normal'>{repo}</p>
               <Button variant='link'>Edit</Button>
@@ -62,11 +66,11 @@ export default function Profile() {
         <div className='mt-4 grid gap-3 text-sm font-normal md:grid-cols-2'>
           <p className='text-text-muted'>Current plan</p>
           <div className='flex items-center gap-3'>
-            <p>Free</p>
+            <p>—</p>
             <Button variant='link'>Upgrade</Button>
           </div>
-          <p className='text-text-muted'>Next billing</p><p>12th May, 2026 · 456.87 INR</p>
-          <p className='text-text-muted'>Payment method</p><p>Card</p>
+          <p className='text-text-muted'>Next billing</p><p>—</p>
+          <p className='text-text-muted'>Payment method</p><p>—</p>
         </div>
       </Card>
 

@@ -4,12 +4,9 @@ import Card from '../../components/ui/Card'
 import Input from '../../components/ui/Input'
 
 export default function Projects() {
-  const projects = [
-    { id: 1, name: 'Project 1', type: 'Monolithic', modified: '54 mins ago' },
-    { id: 2, name: 'Project 2', type: 'Monolithic', modified: '1 day ago' },
-    { id: 3, name: 'Project 3', type: 'Microservice', modified: '2 days ago' },
-  ]
-  const showEmptyState = false
+  // TODO: replace with API call — GET /api/projects/
+  const projects = []
+  const showEmptyState = projects.length === 0
 
   return (
     <div className='space-y-6'>

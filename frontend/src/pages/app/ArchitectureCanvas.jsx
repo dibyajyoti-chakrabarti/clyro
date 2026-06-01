@@ -1,3 +1,4 @@
+// TODO: this page is the standalone canvas view post-provisioning. Wire to GET /api/projects/{id}/canvas/latest/
 import { Link, useParams } from 'react-router-dom'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
@@ -5,6 +6,7 @@ import Input from '../../components/ui/Input'
 
 export default function ArchitectureCanvas() {
   const { id } = useParams()
+  const componentPalette = [] // TODO: derive from supported node types constant
 
   return (
     <div className='space-y-4'>
@@ -23,7 +25,7 @@ export default function ArchitectureCanvas() {
         <Card className='p-4'>
           <h2 className='text-base font-semibold'>Components</h2>
           <div className='mt-3 space-y-2'>
-            {['EC2', 'RDS', 'S3', 'VPC', 'API Gateway'].map((item) => (
+            {componentPalette.map((item) => (
               <Button key={item} variant='secondary' className='w-full justify-start'>
                 {item}
               </Button>
@@ -34,7 +36,7 @@ export default function ArchitectureCanvas() {
         <Card className='min-h-[460px] p-4'>
           <h2 className='text-base font-semibold'>Design Surface</h2>
           <div className='mt-4 grid min-h-[380px] place-items-center rounded-md border border-border bg-background'>
-            <p className='text-sm font-normal text-text-muted'>Canvas preview area</p>
+            <p className='text-sm font-normal text-text-muted'>No canvas loaded. Open a project to view its architecture.</p>
           </div>
         </Card>
 
