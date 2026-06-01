@@ -5,7 +5,7 @@ import cloudfrontLogo from '../../../assets/logos/cloudfront_logo.svg'
 
 const brands = [
   {
-    name: 'AWS',
+    name: '',
     logo: awsLogo,
   },
   {

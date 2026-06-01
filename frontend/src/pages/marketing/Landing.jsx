@@ -12,8 +12,10 @@ export default function Landing() {
       <Hero />
       <TrustedBy />
       <HowItWorks />
-      <WhyCrylo />
-      <Testimonials />
+      <div className='bg-[#F6F2EA]'>
+        <WhyCrylo />
+        <Testimonials />
+      </div>
       <div>
         <CTA />
         <Footer />
