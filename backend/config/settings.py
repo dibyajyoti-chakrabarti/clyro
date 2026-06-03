@@ -23,11 +23,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'corsheaders',
     'app',
     'core',
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -86,3 +89,15 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[])
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': ['app.auth.CognitoAuthentication'],
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
+}
+
+COGNITO_REGION = env('COGNITO_REGION', default='ap-south-1')
+COGNITO_USER_POOL_ID = env('COGNITO_USER_POOL_ID', default='')
+
+GITHUB_APP_ID = env.int('GITHUB_APP_ID', default=0)
+GITHUB_APP_NAME = env('GITHUB_APP_NAME', default='')
+GITHUB_APP_PRIVATE_KEY_PATH = env('GITHUB_APP_PRIVATE_KEY_PATH', default='')
