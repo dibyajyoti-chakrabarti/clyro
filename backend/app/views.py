@@ -3,8 +3,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import GitHubInstallation, Project, ScanResult
-from core.serializers import GitHubInstallationSerializer, ProjectSerializer, ScanResultSerializer
+from core.models import GitHubInstallation, IntentRecord, Project, ScanResult
+from core.serializers import GitHubInstallationSerializer, IntentRecordSerializer, ProjectSerializer, ScanResultSerializer
 from .auth import CognitoAuthentication
 from . import github_utils
 from .scanner import runner as scan_runner
@@ -114,8 +114,61 @@ def trigger_scan(request, pk):
     project.status = Project.Status.SCANNING
     project.save(update_fields=['status', 'updated_at'])
 
+
     scan = scan_runner.run_scan_for_project(project)
     return Response(ScanResultSerializer(scan).data)
+
+
+# ── Intent ────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def save_intent(request, pk):
+    try:
+        project = Project.objects.get(pk=pk, user=request.user)
+    except Project.DoesNotExist:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = IntentRecordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    from django.utils import timezone
+    intent, _ = IntentRecord.objects.update_or_create(
+        project=project,
+        defaults={**serializer.validated_data, 'completed_at': timezone.now()},
+    )
+
+    _update_canvas_with_intent(project, intent)
+
+    project.status = Project.Status.INTENT_COLLECTED
+    project.save(update_fields=['status', 'updated_at'])
+
+    return Response(IntentRecordSerializer(intent).data, status=status.HTTP_201_CREATED)
+
+
+def _update_canvas_with_intent(project, intent):
+    import yaml
+
+    scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
+    if not scan or not scan.draft_canvas_yaml:
+        return
+
+    try:
+        canvas = yaml.safe_load(scan.draft_canvas_yaml)
+    except Exception:
+        return
+
+    if intent.database_choice:
+        canvas.setdefault('infrastructure', {}).setdefault('database', {})['type'] = intent.database_choice
+
+    if intent.worker_compute_choice:
+        if 'services' in canvas and 'worker' in canvas.get('services', {}):
+            canvas['services']['worker']['type'] = intent.worker_compute_choice
+
+    scan.draft_canvas_yaml = yaml.dump(canvas, default_flow_style=False, allow_unicode=True)
+    scan.save(update_fields=['draft_canvas_yaml'])
 
 
 # ── GitHub ────────────────────────────────────────────────────────────────────

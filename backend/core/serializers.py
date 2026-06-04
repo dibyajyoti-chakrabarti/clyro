@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import GitHubInstallation, Project, ScanResult
+from .models import GitHubInstallation, IntentRecord, Project, ScanResult
 
 
 class GitHubInstallationSerializer(serializers.ModelSerializer):
@@ -19,3 +19,14 @@ class ScanResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = ScanResult
         fields = ['id', 'status', 'block_reason', 'detected_resources', 'env_vars', 'draft_canvas_yaml', 'scan_timestamp']
+
+
+class IntentRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IntentRecord
+        fields = [
+            'id', 'description', 'scale', 'criticality', 'environment',
+            'compute_choice', 'database_choice', 'worker_compute_choice',
+            'domain_has', 'domain_name', 'completed_at', 'created_at',
+        ]
+        read_only_fields = ['id', 'completed_at', 'created_at']
