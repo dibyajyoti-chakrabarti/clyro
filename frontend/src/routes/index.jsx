@@ -8,6 +8,7 @@ import Pricing from '../pages/marketing/Pricing'
 import Login from '../pages/auth/Login'
 import Signup from '../pages/auth/Signup'
 import VerifyOtp from '../pages/auth/VerifyOtp'
+import OAuthCallback from '../pages/auth/OAuthCallback'
 import Dashboard from '../pages/app/Dashboard'
 import Profile from '../pages/app/Profile'
 import Projects from '../pages/app/Projects'
@@ -66,6 +67,7 @@ export default function AppRoutes() {
           }
         />
         <Route path='/verify-otp' element={<VerifyOtp />} />
+        <Route path='/auth/callback' element={<OAuthCallback />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>
