@@ -8,6 +8,7 @@ from .views import (
     github_repos,
     project_detail,
     projects_list,
+    trigger_scan,
 )
 
 urlpatterns = [
@@ -15,6 +16,7 @@ urlpatterns = [
     path('projects/', projects_list),
     path('projects/<uuid:pk>/', project_detail),
     path('projects/<uuid:pk>/connect-repo/', connect_repo),
+    path('projects/<uuid:pk>/scan/', trigger_scan),
     path('github/installations/', github_installations),
     path('github/repos/', github_repos),
     path('github/branches/', github_branches),

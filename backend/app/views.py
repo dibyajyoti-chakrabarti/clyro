@@ -3,10 +3,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import GitHubInstallation, Project
-from core.serializers import GitHubInstallationSerializer, ProjectSerializer
+from core.models import GitHubInstallation, Project, ScanResult
+from core.serializers import GitHubInstallationSerializer, ProjectSerializer, ScanResultSerializer
 from .auth import CognitoAuthentication
 from . import github_utils
+from .scanner import runner as scan_runner
 
 _AUTH = [CognitoAuthentication]
 _PERMS = [IsAuthenticated]
@@ -90,6 +91,31 @@ def connect_repo(request, pk):
     project.save(update_fields=['github_installation', 'repo_full_name', 'repo_branch', 'status', 'updated_at'])
 
     return Response(ProjectSerializer(project).data)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def trigger_scan(request, pk):
+    try:
+        project = Project.objects.get(pk=pk, user=request.user)
+    except Project.DoesNotExist:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not project.repo_full_name or not project.github_installation:
+        return Response(
+            {'error': 'Repository not connected. Call connect-repo first.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if project.status == Project.Status.SCANNING:
+        return Response({'error': 'Scan already in progress'}, status=status.HTTP_409_CONFLICT)
+
+    project.status = Project.Status.SCANNING
+    project.save(update_fields=['status', 'updated_at'])
+
+    scan = scan_runner.run_scan_for_project(project)
+    return Response(ScanResultSerializer(scan).data)
 
 
 # ── GitHub ────────────────────────────────────────────────────────────────────

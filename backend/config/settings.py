@@ -101,3 +101,6 @@ COGNITO_USER_POOL_ID = env('COGNITO_USER_POOL_ID', default='')
 GITHUB_APP_ID = env.int('GITHUB_APP_ID', default=0)
 GITHUB_APP_NAME = env('GITHUB_APP_NAME', default='')
 GITHUB_APP_PRIVATE_KEY_PATH = env('GITHUB_APP_PRIVATE_KEY_PATH', default='')
+
+AWS_PROFILE = env('AWS_PROFILE', default='default')
+AWS_REGION = env('AWS_REGION', default='us-east-1')

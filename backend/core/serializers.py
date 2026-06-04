@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import GitHubInstallation, Project
+from .models import GitHubInstallation, Project, ScanResult
 
 
 class GitHubInstallationSerializer(serializers.ModelSerializer):
@@ -11,5 +11,11 @@ class GitHubInstallationSerializer(serializers.ModelSerializer):
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = ['id', 'name', 'description', 'status', 'repo_full_name', 'repo_branch', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'status', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'description', 'status', 'repo_full_name', 'repo_branch', 'is_monorepo', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'status', 'is_monorepo', 'created_at', 'updated_at']
+
+
+class ScanResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScanResult
+        fields = ['id', 'status', 'block_reason', 'detected_resources', 'env_vars', 'draft_canvas_yaml', 'scan_timestamp']
