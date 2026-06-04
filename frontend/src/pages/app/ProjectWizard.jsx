@@ -60,11 +60,13 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
   const [scanStep, setScanStep] = useState(0)
   const [scanMessages, setScanMessages] = useState([])
   const [blockReason, setBlockReason] = useState('')
+  const [scanResult, setScanResult] = useState(null)
   const [availableRepos, setAvailableRepos] = useState([])
   const [availableBranches, setAvailableBranches] = useState([])
   const [existingInstallations, setExistingInstallations] = useState([])
   const [loadingRepos, setLoadingRepos] = useState(false)
   const [loadingBranches, setLoadingBranches] = useState(false)
+  const animIntervalRef = useRef(null)
 
   useEffect(() => {
     const installationId = searchParams.get('installation_id')
@@ -139,14 +141,15 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
       'Connecting to repository...',
       'Verifying access permissions...',
       'Repository connected!',
+      'Scanning file structure...',
+      'Reading configuration files...',
+      'Detecting services & environment variables...',
+      'Generating architecture draft...',
     ]
     setScanMessages(messages)
     setScanStep(0)
-    setProjectData((prev) => ({
-      ...prev,
-      repo: { repo: selectedRepo, branch: selectedBranch },
-    }))
     setPhase('scanning')
+    setProjectData((prev) => ({ ...prev, repo: { repo: selectedRepo, branch: selectedBranch } }))
 
     try {
       await api.connectRepo(projectId, {
@@ -154,13 +157,47 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
         repo_full_name: selectedRepo,
         repo_branch: selectedBranch,
       })
-      for (let i = 0; i < messages.length; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 600))
+
+      for (let i = 0; i < 3; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
         setScanStep(i + 1)
       }
+
+      const scanPromise = api.triggerScan(projectId)
+
+      let animStep = 3
+      animIntervalRef.current = setInterval(() => {
+        animStep++
+        if (animStep <= messages.length - 1) {
+          setScanStep(animStep)
+        } else {
+          clearInterval(animIntervalRef.current)
+        }
+      }, 10000)
+
+      const result = await scanPromise
+      clearInterval(animIntervalRef.current)
+      setScanStep(messages.length)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+
+      if (result.status === 'hard_block') {
+        setBlockReason(result.block_reason || 'Repository scan blocked')
+        setPhase('blocked')
+        return
+      }
+
+      if (result.status === 'soft_block') {
+        setBlockReason(result.block_reason || 'Scan needs clarification')
+        setPhase('blocked')
+        return
+      }
+
+      setScanResult(result)
+      setProjectData((prev) => ({ ...prev, scanResult: result }))
       setPhase('results')
     } catch (err) {
-      setBlockReason(err.message || 'Failed to connect repository')
+      clearInterval(animIntervalRef.current)
+      setBlockReason(err.message || 'Failed to analyse repository')
       setPhase('blocked')
     }
   }
@@ -324,36 +361,99 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
   }
 
   // results phase
+  const resources = scanResult?.detected_resources
+  const services = resources?.services || {}
+  const infra = resources?.infrastructure || {}
+  const envVars = scanResult?.env_vars || []
+  const isMonorepo = resources?.repository?.is_monorepo
+
+  const detectedServices = [
+    services.backend?.detected && `Django backend${services.backend.project_name ? ` (${services.backend.project_name})` : ''}`,
+    services.frontend?.detected && 'React frontend',
+    services.worker?.detected && `Celery worker${services.worker.scheduled ? ' + scheduled tasks' : ''}`,
+  ].filter(Boolean)
+
+  const detectedInfra = [
+    infra.database?.detected && 'PostgreSQL',
+    infra.cache?.detected && 'Redis cache',
+    infra.storage?.detected && 'S3 storage',
+    infra.queue?.detected && 'SQS queue',
+  ].filter(Boolean)
+
+  const userSecrets = envVars.filter((v) => v.classification === 'user_secret')
+  const generated = envVars.filter((v) => v.classification === 'generated')
+  const optional = envVars.filter((v) => v.classification === 'optional')
+
   return (
     <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-      <div className='rounded-lg border border-border/70 bg-surface p-4'>
-        <h3 className='text-lg font-semibold'>Repository connected</h3>
+      <div className='rounded-lg border border-border/70 bg-surface p-4 space-y-5'>
 
-        <div className='mt-5 space-y-3'>
-          <div className='flex rounded-md border border-border bg-background'>
-            <div className='w-1 rounded-l-md bg-accent' />
-            <div className='flex flex-1 items-center gap-3 p-3'>
-              <div className='grid h-9 w-9 place-items-center rounded-md border border-border bg-surface text-xs font-semibold'>
-                GH
-              </div>
-              <div>
-                <p className='text-sm font-medium text-text-primary'>{selectedRepo}</p>
-                <p className='text-xs font-normal text-text-muted'>Branch: {selectedBranch}</p>
-              </div>
+        <div className='flex rounded-md border border-border bg-background'>
+          <div className='w-1 rounded-l-md bg-accent' />
+          <div className='flex flex-1 items-center gap-3 p-3'>
+            <div className='grid h-9 w-9 place-items-center rounded-md border border-border bg-surface text-xs font-semibold'>GH</div>
+            <div>
+              <p className='text-sm font-medium text-text-primary'>{selectedRepo}</p>
+              <p className='text-xs font-normal text-text-muted'>Branch: {selectedBranch}{isMonorepo != null ? ` · ${isMonorepo ? 'monorepo' : 'single-service'}` : ''}</p>
             </div>
-          </div>
-
-          <div className='flex items-center gap-2 text-sm text-green-400'>
-            <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px]'>✓</span>
-            Access verified
-          </div>
-          <div className='flex items-center gap-2 text-sm text-green-400'>
-            <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px]'>✓</span>
-            Repository linked to project
           </div>
         </div>
 
-        <p className='mt-5 text-xs font-normal text-text-muted'>Ready for Step 2 — tell us about your app</p>
+        {detectedServices.length > 0 && (
+          <div>
+            <p className='text-xs font-medium text-text-muted uppercase tracking-wide mb-2'>Detected services</p>
+            <div className='space-y-1.5'>
+              {detectedServices.map((s) => (
+                <div key={s} className='flex items-center gap-2 text-sm text-text-primary'>
+                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>✓</span>
+                  {s}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {detectedInfra.length > 0 && (
+          <div>
+            <p className='text-xs font-medium text-text-muted uppercase tracking-wide mb-2'>Detected infrastructure</p>
+            <div className='space-y-1.5'>
+              {detectedInfra.map((s) => (
+                <div key={s} className='flex items-center gap-2 text-sm text-text-primary'>
+                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>✓</span>
+                  {s}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {envVars.length > 0 && (
+          <div>
+            <p className='text-xs font-medium text-text-muted uppercase tracking-wide mb-2'>Environment variables ({envVars.length} detected)</p>
+            <div className='flex flex-wrap gap-2'>
+              {generated.length > 0 && (
+                <span className='rounded-full border border-green-500/30 bg-green-500/10 px-2.5 py-1 text-xs text-green-300'>
+                  {generated.length} auto-generated
+                </span>
+              )}
+              {userSecrets.length > 0 && (
+                <span className='rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300'>
+                  {userSecrets.length} user secret{userSecrets.length > 1 ? 's' : ''}
+                </span>
+              )}
+              {optional.length > 0 && (
+                <span className='rounded-full border border-border bg-background px-2.5 py-1 text-xs text-text-muted'>
+                  {optional.length} optional
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className='flex items-center gap-2 pt-1 text-xs font-normal text-text-muted border-t border-border'>
+          <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>✓</span>
+          Architecture draft generated — ready for Step 2
+        </div>
       </div>
     </div>
   )
