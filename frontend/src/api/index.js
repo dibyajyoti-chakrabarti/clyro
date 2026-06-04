@@ -35,6 +35,7 @@ export const api = {
   connectRepo: (id, payload) => request('POST', `/api/projects/${id}/connect-repo/`, payload),
   triggerScan: (id) => request('POST', `/api/projects/${id}/scan/`),
   saveIntent: (id, payload) => request('POST', `/api/projects/${id}/intent/`, payload),
+  getWizardState: (id) => request('GET', `/api/projects/${id}/wizard-state/`),
 
   // GitHub
   storeInstallation: (installation_id) =>

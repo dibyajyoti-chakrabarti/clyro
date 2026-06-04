@@ -53,14 +53,16 @@ function statusBadgeClass(cls) {
 
 function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanContinue }) {
   const [searchParams] = useSearchParams()
-  const [phase, setPhase] = useState('connect')
+  const [phase, setPhase] = useState(() =>
+    projectData.scanResult?.status === 'complete' ? 'results' : 'connect'
+  )
   const [selectedRepo, setSelectedRepo] = useState(projectData.repo?.repo || '')
   const [selectedBranch, setSelectedBranch] = useState(projectData.repo?.branch || '')
   const [selectedInstallationId, setSelectedInstallationId] = useState(null)
   const [scanStep, setScanStep] = useState(0)
   const [scanMessages, setScanMessages] = useState([])
   const [blockReason, setBlockReason] = useState('')
-  const [scanResult, setScanResult] = useState(null)
+  const [scanResult, setScanResult] = useState(() => projectData.scanResult || null)
   const [availableRepos, setAvailableRepos] = useState([])
   const [availableBranches, setAvailableBranches] = useState([])
   const [existingInstallations, setExistingInstallations] = useState([])
@@ -557,10 +559,11 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
     },
   ]), [hasPostgres, hasWorker])
 
+  const hasRestoredIntent = !!projectData.intent?.scale
   const [currentQ, setCurrentQ] = useState(0)
-  const [answers, setAnswers] = useState(projectData.intent || {})
+  const [answers, setAnswers] = useState(() => projectData.intent || {})
   const [direction, setDirection] = useState('forward')
-  const [isComplete, setIsComplete] = useState(false)
+  const [isComplete, setIsComplete] = useState(hasRestoredIntent)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [cardStage, setCardStage] = useState('idle')
@@ -1565,6 +1568,28 @@ function StepFivePanel() {
   )
 }
 
+const STATUS_STEP = {
+  created: 1, repo_connected: 1, scanning: 1, scan_complete: 2,
+  intent_collected: 3, canvas_draft: 3, canvas_finalized: 4,
+  provisioning: 4, live: 5, failed: 1,
+}
+
+const STATUS_ORDER = [
+  'created', 'repo_connected', 'scanning', 'scan_complete',
+  'intent_collected', 'canvas_draft', 'canvas_finalized',
+  'provisioning', 'live',
+]
+
+function getCompletedSteps(status) {
+  const idx = STATUS_ORDER.indexOf(status)
+  const done = new Set()
+  if (idx >= 3) done.add(1)
+  if (idx >= 4) done.add(2)
+  if (idx >= 6) done.add(3)
+  if (idx >= 7) done.add(4)
+  return done
+}
+
 export default function ProjectWizard() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -1574,12 +1599,14 @@ export default function ProjectWizard() {
   const [projectName, setProjectName] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [loading, setLoading] = useState(!isNew)
 
   const [step, setStep] = useState(1)
   const [completedSteps, setCompletedSteps] = useState(() => new Set())
   const [projectData, setProjectData] = useState({
     repo: null,
     intent: {},
+    scanResult: null,
     canvas: null,
     provision: null,
   })
@@ -1589,6 +1616,38 @@ export default function ProjectWizard() {
   const [step3ShowBanner, setStep3ShowBanner] = useState(false)
   const [step3InputPrefill, setStep3InputPrefill] = useState('')
   const [step4CanContinue, setStep4CanContinue] = useState(false)
+
+  useEffect(() => {
+    if (isNew || !id) return
+
+    api.getWizardState(id)
+      .then(({ project, scan, intent }) => {
+        const intentAnswers = intent ? {
+          description: intent.description,
+          scale: intent.scale,
+          criticality: intent.criticality,
+          environment: intent.environment,
+          database_choice: intent.database_choice,
+          worker_compute_choice: intent.worker_compute_choice,
+          domain_has: intent.domain_has,
+          domain_name: intent.domain_name,
+        } : {}
+
+        setProjectData({
+          repo: project.repo_full_name
+            ? { repo: project.repo_full_name, branch: project.repo_branch }
+            : null,
+          scanResult: scan || null,
+          intent: intentAnswers,
+          canvas: null,
+          provision: null,
+        })
+        setStep(STATUS_STEP[project.status] ?? 1)
+        setCompletedSteps(getCompletedSteps(project.status))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [id, isNew])
 
   const handleCreateProject = async (e) => {
     e.preventDefault()
@@ -1605,6 +1664,14 @@ export default function ProjectWizard() {
     } finally {
       setCreatingProject(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <div className='flex min-h-[calc(100vh-121px)] items-center justify-center'>
+        <div className='h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent' />
+      </div>
+    )
   }
 
   if (isNew && !projectId) {
