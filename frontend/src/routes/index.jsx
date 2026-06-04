@@ -14,6 +14,7 @@ import Projects from '../pages/app/Projects'
 import ProjectWizard from '../pages/app/ProjectWizard'
 import Settings from '../pages/app/Settings'
 import ArchitectureCanvas from '../pages/app/ArchitectureCanvas'
+import GithubCallback from '../pages/app/GithubCallback'
 
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -73,6 +74,7 @@ export default function AppRoutes() {
           <Route path='/app/profile' element={<Profile />} />
           <Route path='/app/projects' element={<Projects />} />
           <Route path='/app/settings' element={<Settings />} />
+          <Route path='/app/github/callback' element={<GithubCallback />} />
         </Route>
 
         <Route element={<FullscreenLayout />}>

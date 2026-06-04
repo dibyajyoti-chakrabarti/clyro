@@ -20,6 +20,19 @@ class User(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # DRF / Django auth compatibility — no DB columns, just Python properties
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    @property
+    def is_active(self):
+        return True
+
     class Meta:
         db_table = 'users'
         indexes = [models.Index(fields=['cognito_sub'])]

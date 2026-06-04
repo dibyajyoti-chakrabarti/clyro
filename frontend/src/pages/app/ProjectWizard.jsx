@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Button from '../../components/ui/Button'
+import { api } from '../../api'
 
 const stepConfig = [
   {
@@ -50,44 +51,118 @@ function statusBadgeClass(cls) {
   return 'border-border bg-background text-text-muted'
 }
 
-function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
+function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanContinue }) {
+  const [searchParams] = useSearchParams()
   const [phase, setPhase] = useState('connect')
   const [selectedRepo, setSelectedRepo] = useState(projectData.repo?.repo || '')
   const [selectedBranch, setSelectedBranch] = useState(projectData.repo?.branch || '')
+  const [selectedInstallationId, setSelectedInstallationId] = useState(null)
   const [scanStep, setScanStep] = useState(0)
+  const [scanMessages, setScanMessages] = useState([])
   const [blockReason, setBlockReason] = useState('')
-  const [availableRepos, setAvailableRepos] = useState([]) // TODO: fetch from GET /api/github/repos/
-  const [detectionItems, setDetectionItems] = useState([]) // TODO: replace with scan result from API
-  const [envRows, setEnvRows] = useState([]) // TODO: replace with scan result from API
-  const [scanMessages, setScanMessages] = useState([]) // TODO: replace with scan result from API
+  const [availableRepos, setAvailableRepos] = useState([])
+  const [availableBranches, setAvailableBranches] = useState([])
+  const [existingInstallations, setExistingInstallations] = useState([])
+  const [loadingRepos, setLoadingRepos] = useState(false)
+  const [loadingBranches, setLoadingBranches] = useState(false)
+
+  useEffect(() => {
+    const installationId = searchParams.get('installation_id')
+    if (installationId) {
+      setSelectedInstallationId(installationId)
+      setPhase('select')
+      fetchRepos(installationId)
+    } else {
+      api.listInstallations().then(setExistingInstallations).catch(() => {})
+    }
+  }, [])
 
   useEffect(() => {
     setStep1CanContinue(phase === 'results')
   }, [phase, setStep1CanContinue])
 
-  const canScan = selectedRepo !== '' && selectedBranch !== ''
-
-  const handleInstall = () => {
-    setPhase('select')
+  const fetchRepos = async (installationId) => {
+    setLoadingRepos(true)
+    try {
+      const repos = await api.listRepos(installationId)
+      setAvailableRepos(repos)
+    } catch (err) {
+      setBlockReason(err.message || 'Failed to fetch repositories')
+      setPhase('blocked')
+    } finally {
+      setLoadingRepos(false)
+    }
   }
 
-  const handleScan = () => {
-    if (!canScan) {
-      return
+  const fetchBranches = async (installationId, repoFullName) => {
+    setLoadingBranches(true)
+    setAvailableBranches([])
+    try {
+      const branches = await api.listBranches(installationId, repoFullName)
+      setAvailableBranches(branches)
+    } catch {
+      setAvailableBranches([{ name: 'main' }, { name: 'master' }, { name: 'develop' }])
+    } finally {
+      setLoadingBranches(false)
     }
+  }
 
-    // TODO: block state comes from scan result status === 'blocked'
+  const handleInstall = () => {
+    if (!projectId) return
+    localStorage.setItem('github_install_project_id', projectId)
+    const appName = import.meta.env.VITE_GITHUB_APP_NAME
+    window.location.href = `https://github.com/apps/${appName}/installations/new`
+  }
 
+  const handleUseExisting = (installation) => {
+    const id = installation.installation_id.toString()
+    setSelectedInstallationId(id)
+    setPhase('select')
+    fetchRepos(id)
+  }
+
+  const handleRepoChange = (repoFullName) => {
+    setSelectedRepo(repoFullName)
+    setSelectedBranch('')
+    setAvailableBranches([])
+    if (repoFullName && selectedInstallationId) {
+      fetchBranches(selectedInstallationId, repoFullName)
+    }
+  }
+
+  const canScan = selectedRepo !== '' && selectedBranch !== ''
+
+  const handleScan = async () => {
+    if (!canScan) return
+
+    const messages = [
+      'Connecting to repository...',
+      'Verifying access permissions...',
+      'Repository connected!',
+    ]
+    setScanMessages(messages)
+    setScanStep(0)
     setProjectData((prev) => ({
       ...prev,
-      repo: {
-        repo: selectedRepo,
-        branch: selectedBranch,
-      },
+      repo: { repo: selectedRepo, branch: selectedBranch },
     }))
-    setScanStep(0)
-    // TODO: call POST /api/projects/{id}/scan/ and poll for status
     setPhase('scanning')
+
+    try {
+      await api.connectRepo(projectId, {
+        installation_id: parseInt(selectedInstallationId, 10),
+        repo_full_name: selectedRepo,
+        repo_branch: selectedBranch,
+      })
+      for (let i = 0; i < messages.length; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 600))
+        setScanStep(i + 1)
+      }
+      setPhase('results')
+    } catch (err) {
+      setBlockReason(err.message || 'Failed to connect repository')
+      setPhase('blocked')
+    }
   }
 
   if (phase === 'connect') {
@@ -100,9 +175,24 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
             </div>
             <h3 className='text-2xl font-semibold tracking-tight'>Connect your GitHub account</h3>
             <p className='text-sm font-normal text-text-muted'>
-              Crylo uses a GitHub App to securely access your repository. You choose exactly which repos to grant access to.
+              Clyro uses a GitHub App to securely access your repository. You choose exactly which repos to grant access to.
             </p>
-            <Button variant='primary' onClick={handleInstall}>Install Crylo GitHub App</Button>
+            <Button variant='primary' onClick={handleInstall}>Install Clyro GitHub App</Button>
+            {existingInstallations.length > 0 && (
+              <div className='mt-2 space-y-1'>
+                <p className='text-xs font-normal text-text-muted'>or use an existing installation:</p>
+                {existingInstallations.map((inst) => (
+                  <button
+                    key={inst.id}
+                    type='button'
+                    className='block w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary hover:border-accent hover:bg-surface'
+                    onClick={() => handleUseExisting(inst)}
+                  >
+                    {inst.account_login}
+                  </button>
+                ))}
+              </div>
+            )}
             <p className='text-xs font-normal text-text-muted'>Only repositories you explicitly grant access to will be visible</p>
           </div>
         </div>
@@ -118,16 +208,18 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
             <div>
               <label className='mb-2 block text-sm font-medium text-text-primary'>Repository</label>
               <select
-                className='w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                className='w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50'
                 value={selectedRepo}
-                onChange={(event) => {
-                  setSelectedRepo(event.target.value)
-                  setSelectedBranch('')
-                }}
+                disabled={loadingRepos}
+                onChange={(event) => handleRepoChange(event.target.value)}
               >
-                <option className='text-black' value=''>Select a repository...</option>
+                <option className='text-black' value=''>
+                  {loadingRepos ? 'Loading repositories...' : 'Select a repository...'}
+                </option>
                 {availableRepos.map((repo) => (
-                  <option key={repo} className='text-black' value={repo}>{repo}</option>
+                  <option key={repo.full_name} className='text-black' value={repo.full_name}>
+                    {repo.full_name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -138,17 +230,21 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
                 className='w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50'
                 value={selectedBranch}
                 onChange={(event) => setSelectedBranch(event.target.value)}
-                disabled={selectedRepo === ''}
+                disabled={selectedRepo === '' || loadingBranches}
               >
-                <option className='text-black' value=''>Select a branch...</option>
-                <option className='text-black' value='main'>main</option>
-                <option className='text-black' value='staging'>staging</option>
-                <option className='text-black' value='develop'>develop</option>
+                <option className='text-black' value=''>
+                  {loadingBranches ? 'Loading branches...' : 'Select a branch...'}
+                </option>
+                {availableBranches.map((b) => (
+                  <option key={b.name} className='text-black' value={b.name}>
+                    {b.name}
+                  </option>
+                ))}
               </select>
             </div>
 
             <Button variant='primary' className='w-full' onClick={handleScan} disabled={!canScan}>
-              Scan repository
+              Connect repository
             </Button>
 
             <button
@@ -171,7 +267,7 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
     return (
       <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
         <div className='mx-auto max-w-md rounded-lg border border-border/70 bg-surface p-6'>
-          <h3 className='text-lg font-semibold'>Scanning repository</h3>
+          <h3 className='text-lg font-semibold'>Connecting repository</h3>
           <div className='mt-4 space-y-3'>
             {scanMessages.map((item, index) => {
               const isDone = index < scanStep
@@ -189,7 +285,7 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
                       ✓
                     </div>
                   ) : isActive ? (
-                    <div className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+                    <div className='h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent' />
                   ) : (
                     <div className='h-4 w-4 rounded-full border border-border bg-background' />
                   )}
@@ -217,71 +313,47 @@ function StepOnePanel({ projectData, setProjectData, setStep1CanContinue }) {
           <div className='mx-auto grid h-10 w-10 place-items-center rounded-full border border-red-500/30 bg-red-500/10 text-red-300'>
             !
           </div>
-          <h3 className='mt-4 text-xl font-semibold'>We couldn\'t analyse this repository</h3>
+          <h3 className='mt-4 text-xl font-semibold'>Connection failed</h3>
           <p className='mt-3 text-sm font-normal text-text-muted'>{blockReason}</p>
           <Button variant='secondary' className='mt-5' onClick={() => setPhase('select')}>
-            Try a different repository
+            Try again
           </Button>
         </div>
       </div>
     )
   }
 
+  // results phase
   return (
     <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
       <div className='rounded-lg border border-border/70 bg-surface p-4'>
-        <h3 className='text-lg font-semibold'>Scan complete</h3>
+        <h3 className='text-lg font-semibold'>Repository connected</h3>
 
-        <div className='mt-5'>
-          <h4 className='text-sm font-semibold text-text-primary'>Detected stack</h4>
-          <div className='mt-3 grid gap-3 md:grid-cols-2'>
-            {detectionItems.map((item) => (
-              <div key={`${item.label}-${item.target}`} className='flex rounded-md border border-border bg-background'>
-                <div className='w-1 rounded-l-md bg-accent' />
-                <div className='flex flex-1 items-center gap-3 p-3'>
-                  <div className='grid h-9 w-9 place-items-center rounded-md border border-border bg-surface text-xs font-semibold'>
-                    {item.mono}
-                  </div>
-                  <div>
-                    <p className='text-sm font-medium text-text-primary'>{item.label}</p>
-                    <p className='text-xs font-normal text-text-muted'>{item.target}</p>
-                    <p className='text-xs font-normal text-text-muted'>{item.source}</p>
-                  </div>
-                </div>
+        <div className='mt-5 space-y-3'>
+          <div className='flex rounded-md border border-border bg-background'>
+            <div className='w-1 rounded-l-md bg-accent' />
+            <div className='flex flex-1 items-center gap-3 p-3'>
+              <div className='grid h-9 w-9 place-items-center rounded-md border border-border bg-surface text-xs font-semibold'>
+                GH
               </div>
-            ))}
+              <div>
+                <p className='text-sm font-medium text-text-primary'>{selectedRepo}</p>
+                <p className='text-xs font-normal text-text-muted'>Branch: {selectedBranch}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className='flex items-center gap-2 text-sm text-green-400'>
+            <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px]'>✓</span>
+            Access verified
+          </div>
+          <div className='flex items-center gap-2 text-sm text-green-400'>
+            <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px]'>✓</span>
+            Repository linked to project
           </div>
         </div>
 
-        <div className='mt-6'>
-          <h4 className='text-sm font-semibold text-text-primary'>Environment variables</h4>
-          <div className='mt-3 overflow-hidden rounded-md border border-border'>
-            <table className='w-full text-left text-sm'>
-              <thead className='bg-surface'>
-                <tr>
-                  <th className='px-3 py-2 font-medium text-text-muted'>Variable</th>
-                  <th className='px-3 py-2 font-medium text-text-muted'>Classification</th>
-                  <th className='px-3 py-2 font-medium text-text-muted'>Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {envRows.map((row) => (
-                  <tr key={row.key} className='border-t border-border'>
-                    <td className='px-3 py-2 font-medium text-text-primary'>{row.key}</td>
-                    <td className='px-3 py-2'>
-                      <span className={`rounded-full border px-2 py-1 text-xs font-medium ${statusBadgeClass(row.cls)}`}>
-                        {row.cls}
-                      </span>
-                    </td>
-                    <td className='px-3 py-2 text-text-muted'>{row.source}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <p className='mt-5 text-xs font-normal text-text-muted'>Draft architecture saved - ready for Step 2</p>
+        <p className='mt-5 text-xs font-normal text-text-muted'>Ready for Step 2 — tell us about your app</p>
       </div>
     </div>
   )
@@ -1373,6 +1445,12 @@ export default function ProjectWizard() {
   const { id } = useParams()
   const navigate = useNavigate()
 
+  const isNew = id === 'new'
+  const [projectId, setProjectId] = useState(isNew ? null : id)
+  const [projectName, setProjectName] = useState('')
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [createError, setCreateError] = useState('')
+
   const [step, setStep] = useState(1)
   const [completedSteps, setCompletedSteps] = useState(() => new Set())
   const [projectData, setProjectData] = useState({
@@ -1387,6 +1465,57 @@ export default function ProjectWizard() {
   const [step3ShowBanner, setStep3ShowBanner] = useState(false)
   const [step3InputPrefill, setStep3InputPrefill] = useState('')
   const [step4CanContinue, setStep4CanContinue] = useState(false)
+
+  const handleCreateProject = async (e) => {
+    e.preventDefault()
+    const trimmed = projectName.trim()
+    if (!trimmed) return
+    setCreatingProject(true)
+    setCreateError('')
+    try {
+      const project = await api.createProject(trimmed)
+      setProjectId(project.id)
+      navigate(`/app/projects/${project.id}`, { replace: true })
+    } catch (err) {
+      setCreateError(err.message || 'Failed to create project')
+    } finally {
+      setCreatingProject(false)
+    }
+  }
+
+  if (isNew && !projectId) {
+    return (
+      <div className='flex min-h-[calc(100vh-121px)] items-center justify-center'>
+        <div className='w-full max-w-md rounded-xl border border-border bg-surface p-8'>
+          <h1 className='text-2xl font-semibold tracking-tight'>New Project</h1>
+          <p className='mt-2 text-sm font-normal text-text-muted'>
+            Give your project a name to get started.
+          </p>
+          <form onSubmit={handleCreateProject} className='mt-6 space-y-4'>
+            <div>
+              <label className='block text-sm font-medium text-text-primary'>Project name</label>
+              <input
+                className='mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
+                placeholder='My awesome app'
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            {createError && <p className='text-sm text-red-400'>{createError}</p>}
+            <Button
+              variant='primary'
+              className='w-full'
+              type='submit'
+              disabled={!projectName.trim() || creatingProject}
+            >
+              {creatingProject ? 'Creating...' : 'Create Project'}
+            </Button>
+          </form>
+        </div>
+      </div>
+    )
+  }
 
   const canAdvance = (currentStep) => {
     if (currentStep === 1) {
@@ -1453,7 +1582,7 @@ export default function ProjectWizard() {
 
   return (
     <div className='relative min-h-[calc(100vh-121px)]'>
-      <h1 className='text-2xl font-semibold tracking-tight'>Project {id || 'ABC'} Wizard</h1>
+      <h1 className='text-2xl font-semibold tracking-tight'>Project Wizard</h1>
 
       <div className='fixed inset-x-0 top-[73px] z-20 border-b border-border bg-surface/95 backdrop-blur'>
         <div className='mx-auto w-full max-w-6xl px-6 py-4'>
@@ -1491,6 +1620,7 @@ export default function ProjectWizard() {
 
           {step === 1 ? (
             <StepOnePanel
+              projectId={projectId}
               projectData={projectData}
               setProjectData={setProjectData}
               setStep1CanContinue={setStep1CanContinue}
