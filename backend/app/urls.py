@@ -10,6 +10,7 @@ from .views import (
     projects_list,
     save_intent,
     trigger_scan,
+    wizard_state,
 )
 
 urlpatterns = [
@@ -19,6 +20,7 @@ urlpatterns = [
     path('projects/<uuid:pk>/connect-repo/', connect_repo),
     path('projects/<uuid:pk>/scan/', trigger_scan),
     path('projects/<uuid:pk>/intent/', save_intent),
+    path('projects/<uuid:pk>/wizard-state/', wizard_state),
     path('github/installations/', github_installations),
     path('github/repos/', github_repos),
     path('github/branches/', github_branches),

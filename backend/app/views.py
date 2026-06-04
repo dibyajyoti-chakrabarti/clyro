@@ -119,6 +119,27 @@ def trigger_scan(request, pk):
     return Response(ScanResultSerializer(scan).data)
 
 
+# ── Wizard state ──────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def wizard_state(request, pk):
+    try:
+        project = Project.objects.get(pk=pk, user=request.user)
+    except Project.DoesNotExist:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
+    intent = project.intent_records.order_by('-created_at').first()
+
+    return Response({
+        'project': ProjectSerializer(project).data,
+        'scan': ScanResultSerializer(scan).data if scan else None,
+        'intent': IntentRecordSerializer(intent).data if intent else None,
+    })
+
+
 # ── Intent ────────────────────────────────────────────────────────────────────
 
 @api_view(['POST'])
