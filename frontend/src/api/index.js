@@ -28,6 +28,11 @@ async function request(method, path, body) {
 }
 
 export const api = {
+  // User
+  getMe: () => request('GET', '/api/users/me/'),
+  updateMe: (payload) => request('PATCH', '/api/users/me/', payload),
+  deleteMe: () => request('DELETE', '/api/users/me/'),
+
   // Projects
   createProject: (name) => request('POST', '/api/projects/', { name }),
   getProject: (id) => request('GET', `/api/projects/${id}/`),
