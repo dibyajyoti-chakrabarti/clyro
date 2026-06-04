@@ -4,7 +4,10 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from core.models import GitHubInstallation, IntentRecord, Project, ScanResult
-from core.serializers import GitHubInstallationSerializer, IntentRecordSerializer, ProjectSerializer, ScanResultSerializer
+from core.serializers import (
+    GitHubInstallationSerializer, IntentRecordSerializer,
+    ProjectSerializer, ScanResultSerializer, UserProfileSerializer,
+)
 from .auth import CognitoAuthentication
 from . import github_utils
 from .scanner import runner as scan_runner
@@ -117,6 +120,27 @@ def trigger_scan(request, pk):
 
     scan = scan_runner.run_scan_for_project(project)
     return Response(ScanResultSerializer(scan).data)
+
+
+# ── User profile ──────────────────────────────────────────────────────────────
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def me(request):
+    if request.method == 'GET':
+        return Response(UserProfileSerializer(request.user).data)
+
+    if request.method == 'PATCH':
+        serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # DELETE
+    request.user.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ── Wizard state ──────────────────────────────────────────────────────────────

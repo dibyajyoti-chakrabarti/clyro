@@ -6,6 +6,7 @@ from .views import (
     github_branches,
     github_installations,
     github_repos,
+    me,
     project_detail,
     projects_list,
     save_intent,
@@ -15,6 +16,7 @@ from .views import (
 
 urlpatterns = [
     path('hello', hello),
+    path('users/me/', me),
     path('projects/', projects_list),
     path('projects/<uuid:pk>/', project_detail),
     path('projects/<uuid:pk>/connect-repo/', connect_repo),
