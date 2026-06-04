@@ -320,11 +320,11 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
               return (
                 <div key={item} className='flex items-center gap-3'>
                   {isDone ? (
-                    <div className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>
+                    <div className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>
                       ✓
                     </div>
                   ) : isActive ? (
-                    <div className='h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent' />
+                    <div className='h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]' />
                   ) : (
                     <div className='h-4 w-4 rounded-full border border-border bg-background' />
                   )}
@@ -336,7 +336,7 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
 
           <div className='mt-5 h-1.5 overflow-hidden rounded-full bg-background'>
             <div
-              className='h-full rounded-full bg-accent transition-all duration-500 ease-out'
+              className='h-full rounded-full bg-gradient-to-r from-accent/80 to-accent transition-all duration-500 ease-out'
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -407,7 +407,7 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
             <div className='space-y-1.5'>
               {detectedServices.map((s) => (
                 <div key={s} className='flex items-center gap-2 text-sm text-text-primary'>
-                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>✓</span>
+                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>✓</span>
                   {s}
                 </div>
               ))}
@@ -421,7 +421,7 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
             <div className='space-y-1.5'>
               {detectedInfra.map((s) => (
                 <div key={s} className='flex items-center gap-2 text-sm text-text-primary'>
-                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>✓</span>
+                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>✓</span>
                   {s}
                 </div>
               ))}
@@ -453,7 +453,7 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
         )}
 
         <div className='flex items-center gap-2 pt-1 text-xs font-normal text-text-muted border-t border-border'>
-          <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>✓</span>
+          <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>✓</span>
           Architecture draft generated — ready for Step 2
         </div>
       </div>
@@ -728,9 +728,9 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
   }
 
   const optionCardClass = (selected, recommended) => {
-    if (selected) return 'border-accent bg-accent-soft/30'
-    if (recommended) return 'border-accent/40 bg-background hover:border-accent/70 ring-1 ring-accent/15'
-    return 'border-border bg-background hover:border-accent/60'
+    if (selected) return 'border-accent bg-accent-soft/30 shadow-[0_0_0_1px_rgba(249,115,22,0.5),0_0_16px_rgba(249,115,22,0.1)]'
+    if (recommended) return 'border-accent/40 bg-background hover:border-accent/70 ring-1 ring-accent/15 shadow-[0_0_0_1px_rgba(249,115,22,0.25)]'
+    return 'border-border bg-background hover:border-accent/60 hover:-translate-y-px'
   }
 
   const cardClass = () => {
@@ -783,7 +783,7 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
         <div className='text-xs font-normal text-text-muted'>Question {Math.max(1, questionNumber)} of {Math.max(1, totalVisible)}</div>
         <div className='mt-2 h-1.5 overflow-hidden rounded-full bg-background'>
           <div
-            className='h-full rounded-full bg-accent transition-all duration-500 ease-out'
+            className='h-full rounded-full bg-gradient-to-r from-accent/80 to-accent transition-all duration-500 ease-out'
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -834,7 +834,7 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
                       key={option.value}
                       type='button'
                       onClick={() => handleChoice(option.value)}
-                      className={`w-full rounded-lg border p-3 text-left transition-colors ${optionCardClass(answers[activeQuestion.id] === option.value, option.recommended)}`}
+                      className={`w-full rounded-lg border p-3 text-left transition-all duration-150 ${optionCardClass(answers[activeQuestion.id] === option.value, option.recommended)}`}
                     >
                       <div className='flex items-center gap-2'>
                         <p className='text-sm font-medium text-text-primary'>{option.label}</p>
@@ -1677,7 +1677,7 @@ export default function ProjectWizard() {
   if (isNew && !projectId) {
     return (
       <div className='flex min-h-[calc(100vh-121px)] items-center justify-center'>
-        <div className='w-full max-w-md rounded-xl border border-border bg-surface p-8'>
+        <div className='w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-lg shadow-black/30 ring-1 ring-white/[0.06]'>
           <h1 className='text-2xl font-semibold tracking-tight'>New Project</h1>
           <p className='mt-2 text-sm font-normal text-text-muted'>
             Give your project a name to get started.
@@ -1686,7 +1686,7 @@ export default function ProjectWizard() {
             <div>
               <label className='block text-sm font-medium text-text-primary'>Project name</label>
               <input
-                className='mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
+                className='mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary caret-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
                 placeholder='My awesome app'
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
@@ -1775,7 +1775,7 @@ export default function ProjectWizard() {
     <div className='relative min-h-[calc(100vh-121px)]'>
       <h1 className='text-2xl font-semibold tracking-tight'>Project Wizard</h1>
 
-      <div className='fixed inset-x-0 top-[73px] z-20 border-b border-border bg-surface/95 backdrop-blur'>
+      <div className='fixed inset-x-0 top-[73px] z-20 border-b border-white/[0.06] bg-surface/80 backdrop-blur-md'>
         <div className='mx-auto w-full max-w-6xl px-6 py-4'>
           <div className='flex items-start justify-center gap-6 md:gap-10'>
             {stepConfig.map((item) => {
@@ -1784,13 +1784,13 @@ export default function ProjectWizard() {
               const circleClass = isCompleted
                 ? 'border-accent bg-accent text-background'
                 : isActive
-                  ? 'border-accent bg-surface ring-2 ring-accent/35'
+                  ? 'border-accent bg-surface shadow-[0_0_0_4px_rgba(249,115,22,0.15)]'
                   : 'border-border bg-background text-text-muted'
               const labelClass = isActive ? 'font-medium text-text-primary' : 'font-normal text-text-muted'
 
               return (
                 <div key={item.number} className='flex flex-col items-center gap-2'>
-                  <div className={`grid h-9 w-9 place-items-center rounded-full border text-sm ${circleClass}`}>
+                  <div className={`grid h-11 w-11 place-items-center rounded-full border text-sm transition-all duration-300 ${circleClass}`}>
                     {item.number}
                   </div>
                   <p className={`text-center text-xs ${labelClass}`}>{item.title}</p>
@@ -1862,7 +1862,7 @@ export default function ProjectWizard() {
         </section>
       </div>
 
-      <div className='fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur'>
+      <div className='fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.06] bg-surface/80 backdrop-blur-md'>
         <div className='mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4'>
           <div>
             {step > 1 ? (

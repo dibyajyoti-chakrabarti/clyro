@@ -15,65 +15,79 @@ export default function AppLayout() {
 
   return (
     <div className='min-h-screen bg-background text-text-primary'>
-      <div className={`mx-auto grid w-full max-w-6xl gap-6 px-6 py-6 ${collapsed ? 'grid-cols-[64px_1fr]' : 'grid-cols-[220px_1fr]'}`}>
+      <div
+        className={`mx-auto grid w-full max-w-6xl gap-4 px-4 py-4 transition-[grid-template-columns] duration-200 ${
+          collapsed ? 'grid-cols-[56px_1fr]' : 'grid-cols-[224px_1fr]'
+        }`}
+      >
+        {/* Sidebar */}
+        <aside className='sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-2xl border border-white/[0.07] bg-surface shadow-xl shadow-black/30 ring-1 ring-inset ring-white/[0.04]'>
+          {/* Logo */}
+          <div className={`flex h-14 shrink-0 items-center border-b border-white/[0.06] px-3 ${collapsed ? 'justify-center' : ''}`}>
+            {collapsed ? (
+              <div className='grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-accent to-amber-600 shadow-[0_0_16px_rgba(249,115,22,0.4)]'>
+                <span className='text-sm font-bold text-black'>C</span>
+              </div>
+            ) : (
+              <div className='flex items-center gap-2.5'>
+                <div className='grid h-7 w-7 place-items-center rounded-md bg-gradient-to-br from-accent to-amber-600 shadow-[0_0_12px_rgba(249,115,22,0.35)]'>
+                  <span className='text-xs font-bold text-black'>C</span>
+                </div>
+                <span className='text-[15px] font-semibold tracking-tight'>Clyro</span>
+              </div>
+            )}
+          </div>
 
-        <aside className='flex min-h-[calc(100vh-3rem)] flex-col rounded-xl border border-border bg-surface p-3'>
-          {!collapsed && (
-            <div className='px-2 py-1'>
-              <h2 className='text-lg font-semibold tracking-tight'>Clyro</h2>
-            </div>
-          )}
-          {collapsed && (
-            <div className='flex justify-center py-1'>
-              <span className='text-lg font-semibold'>C</span>
-            </div>
-          )}
-
-          <nav className='mt-4 flex flex-1 flex-col gap-0.5'>
+          {/* Nav */}
+          <nav className='flex flex-1 flex-col gap-0.5 overflow-y-auto p-2'>
             {NAV_LINKS.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
-                className={({ isActive }) =>
-                  `flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-accent/10 text-accent'
-                      : 'text-text-muted hover:bg-background hover:text-text-primary'
-                  } ${collapsed ? 'justify-center' : ''}`
-                }
                 title={collapsed ? item.label : undefined}
+                className={({ isActive }) =>
+                  `group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-150 ${
+                    collapsed ? 'justify-center' : ''
+                  } ${
+                    isActive
+                      ? 'bg-accent/10 text-accent shadow-[inset_0_0_0_1px_rgba(249,115,22,0.2)]'
+                      : 'text-text-muted hover:bg-white/[0.04] hover:text-text-primary'
+                  }`
+                }
               >
-                <i className={`${item.icon} text-base`} />
+                <i className={`${item.icon} text-[15px] shrink-0`} />
                 {!collapsed && <span>{item.label}</span>}
               </NavLink>
             ))}
           </nav>
 
-          <div className='mt-2 space-y-0.5 border-t border-border pt-2'>
+          {/* Bottom actions */}
+          <div className='shrink-0 border-t border-white/[0.06] p-2 space-y-0.5'>
             <button
               type='button'
               onClick={() => setCollapsed((p) => !p)}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-text-muted transition-colors hover:bg-background hover:text-text-primary ${collapsed ? 'justify-center' : ''}`}
-              title={collapsed ? 'Expand sidebar' : undefined}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-text-muted transition-all duration-150 hover:bg-white/[0.04] hover:text-text-primary ${collapsed ? 'justify-center' : ''}`}
             >
-              <i className={`ti ${collapsed ? 'ti-layout-sidebar-right' : 'ti-layout-sidebar-left'} text-base`} />
+              <i className={`ti ${collapsed ? 'ti-arrow-bar-right' : 'ti-arrow-bar-left'} text-[15px] shrink-0`} />
               {!collapsed && <span>Collapse</span>}
             </button>
             <button
               type='button'
               onClick={logout}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-text-muted transition-colors hover:bg-background hover:text-text-primary ${collapsed ? 'justify-center' : ''}`}
               title={collapsed ? 'Sign out' : undefined}
+              className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-text-muted transition-all duration-150 hover:bg-danger/8 hover:text-danger ${collapsed ? 'justify-center' : ''}`}
             >
-              <i className='ti ti-logout text-base' />
+              <i className='ti ti-logout text-[15px] shrink-0' />
               {!collapsed && <span>Sign out</span>}
             </button>
           </div>
         </aside>
 
-        <section className='min-h-[calc(100vh-3rem)] rounded-xl border border-border bg-surface p-6'>
+        {/* Main content */}
+        <main className='min-h-[calc(100vh-2rem)] rounded-2xl border border-white/[0.07] bg-surface p-6 shadow-sm shadow-black/20 ring-1 ring-inset ring-white/[0.04]'>
           <Outlet />
-        </section>
+        </main>
       </div>
     </div>
   )
