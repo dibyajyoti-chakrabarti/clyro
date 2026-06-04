@@ -34,6 +34,7 @@ export const api = {
   listProjects: () => request('GET', '/api/projects/'),
   connectRepo: (id, payload) => request('POST', `/api/projects/${id}/connect-repo/`, payload),
   triggerScan: (id) => request('POST', `/api/projects/${id}/scan/`),
+  saveIntent: (id, payload) => request('POST', `/api/projects/${id}/intent/`, payload),
 
   // GitHub
   storeInstallation: (installation_id) =>

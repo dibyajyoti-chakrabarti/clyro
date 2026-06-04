@@ -459,11 +459,15 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
   )
 }
 
-function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
+function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanContinue }) {
+  const hasPostgres = projectData.scanResult?.detected_resources?.infrastructure?.database?.detected ?? true
+  const hasWorker = projectData.scanResult?.detected_resources?.services?.worker?.detected ?? false
+
   const questions = useMemo(() => ([
     {
       id: 'description',
       moment: 1,
+      momentLabel: 'About your app',
       question: 'Describe your app in one sentence.',
       type: 'free',
       options: [],
@@ -471,61 +475,57 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
     {
       id: 'scale',
       moment: 1,
+      momentLabel: 'About your app',
       question: 'How many users do you expect at launch?',
       type: 'choice',
       options: [
         { value: 'solo', label: 'Just me or a small internal team' },
-        { value: 'small', label: 'Small user base - under 1,000 users' },
-        { value: 'medium', label: 'Public product - expecting real traffic' },
-        { value: 'large', label: 'High scale - expecting significant load' },
+        { value: 'small', label: 'Small user base — under 1,000 users' },
+        { value: 'medium', label: 'Public product — expecting real traffic' },
+        { value: 'large', label: 'High scale — expecting significant load' },
       ],
     },
     {
       id: 'criticality',
       moment: 1,
+      momentLabel: 'About your app',
       question: 'How critical is uptime for this deployment?',
       type: 'choice',
       options: [
-        { value: 'low', label: 'Downtime is acceptable - dev, staging, or side project' },
-        { value: 'medium', label: 'Downtime is bad but not catastrophic - early stage product' },
-        { value: 'high', label: 'It needs to stay up - this is a production business' },
-      ],
-    },
-    {
-      id: 'compute_choice',
-      moment: 2,
-      question: 'Your Django backend will run as a container on AWS. Where do you want it hosted?',
-      type: 'choice',
-      options: [
-        { value: 'ecs_fargate', label: 'ECS Fargate - fully managed, no servers to configure', note: 'Recommended for most teams' },
-        { value: 'ecs_ec2', label: 'ECS on EC2 - more control, slightly cheaper at high scale', note: 'More operational overhead' },
-        { value: 'ec2', label: 'EC2 - you manage the underlying server yourself', note: 'Maximum control, most effort' },
+        { value: 'low', label: 'Downtime is acceptable — dev, staging, or side project' },
+        { value: 'medium', label: 'Downtime is bad but not catastrophic — early stage product' },
+        { value: 'high', label: 'It needs to stay up — this is a production business' },
       ],
     },
     {
       id: 'database_choice',
       moment: 2,
+      momentLabel: 'Infrastructure',
       question: 'Which database setup do you want?',
       type: 'choice',
+      condition: () => hasPostgres,
       options: [
-        { value: 'rds_postgres', label: 'RDS PostgreSQL - reliable, well-understood, lower cost', note: 'Recommended' },
-        { value: 'aurora_postgres', label: 'Aurora PostgreSQL - higher performance, more scalable', note: 'Higher cost (~2.5x)' },
+        { value: 'rds_postgres', label: 'RDS PostgreSQL — reliable, well-understood, lower cost', recommended: true },
+        { value: 'aurora_postgres', label: 'Aurora PostgreSQL — higher performance, more scalable', note: 'Higher cost (~2.5×)' },
       ],
     },
     {
       id: 'worker_compute_choice',
       moment: 2,
+      momentLabel: 'Infrastructure',
       question: 'Your background workers were detected. Where should they run?',
       type: 'choice',
+      condition: () => hasWorker,
       options: [
-        { value: 'ecs_fargate', label: 'ECS Fargate - same as your backend, fully managed', note: 'Recommended' },
-        { value: 'ecs_ec2', label: 'ECS on EC2 - more control, cheaper at scale', note: '' },
-        { value: 'ec2', label: 'EC2 - manage the server yourself', note: '' },
+        { value: 'ecs_fargate', label: 'ECS Fargate — fully managed, no servers to configure', recommended: true },
+        { value: 'ecs_ec2', label: 'ECS on EC2 — more control, cheaper at scale' },
+        { value: 'ec2', label: 'EC2 — manage the server yourself' },
       ],
     },
     {
       id: 'environment',
       moment: 2,
+      momentLabel: 'Infrastructure',
       question: 'What environment is this deployment for?',
       type: 'choice',
       options: [
@@ -537,28 +537,32 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
     {
       id: 'domain_has',
       moment: 3,
+      momentLabel: 'Domain',
       question: 'Do you have a domain name for this app?',
       type: 'choice',
       options: [
-        { value: 'yes', label: 'Yes - I have a domain to point to this' },
-        { value: 'no', label: 'Not yet - give me the AWS-generated URL for now' },
-        { value: 'internal', label: 'No public domain needed - internal use only' },
+        { value: 'yes', label: 'Yes — I have a domain to point to this' },
+        { value: 'no', label: 'Not yet — give me the AWS-generated URL for now' },
+        { value: 'internal', label: 'No public domain needed — internal use only' },
       ],
     },
     {
       id: 'domain_name',
       moment: 3,
+      momentLabel: 'Domain',
       question: "What's the domain? (e.g. app.myproduct.com)",
       type: 'free',
       options: [],
       condition: (answers) => answers.domain_has === 'yes',
     },
-  ]), [])
+  ]), [hasPostgres, hasWorker])
 
   const [currentQ, setCurrentQ] = useState(0)
   const [answers, setAnswers] = useState(projectData.intent || {})
   const [direction, setDirection] = useState('forward')
   const [isComplete, setIsComplete] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [cardStage, setCardStage] = useState('idle')
   const [descriptionValue, setDescriptionValue] = useState(projectData.intent?.description || '')
   const [domainValue, setDomainValue] = useState(projectData.intent?.domain_name || '')
@@ -566,8 +570,8 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
   const enterTimerRef = useRef(null)
 
   useEffect(() => {
-    setStep2CanContinue(isComplete)
-  }, [isComplete, setStep2CanContinue])
+    setStep2CanContinue(isComplete && !isSaving)
+  }, [isComplete, isSaving, setStep2CanContinue])
 
   useEffect(() => {
     return () => {
@@ -640,15 +644,20 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
       enterTimerRef.current = setTimeout(() => {
         setCardStage('idle')
       }, 20)
-    }, 200)
+    }, 120)
   }
 
   const finalizeIntent = (finalAnswers) => {
-    setProjectData((prev) => ({
-      ...prev,
-      intent: finalAnswers,
-    }))
     setIsComplete(true)
+    setProjectData((prev) => ({ ...prev, intent: finalAnswers }))
+    setIsSaving(true)
+    setSaveError('')
+    api.saveIntent(projectId, { ...finalAnswers, compute_choice: 'ecs_fargate' })
+      .then(() => setIsSaving(false))
+      .catch((err) => {
+        setIsSaving(false)
+        setSaveError(err.message || 'Failed to save — your answers may not be persisted')
+      })
   }
 
   const advanceWithAnswers = (nextAnswers) => {
@@ -715,11 +724,9 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
     transitionTo(prevIndex, 'back')
   }
 
-  const optionCardClass = (selected) => {
-    if (selected) {
-      return 'border-accent bg-accent-soft/30'
-    }
-
+  const optionCardClass = (selected, recommended) => {
+    if (selected) return 'border-accent bg-accent-soft/30'
+    if (recommended) return 'border-accent/40 bg-background hover:border-accent/70 ring-1 ring-accent/15'
     return 'border-border bg-background hover:border-accent/60'
   }
 
@@ -765,6 +772,11 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
   return (
     <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
       <div className='mx-auto max-w-md'>
+        {activeQuestion?.momentLabel && (
+          <div className='mb-1 text-[11px] font-semibold uppercase tracking-widest text-accent/70'>
+            {activeQuestion.momentLabel}
+          </div>
+        )}
         <div className='text-xs font-normal text-text-muted'>Question {Math.max(1, questionNumber)} of {Math.max(1, totalVisible)}</div>
         <div className='mt-2 h-1.5 overflow-hidden rounded-full bg-background'>
           <div
@@ -785,7 +797,10 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
 
         {isComplete ? (
           <div className='mt-4 rounded-lg border border-border/70 bg-surface p-5'>
-            <h3 className='text-2xl font-semibold tracking-tight'>All set</h3>
+            <div className='flex items-center gap-2'>
+              <h3 className='text-2xl font-semibold tracking-tight'>All set</h3>
+              {isSaving && <div className='h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent' />}
+            </div>
             <div className='mt-4 overflow-hidden rounded-md border border-border'>
               <table className='w-full text-left text-sm'>
                 <tbody>
@@ -798,11 +813,15 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
                 </tbody>
               </table>
             </div>
-            <p className='mt-4 text-xs font-normal text-text-muted'>Your intent has been saved - your architecture is ready to review</p>
+            {saveError ? (
+              <p className='mt-3 text-xs text-red-400'>{saveError}</p>
+            ) : (
+              <p className='mt-4 text-xs font-normal text-text-muted'>Intent saved — your architecture is ready to review</p>
+            )}
           </div>
         ) : (
           <div className='mt-4 overflow-hidden rounded-lg border border-border/70 bg-surface'>
-            <div className={`p-5 transition-all duration-200 ${cardClass()}`}>
+            <div className={`p-5 transition-all duration-[120ms] ${cardClass()}`}>
               <p className='text-base font-medium text-text-primary'>{activeQuestion.question}</p>
 
               {activeQuestion.type === 'choice' ? (
@@ -812,9 +831,14 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
                       key={option.value}
                       type='button'
                       onClick={() => handleChoice(option.value)}
-                      className={`w-full rounded-lg border p-3 text-left transition-colors ${optionCardClass(answers[activeQuestion.id] === option.value)}`}
+                      className={`w-full rounded-lg border p-3 text-left transition-colors ${optionCardClass(answers[activeQuestion.id] === option.value, option.recommended)}`}
                     >
-                      <p className='text-sm font-medium text-text-primary'>{option.label}</p>
+                      <div className='flex items-center gap-2'>
+                        <p className='text-sm font-medium text-text-primary'>{option.label}</p>
+                        {option.recommended && (
+                          <span className='rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent'>Recommended</span>
+                        )}
+                      </div>
                       {option.note ? <p className='mt-1 text-xs font-normal text-text-muted'>{option.note}</p> : null}
                     </button>
                   ))}
@@ -1729,6 +1753,7 @@ export default function ProjectWizard() {
 
           {step === 2 ? (
             <StepTwoPanel
+              projectId={projectId}
               projectData={projectData}
               setProjectData={setProjectData}
               setStep2CanContinue={setStep2CanContinue}
