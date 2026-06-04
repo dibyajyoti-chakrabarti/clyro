@@ -30,20 +30,22 @@ def _get_jwks() -> dict:
     return _jwks_cache
 
 
-def _extract_profile(payload: dict) -> tuple[str, str, str]:
-    """Pull (cognito_sub, email, display_name) from a decoded Cognito ID token."""
+def _extract_profile(payload: dict) -> tuple[str, str, str, str | None]:
+    """Pull (cognito_sub, email, display_name, picture_url) from a decoded Cognito ID token."""
     cognito_sub = payload['sub']
     email = payload.get('email', '')
 
-    # Cognito can surface the name several ways depending on which attributes
-    # are configured in the User Pool.
     name = (
         payload.get('name')
         or f"{payload.get('given_name', '')} {payload.get('family_name', '')}".strip()
         or payload.get('cognito:username', '')
         or email.split('@')[0]
     )
-    return cognito_sub, email, name
+
+    # Present for Google OAuth users; absent for native email/password users.
+    picture = payload.get('picture') or None
+
+    return cognito_sub, email, name, picture
 
 
 class CognitoAuthentication(BaseAuthentication):
@@ -71,15 +73,14 @@ class CognitoAuthentication(BaseAuthentication):
         except jwt.InvalidTokenError as exc:
             raise AuthenticationFailed(str(exc))
 
-        cognito_sub, email, name = _extract_profile(payload)
+        cognito_sub, email, name, picture = _extract_profile(payload)
 
         user, created = User.objects.get_or_create(
             cognito_sub=cognito_sub,
-            defaults={'email': email, 'name': name},
+            defaults={'email': email, 'name': name, 'avatar_url': picture},
         )
 
         if not created:
-            # Keep local profile in sync with latest Cognito claims.
             dirty: list[str] = []
             if email and user.email != email:
                 user.email = email
@@ -87,6 +88,9 @@ class CognitoAuthentication(BaseAuthentication):
             if name and user.name != name:
                 user.name = name
                 dirty.append('name')
+            if picture and user.avatar_url != picture:
+                user.avatar_url = picture
+                dirty.append('avatar_url')
             if dirty:
                 dirty.append('updated_at')
                 user.save(update_fields=dirty)

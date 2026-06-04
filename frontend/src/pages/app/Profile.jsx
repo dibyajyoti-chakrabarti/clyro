@@ -17,9 +17,20 @@ const PLAN_DESCRIPTION = {
   enterprise: 'Custom limits · dedicated support',
 }
 
-function Avatar({ name, size = 'lg' }) {
+function Avatar({ name, avatarUrl, size = 'lg' }) {
   const initials = (name || '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
   const sizeClass = size === 'lg' ? 'h-16 w-16 text-xl' : 'h-8 w-8 text-xs'
+
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={name || 'Avatar'}
+        referrerPolicy="no-referrer"
+        className={`shrink-0 rounded-full object-cover ring-2 ring-accent/20 ${sizeClass}`}
+      />
+    )
+  }
 
   return (
     <div className={`grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-accent/20 to-accent/5 font-semibold text-accent ring-2 ring-accent/20 ${sizeClass}`}>
@@ -130,7 +141,7 @@ export default function Profile() {
 
       {/* Header card */}
       <div className='flex items-center gap-4 rounded-xl border border-white/[0.07] bg-gradient-to-b from-white/[0.03] to-transparent p-5 shadow-sm shadow-black/20 ring-1 ring-inset ring-white/[0.04]'>
-        <Avatar name={profile?.name} />
+        <Avatar name={profile?.name} avatarUrl={profile?.avatar_url} />
         <div className='min-w-0 flex-1'>
           <p className='truncate text-lg font-semibold'>{profile?.name || '—'}</p>
           <p className='truncate text-sm text-text-muted'>{profile?.email || '—'}</p>

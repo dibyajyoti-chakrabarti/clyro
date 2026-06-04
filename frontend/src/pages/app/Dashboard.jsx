@@ -74,11 +74,20 @@ function RecentProjectRow({ project }) {
   )
 }
 
+function greeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
 export default function Dashboard() {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
+  const [profile, setProfile] = useState(null)
 
   useEffect(() => {
+    api.getMe().then(setProfile).catch(() => {})
     api.listProjects()
       .then(setProjects)
       .catch(() => {})
@@ -94,7 +103,9 @@ export default function Dashboard() {
     <div className='space-y-7'>
       <div className='flex items-center justify-between'>
         <div>
-          <h1 className='text-2xl font-semibold tracking-tight'>Dashboard</h1>
+          <h1 className='text-2xl font-semibold tracking-tight'>
+            {profile?.name ? `${greeting()}, ${profile.name.split(' ')[0]}.` : 'Dashboard'}
+          </h1>
           <p className='mt-0.5 text-sm text-text-muted'>Your infrastructure at a glance.</p>
         </div>
         <Link to='/app/projects/new'>
