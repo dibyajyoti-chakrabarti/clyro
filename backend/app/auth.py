@@ -1,3 +1,4 @@
+import logging
 import time
 
 import jwt
@@ -8,6 +9,8 @@ from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 
 from core.models import User
+
+logger = logging.getLogger(__name__)
 
 _jwks_cache: dict = {}
 _jwks_cache_time: float = 0
@@ -22,16 +25,17 @@ def _get_jwks() -> dict:
             f'https://cognito-idp.{settings.COGNITO_REGION}.amazonaws.com'
             f'/{settings.COGNITO_USER_POOL_ID}/.well-known/jwks.json'
         )
+        logger.debug('Fetching JWKS from %s', url)
         resp = requests.get(url, timeout=5)
         resp.raise_for_status()
         keys = resp.json()['keys']
         _jwks_cache = {k['kid']: RSAAlgorithm.from_jwk(k) for k in keys}
         _jwks_cache_time = now
+        logger.debug('JWKS loaded, kids: %s', list(_jwks_cache.keys()))
     return _jwks_cache
 
 
 def _extract_profile(payload: dict) -> tuple[str, str, str, str | None]:
-    """Pull (cognito_sub, email, display_name, picture_url) from a decoded Cognito ID token."""
     cognito_sub = payload['sub']
     email = payload.get('email', '')
 
@@ -42,13 +46,17 @@ def _extract_profile(payload: dict) -> tuple[str, str, str, str | None]:
         or email.split('@')[0]
     )
 
-    # Present for Google OAuth users; absent for native email/password users.
     picture = payload.get('picture') or None
 
     return cognito_sub, email, name, picture
 
 
 class CognitoAuthentication(BaseAuthentication):
+    def authenticate_header(self, request):
+        # Returning a non-empty string makes DRF issue 401 instead of 403,
+        # so clients see the actual error message.
+        return 'Bearer realm="clyro"'
+
     def authenticate(self, request):
         header = request.headers.get('Authorization', '')
         if not header.startswith('Bearer '):
@@ -60,7 +68,12 @@ class CognitoAuthentication(BaseAuthentication):
             kid = unverified_header['kid']
             keys = _get_jwks()
             if kid not in keys:
-                raise AuthenticationFailed('Unknown key ID')
+                # Stale cache — force a refresh and try once more.
+                _jwks_cache.clear()
+                keys = _get_jwks()
+            if kid not in keys:
+                logger.warning('JWT kid %s not in pool JWKS (pool: %s)', kid, settings.COGNITO_USER_POOL_ID)
+                raise AuthenticationFailed('Token signing key not recognised')
             public_key = keys[kid]
             payload = jwt.decode(
                 token,
@@ -71,9 +84,16 @@ class CognitoAuthentication(BaseAuthentication):
         except jwt.ExpiredSignatureError:
             raise AuthenticationFailed('Token expired')
         except jwt.InvalidTokenError as exc:
+            logger.warning('JWT validation failed: %s', exc)
             raise AuthenticationFailed(str(exc))
+        except AuthenticationFailed:
+            raise
+        except Exception as exc:
+            logger.error('Unexpected auth error: %s', exc)
+            raise AuthenticationFailed('Authentication error')
 
         cognito_sub, email, name, picture = _extract_profile(payload)
+        logger.debug('Authenticated sub=%s email=%s', cognito_sub, email)
 
         user, created = User.objects.get_or_create(
             cognito_sub=cognito_sub,
