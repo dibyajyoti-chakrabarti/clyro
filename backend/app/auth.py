@@ -4,6 +4,7 @@ import time
 import jwt
 import requests
 from django.conf import settings
+from django.db import IntegrityError
 from jwt.algorithms import RSAAlgorithm
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
@@ -95,24 +96,54 @@ class CognitoAuthentication(BaseAuthentication):
         cognito_sub, email, name, picture = _extract_profile(payload)
         logger.debug('Authenticated sub=%s email=%s', cognito_sub, email)
 
+        user = _get_or_link_user(cognito_sub, email, name, picture)
+        return (user, token)
+
+
+def _get_or_link_user(cognito_sub: str, email: str, name: str, picture: str | None) -> User:
+    """
+    Look up the Django user for this Cognito identity, creating one if needed.
+
+    Handles the case where the email already exists under a different cognito_sub
+    (e.g. user signed up with email/password in a previous pool, then signs in via
+    Google OAuth which issues a new sub). In that case we update the stored sub so
+    future logins are fast.
+    """
+    try:
         user, created = User.objects.get_or_create(
             cognito_sub=cognito_sub,
             defaults={'email': email, 'name': name, 'avatar_url': picture},
         )
+    except IntegrityError:
+        # Email collision: an account with this email exists under a different sub.
+        # Link by adopting the new sub so the user can log in either way going forward.
+        logger.info('Linking existing email %s to new cognito_sub %s', email, cognito_sub)
+        user = User.objects.get(email=email)
+        dirty = ['cognito_sub']
+        user.cognito_sub = cognito_sub
+        if name and user.name != name:
+            user.name = name
+            dirty.append('name')
+        if picture and user.avatar_url != picture:
+            user.avatar_url = picture
+            dirty.append('avatar_url')
+        dirty.append('updated_at')
+        user.save(update_fields=dirty)
+        return user
 
-        if not created:
-            dirty: list[str] = []
-            if email and user.email != email:
-                user.email = email
-                dirty.append('email')
-            if name and user.name != name:
-                user.name = name
-                dirty.append('name')
-            if picture and user.avatar_url != picture:
-                user.avatar_url = picture
-                dirty.append('avatar_url')
-            if dirty:
-                dirty.append('updated_at')
-                user.save(update_fields=dirty)
+    if not created:
+        dirty: list[str] = []
+        if email and user.email != email:
+            user.email = email
+            dirty.append('email')
+        if name and user.name != name:
+            user.name = name
+            dirty.append('name')
+        if picture and user.avatar_url != picture:
+            user.avatar_url = picture
+            dirty.append('avatar_url')
+        if dirty:
+            dirty.append('updated_at')
+            user.save(update_fields=dirty)
 
-        return (user, token)
+    return user
