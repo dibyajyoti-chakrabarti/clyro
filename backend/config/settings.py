@@ -104,3 +104,14 @@ GITHUB_APP_PRIVATE_KEY_PATH = env('GITHUB_APP_PRIVATE_KEY_PATH', default='')
 
 AWS_PROFILE = env('AWS_PROFILE', default='default')
 AWS_REGION = env('AWS_REGION', default='us-east-1')
+
+# ── Step 3 (Canvas) ─────────────────────────────────────────────────────────
+# When set, the canvas agent calls the deployed AgentCore Orchestrator runtime;
+# when empty (default), it runs the local canvas_core deterministic stub.
+ORCHESTRATOR_RUNTIME_ARN = env('ORCHESTRATOR_RUNTIME_ARN', default='')
+
+# DEBUG-only convenience: treat every Step 3 canvas request as the seeded dev
+# user so the endpoints can be exercised without a Cognito token. Inert in
+# production (requires DEBUG=True). Off by default.
+DEV_AUTH_BYPASS = env.bool('DEV_AUTH_BYPASS', default=False)
+DEV_USER_EMAIL = env('DEV_USER_EMAIL', default='dev@crylo.local')
