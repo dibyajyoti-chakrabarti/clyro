@@ -6,15 +6,23 @@ from .views import (
     github_branches,
     github_installations,
     github_repos,
+    me,
     project_detail,
     projects_list,
+    save_intent,
+    trigger_scan,
+    wizard_state,
 )
 
 urlpatterns = [
     path('hello', hello),
+    path('users/me/', me),
     path('projects/', projects_list),
     path('projects/<uuid:pk>/', project_detail),
     path('projects/<uuid:pk>/connect-repo/', connect_repo),
+    path('projects/<uuid:pk>/scan/', trigger_scan),
+    path('projects/<uuid:pk>/intent/', save_intent),
+    path('projects/<uuid:pk>/wizard-state/', wizard_state),
     path('github/installations/', github_installations),
     path('github/repos/', github_repos),
     path('github/branches/', github_branches),

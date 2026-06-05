@@ -53,18 +53,22 @@ function statusBadgeClass(cls) {
 
 function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanContinue }) {
   const [searchParams] = useSearchParams()
-  const [phase, setPhase] = useState('connect')
+  const [phase, setPhase] = useState(() =>
+    projectData.scanResult?.status === 'complete' ? 'results' : 'connect'
+  )
   const [selectedRepo, setSelectedRepo] = useState(projectData.repo?.repo || '')
   const [selectedBranch, setSelectedBranch] = useState(projectData.repo?.branch || '')
   const [selectedInstallationId, setSelectedInstallationId] = useState(null)
   const [scanStep, setScanStep] = useState(0)
   const [scanMessages, setScanMessages] = useState([])
   const [blockReason, setBlockReason] = useState('')
+  const [scanResult, setScanResult] = useState(() => projectData.scanResult || null)
   const [availableRepos, setAvailableRepos] = useState([])
   const [availableBranches, setAvailableBranches] = useState([])
   const [existingInstallations, setExistingInstallations] = useState([])
   const [loadingRepos, setLoadingRepos] = useState(false)
   const [loadingBranches, setLoadingBranches] = useState(false)
+  const animIntervalRef = useRef(null)
 
   useEffect(() => {
     const installationId = searchParams.get('installation_id')
@@ -139,14 +143,15 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
       'Connecting to repository...',
       'Verifying access permissions...',
       'Repository connected!',
+      'Scanning file structure...',
+      'Reading configuration files...',
+      'Detecting services & environment variables...',
+      'Generating architecture draft...',
     ]
     setScanMessages(messages)
     setScanStep(0)
-    setProjectData((prev) => ({
-      ...prev,
-      repo: { repo: selectedRepo, branch: selectedBranch },
-    }))
     setPhase('scanning')
+    setProjectData((prev) => ({ ...prev, repo: { repo: selectedRepo, branch: selectedBranch } }))
 
     try {
       await api.connectRepo(projectId, {
@@ -154,13 +159,47 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
         repo_full_name: selectedRepo,
         repo_branch: selectedBranch,
       })
-      for (let i = 0; i < messages.length; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 600))
+
+      for (let i = 0; i < 3; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
         setScanStep(i + 1)
       }
+
+      const scanPromise = api.triggerScan(projectId)
+
+      let animStep = 3
+      animIntervalRef.current = setInterval(() => {
+        animStep++
+        if (animStep <= messages.length - 1) {
+          setScanStep(animStep)
+        } else {
+          clearInterval(animIntervalRef.current)
+        }
+      }, 10000)
+
+      const result = await scanPromise
+      clearInterval(animIntervalRef.current)
+      setScanStep(messages.length)
+      await new Promise((resolve) => setTimeout(resolve, 400))
+
+      if (result.status === 'hard_block') {
+        setBlockReason(result.block_reason || 'Repository scan blocked')
+        setPhase('blocked')
+        return
+      }
+
+      if (result.status === 'soft_block') {
+        setBlockReason(result.block_reason || 'Scan needs clarification')
+        setPhase('blocked')
+        return
+      }
+
+      setScanResult(result)
+      setProjectData((prev) => ({ ...prev, scanResult: result }))
       setPhase('results')
     } catch (err) {
-      setBlockReason(err.message || 'Failed to connect repository')
+      clearInterval(animIntervalRef.current)
+      setBlockReason(err.message || 'Failed to analyse repository')
       setPhase('blocked')
     }
   }
@@ -281,11 +320,11 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
               return (
                 <div key={item} className='flex items-center gap-3'>
                   {isDone ? (
-                    <div className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>
+                    <div className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>
                       ✓
                     </div>
                   ) : isActive ? (
-                    <div className='h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent' />
+                    <div className='h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]' />
                   ) : (
                     <div className='h-4 w-4 rounded-full border border-border bg-background' />
                   )}
@@ -297,7 +336,7 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
 
           <div className='mt-5 h-1.5 overflow-hidden rounded-full bg-background'>
             <div
-              className='h-full rounded-full bg-accent transition-all duration-500 ease-out'
+              className='h-full rounded-full bg-gradient-to-r from-accent/80 to-accent transition-all duration-500 ease-out'
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -324,46 +363,113 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
   }
 
   // results phase
+  const resources = scanResult?.detected_resources
+  const services = resources?.services || {}
+  const infra = resources?.infrastructure || {}
+  const envVars = scanResult?.env_vars || []
+  const isMonorepo = resources?.repository?.is_monorepo
+
+  const detectedServices = [
+    services.backend?.detected && `Django backend${services.backend.project_name ? ` (${services.backend.project_name})` : ''}`,
+    services.frontend?.detected && 'React frontend',
+    services.worker?.detected && `Celery worker${services.worker.scheduled ? ' + scheduled tasks' : ''}`,
+  ].filter(Boolean)
+
+  const detectedInfra = [
+    infra.database?.detected && 'PostgreSQL',
+    infra.cache?.detected && 'Redis cache',
+    infra.storage?.detected && 'S3 storage',
+    infra.queue?.detected && 'SQS queue',
+  ].filter(Boolean)
+
+  const userSecrets = envVars.filter((v) => v.classification === 'user_secret')
+  const generated = envVars.filter((v) => v.classification === 'generated')
+  const optional = envVars.filter((v) => v.classification === 'optional')
+
   return (
     <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-      <div className='rounded-lg border border-border/70 bg-surface p-4'>
-        <h3 className='text-lg font-semibold'>Repository connected</h3>
+      <div className='rounded-lg border border-border/70 bg-surface p-4 space-y-5'>
 
-        <div className='mt-5 space-y-3'>
-          <div className='flex rounded-md border border-border bg-background'>
-            <div className='w-1 rounded-l-md bg-accent' />
-            <div className='flex flex-1 items-center gap-3 p-3'>
-              <div className='grid h-9 w-9 place-items-center rounded-md border border-border bg-surface text-xs font-semibold'>
-                GH
-              </div>
-              <div>
-                <p className='text-sm font-medium text-text-primary'>{selectedRepo}</p>
-                <p className='text-xs font-normal text-text-muted'>Branch: {selectedBranch}</p>
-              </div>
+        <div className='flex rounded-md border border-border bg-background'>
+          <div className='w-1 rounded-l-md bg-accent' />
+          <div className='flex flex-1 items-center gap-3 p-3'>
+            <div className='grid h-9 w-9 place-items-center rounded-md border border-border bg-surface text-xs font-semibold'>GH</div>
+            <div>
+              <p className='text-sm font-medium text-text-primary'>{selectedRepo}</p>
+              <p className='text-xs font-normal text-text-muted'>Branch: {selectedBranch}{isMonorepo != null ? ` · ${isMonorepo ? 'monorepo' : 'single-service'}` : ''}</p>
             </div>
-          </div>
-
-          <div className='flex items-center gap-2 text-sm text-green-400'>
-            <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px]'>✓</span>
-            Access verified
-          </div>
-          <div className='flex items-center gap-2 text-sm text-green-400'>
-            <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px]'>✓</span>
-            Repository linked to project
           </div>
         </div>
 
-        <p className='mt-5 text-xs font-normal text-text-muted'>Ready for Step 2 — tell us about your app</p>
+        {detectedServices.length > 0 && (
+          <div>
+            <p className='text-xs font-medium text-text-muted uppercase tracking-wide mb-2'>Detected services</p>
+            <div className='space-y-1.5'>
+              {detectedServices.map((s) => (
+                <div key={s} className='flex items-center gap-2 text-sm text-text-primary'>
+                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>✓</span>
+                  {s}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {detectedInfra.length > 0 && (
+          <div>
+            <p className='text-xs font-medium text-text-muted uppercase tracking-wide mb-2'>Detected infrastructure</p>
+            <div className='space-y-1.5'>
+              {detectedInfra.map((s) => (
+                <div key={s} className='flex items-center gap-2 text-sm text-text-primary'>
+                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>✓</span>
+                  {s}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {envVars.length > 0 && (
+          <div>
+            <p className='text-xs font-medium text-text-muted uppercase tracking-wide mb-2'>Environment variables ({envVars.length} detected)</p>
+            <div className='flex flex-wrap gap-2'>
+              {generated.length > 0 && (
+                <span className='rounded-full border border-green-500/30 bg-green-500/10 px-2.5 py-1 text-xs text-green-300'>
+                  {generated.length} auto-generated
+                </span>
+              )}
+              {userSecrets.length > 0 && (
+                <span className='rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-300'>
+                  {userSecrets.length} user secret{userSecrets.length > 1 ? 's' : ''}
+                </span>
+              )}
+              {optional.length > 0 && (
+                <span className='rounded-full border border-border bg-background px-2.5 py-1 text-xs text-text-muted'>
+                  {optional.length} optional
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className='flex items-center gap-2 pt-1 text-xs font-normal text-text-muted border-t border-border'>
+          <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>✓</span>
+          Architecture draft generated — ready for Step 2
+        </div>
       </div>
     </div>
   )
 }
 
-function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
+function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanContinue }) {
+  const hasPostgres = projectData.scanResult?.detected_resources?.infrastructure?.database?.detected ?? true
+  const hasWorker = projectData.scanResult?.detected_resources?.services?.worker?.detected ?? false
+
   const questions = useMemo(() => ([
     {
       id: 'description',
       moment: 1,
+      momentLabel: 'About your app',
       question: 'Describe your app in one sentence.',
       type: 'free',
       options: [],
@@ -371,61 +477,57 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
     {
       id: 'scale',
       moment: 1,
+      momentLabel: 'About your app',
       question: 'How many users do you expect at launch?',
       type: 'choice',
       options: [
         { value: 'solo', label: 'Just me or a small internal team' },
-        { value: 'small', label: 'Small user base - under 1,000 users' },
-        { value: 'medium', label: 'Public product - expecting real traffic' },
-        { value: 'large', label: 'High scale - expecting significant load' },
+        { value: 'small', label: 'Small user base — under 1,000 users' },
+        { value: 'medium', label: 'Public product — expecting real traffic' },
+        { value: 'large', label: 'High scale — expecting significant load' },
       ],
     },
     {
       id: 'criticality',
       moment: 1,
+      momentLabel: 'About your app',
       question: 'How critical is uptime for this deployment?',
       type: 'choice',
       options: [
-        { value: 'low', label: 'Downtime is acceptable - dev, staging, or side project' },
-        { value: 'medium', label: 'Downtime is bad but not catastrophic - early stage product' },
-        { value: 'high', label: 'It needs to stay up - this is a production business' },
-      ],
-    },
-    {
-      id: 'compute_choice',
-      moment: 2,
-      question: 'Your Django backend will run as a container on AWS. Where do you want it hosted?',
-      type: 'choice',
-      options: [
-        { value: 'ecs_fargate', label: 'ECS Fargate - fully managed, no servers to configure', note: 'Recommended for most teams' },
-        { value: 'ecs_ec2', label: 'ECS on EC2 - more control, slightly cheaper at high scale', note: 'More operational overhead' },
-        { value: 'ec2', label: 'EC2 - you manage the underlying server yourself', note: 'Maximum control, most effort' },
+        { value: 'low', label: 'Downtime is acceptable — dev, staging, or side project' },
+        { value: 'medium', label: 'Downtime is bad but not catastrophic — early stage product' },
+        { value: 'high', label: 'It needs to stay up — this is a production business' },
       ],
     },
     {
       id: 'database_choice',
       moment: 2,
+      momentLabel: 'Infrastructure',
       question: 'Which database setup do you want?',
       type: 'choice',
+      condition: () => hasPostgres,
       options: [
-        { value: 'rds_postgres', label: 'RDS PostgreSQL - reliable, well-understood, lower cost', note: 'Recommended' },
-        { value: 'aurora_postgres', label: 'Aurora PostgreSQL - higher performance, more scalable', note: 'Higher cost (~2.5x)' },
+        { value: 'rds_postgres', label: 'RDS PostgreSQL — reliable, well-understood, lower cost', recommended: true },
+        { value: 'aurora_postgres', label: 'Aurora PostgreSQL — higher performance, more scalable', note: 'Higher cost (~2.5×)' },
       ],
     },
     {
       id: 'worker_compute_choice',
       moment: 2,
+      momentLabel: 'Infrastructure',
       question: 'Your background workers were detected. Where should they run?',
       type: 'choice',
+      condition: () => hasWorker,
       options: [
-        { value: 'ecs_fargate', label: 'ECS Fargate - same as your backend, fully managed', note: 'Recommended' },
-        { value: 'ecs_ec2', label: 'ECS on EC2 - more control, cheaper at scale', note: '' },
-        { value: 'ec2', label: 'EC2 - manage the server yourself', note: '' },
+        { value: 'ecs_fargate', label: 'ECS Fargate — fully managed, no servers to configure', recommended: true },
+        { value: 'ecs_ec2', label: 'ECS on EC2 — more control, cheaper at scale' },
+        { value: 'ec2', label: 'EC2 — manage the server yourself' },
       ],
     },
     {
       id: 'environment',
       moment: 2,
+      momentLabel: 'Infrastructure',
       question: 'What environment is this deployment for?',
       type: 'choice',
       options: [
@@ -437,28 +539,33 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
     {
       id: 'domain_has',
       moment: 3,
+      momentLabel: 'Domain',
       question: 'Do you have a domain name for this app?',
       type: 'choice',
       options: [
-        { value: 'yes', label: 'Yes - I have a domain to point to this' },
-        { value: 'no', label: 'Not yet - give me the AWS-generated URL for now' },
-        { value: 'internal', label: 'No public domain needed - internal use only' },
+        { value: 'yes', label: 'Yes — I have a domain to point to this' },
+        { value: 'no', label: 'Not yet — give me the AWS-generated URL for now' },
+        { value: 'internal', label: 'No public domain needed — internal use only' },
       ],
     },
     {
       id: 'domain_name',
       moment: 3,
+      momentLabel: 'Domain',
       question: "What's the domain? (e.g. app.myproduct.com)",
       type: 'free',
       options: [],
       condition: (answers) => answers.domain_has === 'yes',
     },
-  ]), [])
+  ]), [hasPostgres, hasWorker])
 
+  const hasRestoredIntent = !!projectData.intent?.scale
   const [currentQ, setCurrentQ] = useState(0)
-  const [answers, setAnswers] = useState(projectData.intent || {})
+  const [answers, setAnswers] = useState(() => projectData.intent || {})
   const [direction, setDirection] = useState('forward')
-  const [isComplete, setIsComplete] = useState(false)
+  const [isComplete, setIsComplete] = useState(hasRestoredIntent)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [cardStage, setCardStage] = useState('idle')
   const [descriptionValue, setDescriptionValue] = useState(projectData.intent?.description || '')
   const [domainValue, setDomainValue] = useState(projectData.intent?.domain_name || '')
@@ -466,8 +573,8 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
   const enterTimerRef = useRef(null)
 
   useEffect(() => {
-    setStep2CanContinue(isComplete)
-  }, [isComplete, setStep2CanContinue])
+    setStep2CanContinue(isComplete && !isSaving)
+  }, [isComplete, isSaving, setStep2CanContinue])
 
   useEffect(() => {
     return () => {
@@ -540,15 +647,20 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
       enterTimerRef.current = setTimeout(() => {
         setCardStage('idle')
       }, 20)
-    }, 200)
+    }, 120)
   }
 
   const finalizeIntent = (finalAnswers) => {
-    setProjectData((prev) => ({
-      ...prev,
-      intent: finalAnswers,
-    }))
     setIsComplete(true)
+    setProjectData((prev) => ({ ...prev, intent: finalAnswers }))
+    setIsSaving(true)
+    setSaveError('')
+    api.saveIntent(projectId, { ...finalAnswers, compute_choice: 'ecs_fargate' })
+      .then(() => setIsSaving(false))
+      .catch((err) => {
+        setIsSaving(false)
+        setSaveError(err.message || 'Failed to save — your answers may not be persisted')
+      })
   }
 
   const advanceWithAnswers = (nextAnswers) => {
@@ -615,12 +727,10 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
     transitionTo(prevIndex, 'back')
   }
 
-  const optionCardClass = (selected) => {
-    if (selected) {
-      return 'border-accent bg-accent-soft/30'
-    }
-
-    return 'border-border bg-background hover:border-accent/60'
+  const optionCardClass = (selected, recommended) => {
+    if (selected) return 'border-accent bg-accent-soft/30 shadow-[0_0_0_1px_rgba(249,115,22,0.5),0_0_16px_rgba(249,115,22,0.1)]'
+    if (recommended) return 'border-accent/40 bg-background hover:border-accent/70 ring-1 ring-accent/15 shadow-[0_0_0_1px_rgba(249,115,22,0.25)]'
+    return 'border-border bg-background hover:border-accent/60 hover:-translate-y-px'
   }
 
   const cardClass = () => {
@@ -665,10 +775,15 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
   return (
     <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
       <div className='mx-auto max-w-md'>
+        {activeQuestion?.momentLabel && (
+          <div className='mb-1 text-[11px] font-semibold uppercase tracking-widest text-accent/70'>
+            {activeQuestion.momentLabel}
+          </div>
+        )}
         <div className='text-xs font-normal text-text-muted'>Question {Math.max(1, questionNumber)} of {Math.max(1, totalVisible)}</div>
         <div className='mt-2 h-1.5 overflow-hidden rounded-full bg-background'>
           <div
-            className='h-full rounded-full bg-accent transition-all duration-500 ease-out'
+            className='h-full rounded-full bg-gradient-to-r from-accent/80 to-accent transition-all duration-500 ease-out'
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -685,7 +800,10 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
 
         {isComplete ? (
           <div className='mt-4 rounded-lg border border-border/70 bg-surface p-5'>
-            <h3 className='text-2xl font-semibold tracking-tight'>All set</h3>
+            <div className='flex items-center gap-2'>
+              <h3 className='text-2xl font-semibold tracking-tight'>All set</h3>
+              {isSaving && <div className='h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent' />}
+            </div>
             <div className='mt-4 overflow-hidden rounded-md border border-border'>
               <table className='w-full text-left text-sm'>
                 <tbody>
@@ -698,11 +816,15 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
                 </tbody>
               </table>
             </div>
-            <p className='mt-4 text-xs font-normal text-text-muted'>Your intent has been saved - your architecture is ready to review</p>
+            {saveError ? (
+              <p className='mt-3 text-xs text-red-400'>{saveError}</p>
+            ) : (
+              <p className='mt-4 text-xs font-normal text-text-muted'>Intent saved — your architecture is ready to review</p>
+            )}
           </div>
         ) : (
           <div className='mt-4 overflow-hidden rounded-lg border border-border/70 bg-surface'>
-            <div className={`p-5 transition-all duration-200 ${cardClass()}`}>
+            <div className={`p-5 transition-all duration-[120ms] ${cardClass()}`}>
               <p className='text-base font-medium text-text-primary'>{activeQuestion.question}</p>
 
               {activeQuestion.type === 'choice' ? (
@@ -712,9 +834,14 @@ function StepTwoPanel({ projectData, setProjectData, setStep2CanContinue }) {
                       key={option.value}
                       type='button'
                       onClick={() => handleChoice(option.value)}
-                      className={`w-full rounded-lg border p-3 text-left transition-colors ${optionCardClass(answers[activeQuestion.id] === option.value)}`}
+                      className={`w-full rounded-lg border p-3 text-left transition-all duration-150 ${optionCardClass(answers[activeQuestion.id] === option.value, option.recommended)}`}
                     >
-                      <p className='text-sm font-medium text-text-primary'>{option.label}</p>
+                      <div className='flex items-center gap-2'>
+                        <p className='text-sm font-medium text-text-primary'>{option.label}</p>
+                        {option.recommended && (
+                          <span className='rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent'>Recommended</span>
+                        )}
+                      </div>
                       {option.note ? <p className='mt-1 text-xs font-normal text-text-muted'>{option.note}</p> : null}
                     </button>
                   ))}
@@ -1441,6 +1568,28 @@ function StepFivePanel() {
   )
 }
 
+const STATUS_STEP = {
+  created: 1, repo_connected: 1, scanning: 1, scan_complete: 2,
+  intent_collected: 3, canvas_draft: 3, canvas_finalized: 4,
+  provisioning: 4, live: 5, failed: 1,
+}
+
+const STATUS_ORDER = [
+  'created', 'repo_connected', 'scanning', 'scan_complete',
+  'intent_collected', 'canvas_draft', 'canvas_finalized',
+  'provisioning', 'live',
+]
+
+function getCompletedSteps(status) {
+  const idx = STATUS_ORDER.indexOf(status)
+  const done = new Set()
+  if (idx >= 3) done.add(1)
+  if (idx >= 4) done.add(2)
+  if (idx >= 6) done.add(3)
+  if (idx >= 7) done.add(4)
+  return done
+}
+
 export default function ProjectWizard() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -1450,12 +1599,14 @@ export default function ProjectWizard() {
   const [projectName, setProjectName] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [loading, setLoading] = useState(!isNew)
 
   const [step, setStep] = useState(1)
   const [completedSteps, setCompletedSteps] = useState(() => new Set())
   const [projectData, setProjectData] = useState({
     repo: null,
     intent: {},
+    scanResult: null,
     canvas: null,
     provision: null,
   })
@@ -1465,6 +1616,38 @@ export default function ProjectWizard() {
   const [step3ShowBanner, setStep3ShowBanner] = useState(false)
   const [step3InputPrefill, setStep3InputPrefill] = useState('')
   const [step4CanContinue, setStep4CanContinue] = useState(false)
+
+  useEffect(() => {
+    if (isNew || !id) return
+
+    api.getWizardState(id)
+      .then(({ project, scan, intent }) => {
+        const intentAnswers = intent ? {
+          description: intent.description,
+          scale: intent.scale,
+          criticality: intent.criticality,
+          environment: intent.environment,
+          database_choice: intent.database_choice,
+          worker_compute_choice: intent.worker_compute_choice,
+          domain_has: intent.domain_has,
+          domain_name: intent.domain_name,
+        } : {}
+
+        setProjectData({
+          repo: project.repo_full_name
+            ? { repo: project.repo_full_name, branch: project.repo_branch }
+            : null,
+          scanResult: scan || null,
+          intent: intentAnswers,
+          canvas: null,
+          provision: null,
+        })
+        setStep(STATUS_STEP[project.status] ?? 1)
+        setCompletedSteps(getCompletedSteps(project.status))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [id, isNew])
 
   const handleCreateProject = async (e) => {
     e.preventDefault()
@@ -1483,10 +1666,18 @@ export default function ProjectWizard() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className='flex min-h-[calc(100vh-121px)] items-center justify-center'>
+        <div className='h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent' />
+      </div>
+    )
+  }
+
   if (isNew && !projectId) {
     return (
       <div className='flex min-h-[calc(100vh-121px)] items-center justify-center'>
-        <div className='w-full max-w-md rounded-xl border border-border bg-surface p-8'>
+        <div className='w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-lg shadow-black/30 ring-1 ring-white/[0.06]'>
           <h1 className='text-2xl font-semibold tracking-tight'>New Project</h1>
           <p className='mt-2 text-sm font-normal text-text-muted'>
             Give your project a name to get started.
@@ -1495,7 +1686,7 @@ export default function ProjectWizard() {
             <div>
               <label className='block text-sm font-medium text-text-primary'>Project name</label>
               <input
-                className='mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
+                className='mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary caret-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
                 placeholder='My awesome app'
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
@@ -1584,7 +1775,7 @@ export default function ProjectWizard() {
     <div className='relative min-h-[calc(100vh-121px)]'>
       <h1 className='text-2xl font-semibold tracking-tight'>Project Wizard</h1>
 
-      <div className='fixed inset-x-0 top-[73px] z-20 border-b border-border bg-surface/95 backdrop-blur'>
+      <div className='fixed inset-x-0 top-[73px] z-20 border-b border-white/[0.06] bg-surface/80 backdrop-blur-md'>
         <div className='mx-auto w-full max-w-6xl px-6 py-4'>
           <div className='flex items-start justify-center gap-6 md:gap-10'>
             {stepConfig.map((item) => {
@@ -1593,13 +1784,13 @@ export default function ProjectWizard() {
               const circleClass = isCompleted
                 ? 'border-accent bg-accent text-background'
                 : isActive
-                  ? 'border-accent bg-surface ring-2 ring-accent/35'
+                  ? 'border-accent bg-surface shadow-[0_0_0_4px_rgba(249,115,22,0.15)]'
                   : 'border-border bg-background text-text-muted'
               const labelClass = isActive ? 'font-medium text-text-primary' : 'font-normal text-text-muted'
 
               return (
                 <div key={item.number} className='flex flex-col items-center gap-2'>
-                  <div className={`grid h-9 w-9 place-items-center rounded-full border text-sm ${circleClass}`}>
+                  <div className={`grid h-11 w-11 place-items-center rounded-full border text-sm transition-all duration-300 ${circleClass}`}>
                     {item.number}
                   </div>
                   <p className={`text-center text-xs ${labelClass}`}>{item.title}</p>
@@ -1629,6 +1820,7 @@ export default function ProjectWizard() {
 
           {step === 2 ? (
             <StepTwoPanel
+              projectId={projectId}
               projectData={projectData}
               setProjectData={setProjectData}
               setStep2CanContinue={setStep2CanContinue}
@@ -1670,7 +1862,7 @@ export default function ProjectWizard() {
         </section>
       </div>
 
-      <div className='fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur'>
+      <div className='fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.06] bg-surface/80 backdrop-blur-md'>
         <div className='mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4'>
           <div>
             {step > 1 ? (

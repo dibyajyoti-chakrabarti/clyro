@@ -3,10 +3,14 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import GitHubInstallation, Project
-from core.serializers import GitHubInstallationSerializer, ProjectSerializer
+from core.models import GitHubInstallation, IntentRecord, Project, ScanResult
+from core.serializers import (
+    GitHubInstallationSerializer, IntentRecordSerializer,
+    ProjectSerializer, ScanResultSerializer, UserProfileSerializer,
+)
 from .auth import CognitoAuthentication
 from . import github_utils
+from .scanner import runner as scan_runner
 
 _AUTH = [CognitoAuthentication]
 _PERMS = [IsAuthenticated]
@@ -90,6 +94,126 @@ def connect_repo(request, pk):
     project.save(update_fields=['github_installation', 'repo_full_name', 'repo_branch', 'status', 'updated_at'])
 
     return Response(ProjectSerializer(project).data)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def trigger_scan(request, pk):
+    try:
+        project = Project.objects.get(pk=pk, user=request.user)
+    except Project.DoesNotExist:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not project.repo_full_name or not project.github_installation:
+        return Response(
+            {'error': 'Repository not connected. Call connect-repo first.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if project.status == Project.Status.SCANNING:
+        return Response({'error': 'Scan already in progress'}, status=status.HTTP_409_CONFLICT)
+
+    project.status = Project.Status.SCANNING
+    project.save(update_fields=['status', 'updated_at'])
+
+
+    scan = scan_runner.run_scan_for_project(project)
+    return Response(ScanResultSerializer(scan).data)
+
+
+# ── User profile ──────────────────────────────────────────────────────────────
+
+@api_view(['GET', 'PATCH', 'DELETE'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def me(request):
+    if request.method == 'GET':
+        return Response(UserProfileSerializer(request.user).data)
+
+    if request.method == 'PATCH':
+        serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # DELETE
+    request.user.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Wizard state ──────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def wizard_state(request, pk):
+    try:
+        project = Project.objects.get(pk=pk, user=request.user)
+    except Project.DoesNotExist:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
+    intent = project.intent_records.order_by('-created_at').first()
+
+    return Response({
+        'project': ProjectSerializer(project).data,
+        'scan': ScanResultSerializer(scan).data if scan else None,
+        'intent': IntentRecordSerializer(intent).data if intent else None,
+    })
+
+
+# ── Intent ────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def save_intent(request, pk):
+    try:
+        project = Project.objects.get(pk=pk, user=request.user)
+    except Project.DoesNotExist:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = IntentRecordSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    from django.utils import timezone
+    intent, _ = IntentRecord.objects.update_or_create(
+        project=project,
+        defaults={**serializer.validated_data, 'completed_at': timezone.now()},
+    )
+
+    _update_canvas_with_intent(project, intent)
+
+    project.status = Project.Status.INTENT_COLLECTED
+    project.save(update_fields=['status', 'updated_at'])
+
+    return Response(IntentRecordSerializer(intent).data, status=status.HTTP_201_CREATED)
+
+
+def _update_canvas_with_intent(project, intent):
+    import yaml
+
+    scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
+    if not scan or not scan.draft_canvas_yaml:
+        return
+
+    try:
+        canvas = yaml.safe_load(scan.draft_canvas_yaml)
+    except Exception:
+        return
+
+    if intent.database_choice:
+        canvas.setdefault('infrastructure', {}).setdefault('database', {})['type'] = intent.database_choice
+
+    if intent.worker_compute_choice:
+        if 'services' in canvas and 'worker' in canvas.get('services', {}):
+            canvas['services']['worker']['type'] = intent.worker_compute_choice
+
+    scan.draft_canvas_yaml = yaml.dump(canvas, default_flow_style=False, allow_unicode=True)
+    scan.save(update_fields=['draft_canvas_yaml'])
 
 
 # ── GitHub ────────────────────────────────────────────────────────────────────

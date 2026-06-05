@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { signUp } from 'aws-amplify/auth'
+import { signUp, signInWithRedirect } from 'aws-amplify/auth'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import { GitHubIcon, GoogleIcon } from '../../components/ui/BrandIcons'
@@ -170,6 +170,7 @@ export default function Signup() {
                 <Button
                   variant="secondary"
                   className="min-h-12 w-full gap-3 border-white/[0.14] bg-white/[0.035] text-base"
+                  onClick={() => signInWithRedirect({ provider: 'Google' })}
                 >
                   <GoogleIcon className="h-5 w-5" />
                   Google
@@ -177,6 +178,8 @@ export default function Signup() {
                 <Button
                   variant="secondary"
                   className="min-h-12 w-full gap-3 border-white/[0.14] bg-white/[0.035] text-base"
+                  disabled
+                  title="GitHub login coming soon"
                 >
                   <GitHubIcon className="h-5 w-5" />
                   GitHub

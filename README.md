@@ -155,6 +155,50 @@ Step 1 allows users to connect a GitHub repository to a project. This uses a Git
 
 ---
 
+## Agentic Workflow
+
+### Step 1 — Repository Analysis
+
+After the user connects a repo, Clyro runs an agentic scan using the **Strands** framework (AWS open-source Python SDK for agents) backed by **Claude 3.5 Sonnet** via AWS Bedrock (APAC cross-region inference profile).
+
+**Stack:**
+- Agent framework: [`strands-agents`](https://github.com/strands-agents/sdk-python)
+- LLM: `apac.anthropic.claude-3-5-sonnet-20241022-v2:0` via AWS Bedrock
+- Tools: three `@tool`-decorated functions the agent can call — `get_file_tree`, `read_file`, `search_in_files` — all backed by GitHub's REST API using the project's installation token
+
+**How it works:**
+
+The agent is given a detailed system prompt encoding every detection rule from the product spec and runs a structured 3-pass scan:
+
+1. **Pass 1 — File tree** (`get_file_tree`): walks the repo root, identifies monorepo vs single-service, flags high-signal files. No file contents are read.
+2. **Pass 2 — Targeted reads** (`read_file`): reads specific files in priority order — `requirements.txt`, `manage.py`, settings files (all discovered locations), `package.json`, `docker-compose.yml`, CI workflows.
+3. **Pass 3 — Fallback search** (`search_in_files`): fires only when Pass 2 leaves genuine ambiguity (no settings file found, DB engine unclear). Runs targeted string searches across `.py` files; never reads whole files.
+
+Detection is deterministic by rule first; the LLM only uses its own reasoning for genuinely ambiguous cases. The agent returns a single JSON object with three payloads: a `detected_resources` record (services, infrastructure, IaC), an `env_vars` record (each key classified as `generated`, `user_secret`, or `optional`), and a `draft_canvas_yaml`.
+
+Django's `runner.py` receives this, persists `ScanResult` and individual `EnvVarKey` rows to the DB, and advances the project status to `scan_complete`.
+
+**To use locally:** set `AWS_PROFILE` and `AWS_REGION` in `backend/.env.local` and ensure the profile has `AmazonBedrockFullAccess`.
+
+```env
+AWS_PROFILE=your-aws-profile
+AWS_REGION=ap-south-1
+```
+
+### Step 2 — Intent Collection
+
+Step 2 is not agentic — it's a short adaptive questionnaire. The questions the user sees are determined by what Step 1 detected:
+
+- **Q: Database choice** — only shown if PostgreSQL was detected (`psycopg2` in `requirements.txt`)
+- **Q: Worker compute** — only shown if Celery was detected
+- **Backend compute** — defaults silently to ECS Fargate; not asked (most users should pick this anyway)
+
+Once the user answers, the intent is persisted as an `IntentRecord` and the `draft_canvas_yaml` from Step 1 is updated with the confirmed `aws_service` values (e.g. `rds_postgres` vs `aurora_postgres`). Project status advances to `intent_collected`.
+
+Step 3 (canvas review) and Step 4 (provisioning) will bring agentic AI back — the canvas agent will handle natural-language edits to the architecture, and the provisioning step will generate CloudFormation from the finalised `canvas.yml`.
+
+---
+
 ## Common Development Workflow
 
 1. Start Docker (database)

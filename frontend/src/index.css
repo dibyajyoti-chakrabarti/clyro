@@ -5,6 +5,12 @@
   font-family: 'Geist', Inter, system-ui, -apple-system, sans-serif;
 }
 
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 html,
 body,
 #root {
@@ -15,4 +21,26 @@ body {
   margin: 0;
   background-color: #111318;
   color: #eeeef0;
+}
+
+/* Selection */
+::selection {
+  background: rgba(249, 115, 22, 0.22);
+  color: #eeeef0;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2c2e38;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3c3e4a;
 }

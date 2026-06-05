@@ -9,7 +9,7 @@ def _make_app_jwt() -> str:
     now = int(time.time())
     payload = {
         'iat': now - 60,
-        'exp': now + 600,
+        'exp': now + 540,  # 9 min — GitHub max is 10, WSL2 clock drifts ~10s
         'iss': str(settings.GITHUB_APP_ID),
     }
     with open(settings.GITHUB_APP_PRIVATE_KEY_PATH, 'r') as f:
