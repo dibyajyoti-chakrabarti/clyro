@@ -1,0 +1,6 @@
+# Tests are local-only — not committed.
+tests/
+
+__pycache__/
+*.pyc
+.pytest_cache/
