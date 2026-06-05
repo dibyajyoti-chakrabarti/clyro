@@ -1091,10 +1091,26 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
               const fromPos = nodePositions[connection.from]
               const toPos = nodePositions[connection.to]
               if (!fromPos || !toPos) return null
-              const x1 = fromPos.x + 88
-              const y1 = fromPos.y + 56
-              const x2 = toPos.x + 88
-              const y2 = toPos.y
+              const W = 176
+              const H = 74
+              const cx1 = fromPos.x + W / 2
+              const cy1 = fromPos.y + H / 2
+              const cx2 = toPos.x + W / 2
+              const cy2 = toPos.y + H / 2
+              // Clip the center-to-center line to each card's border so arrows
+              // meet the edges of the cards instead of running into them.
+              const edge = (cx, cy, tx, ty) => {
+                const dx = tx - cx
+                const dy = ty - cy
+                if (!dx && !dy) return [cx, cy]
+                const scale = Math.min(
+                  dx ? W / 2 / Math.abs(dx) : Infinity,
+                  dy ? H / 2 / Math.abs(dy) : Infinity,
+                )
+                return [cx + dx * scale, cy + dy * scale]
+              }
+              const [x1, y1] = edge(cx1, cy1, cx2, cy2)
+              const [x2, y2] = edge(cx2, cy2, cx1, cy1)
               const midX = (x1 + x2) / 2
               const midY = (y1 + y2) / 2
 
