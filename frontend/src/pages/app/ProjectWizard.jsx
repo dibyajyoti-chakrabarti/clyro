@@ -899,6 +899,8 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
   const [pendingOp, setPendingOp] = useState(null)
   const chatEndRef = useRef(null)
   const chatInputRef = useRef(null)
+  const surfaceRef = useRef(null)
+  const panState = useRef(null)
 
   useEffect(() => {
     if (!step3InputPrefill) {
@@ -1013,10 +1015,42 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
   const totalCost = canvasCost.reduce((sum, item) => sum + item.monthly, 0)
   const selected = canvasNodes.find((node) => node.id === selectedNode) || null
 
+  // Size the surface to the diagram so every node is reachable by panning.
+  const surfaceBounds = canvasNodes.reduce(
+    (acc, node) => {
+      const pos = nodePositions[node.id]
+      if (!pos) return acc
+      return { width: Math.max(acc.width, pos.x + 220), height: Math.max(acc.height, pos.y + 180) }
+    },
+    { width: 0, height: 520 },
+  )
+
+  // Click-and-drag to pan the canvas (drag-scroll the overflow container).
+  const startPan = (event) => {
+    if (event.target.closest('button')) return // don't pan when interacting with a node
+    const el = surfaceRef.current
+    if (!el) return
+    panState.current = { x: event.clientX, y: event.clientY, left: el.scrollLeft, top: el.scrollTop }
+  }
+  const movePan = (event) => {
+    const el = surfaceRef.current
+    if (!panState.current || !el) return
+    el.scrollLeft = panState.current.left - (event.clientX - panState.current.x)
+    el.scrollTop = panState.current.top - (event.clientY - panState.current.y)
+  }
+  const endPan = () => {
+    panState.current = null
+  }
+
   return (
     <div className='mt-8 flex h-full min-h-[540px] gap-4'>
       <div
-        className='relative flex-1 overflow-auto rounded-xl border border-border/70 bg-background'
+        ref={surfaceRef}
+        className='relative flex-1 cursor-grab select-none overflow-auto rounded-xl border border-border/70 bg-background active:cursor-grabbing'
+        onMouseDown={startPan}
+        onMouseMove={movePan}
+        onMouseUp={endPan}
+        onMouseLeave={endPan}
         onClick={() => setSelectedNode(null)}
       >
         {step3ShowBanner ? (
@@ -1040,6 +1074,8 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
         <div
           className='relative min-h-[520px]'
           style={{
+            minWidth: `${surfaceBounds.width}px`,
+            minHeight: `${surfaceBounds.height}px`,
             backgroundColor: 'transparent',
             backgroundImage: 'radial-gradient(rgba(148, 163, 184, 0.15) 1px, transparent 1px)',
             backgroundSize: '24px 24px',
