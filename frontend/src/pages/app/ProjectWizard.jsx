@@ -883,9 +883,9 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
   )
 }
 
-function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBanner, onDismissStep3Banner }) {
-  const [canvas, setCanvas] = useState(null) // TODO: fetch from GET /api/projects/{id}/canvas/latest/
-  const [nodePositions, setNodePositions] = useState({}) // TODO: persisted in canvas_snapshot
+function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, step3ShowBanner, onDismissStep3Banner }) {
+  const [canvas, setCanvas] = useState(null)
+  const [nodePositions, setNodePositions] = useState({})
 
   const [selectedNode, setSelectedNode] = useState(null)
   const [chatInput, setChatInput] = useState('')
@@ -895,8 +895,8 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
       text: 'Your architecture has been generated from your repository scan. You can ask me to explain any component, compare services, or suggest changes.',
     },
   ])
-  // TODO: call POST /api/projects/{id}/canvas/agent/ with the user's message
   const [agentLoading, setAgentLoading] = useState(false)
+  const [pendingOp, setPendingOp] = useState(null)
   const chatEndRef = useRef(null)
   const chatInputRef = useRef(null)
 
@@ -918,6 +918,21 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
     }
   }, [chatHistory])
 
+  useEffect(() => {
+    if (!projectId) return
+    let active = true
+    api.getCanvas(projectId)
+      .then((res) => {
+        if (!active) return
+        setCanvas(res.canvas)
+        setNodePositions(res.positions || {})
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [projectId])
+
   const iconClassByType = {
     service: 'ti ti-server',
     static: 'ti ti-world',
@@ -936,15 +951,60 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
     queue: 'border-l-yellow-500',
   }
 
-  const handleSend = () => {
+  const appendAgent = (text) => setChatHistory((prev) => [...prev, { role: 'agent', text }])
+
+  const applyResult = (res) => {
+    if (res.outcome === 'applied' && res.version) {
+      setCanvas(res.version.canvas)
+      setNodePositions(res.version.positions || {})
+      setPendingOp(null)
+      appendAgent(res.message || 'Done — I updated the canvas.')
+    } else if (res.outcome === 'proposal') {
+      setPendingOp(res.operation || null)
+      appendAgent(res.message)
+    } else {
+      setPendingOp(null)
+      appendAgent(res.message)
+    }
+  }
+
+  const handleSend = async () => {
     const message = chatInput.trim()
-    if (!message) {
+    if (!message || agentLoading) {
       return
     }
 
     setChatHistory((prev) => [...prev, { role: 'user', text: message }])
     setChatInput('')
-    // TODO: call POST /api/projects/{id}/canvas/agent/ with the user's message
+    setAgentLoading(true)
+    try {
+      const res = await api.canvasAgent(projectId, { prompt: message })
+      applyResult(res)
+    } catch {
+      appendAgent('Something went wrong talking to the canvas agent.')
+    } finally {
+      setAgentLoading(false)
+    }
+  }
+
+  const confirmProposal = async () => {
+    if (!pendingOp || agentLoading) {
+      return
+    }
+    setAgentLoading(true)
+    try {
+      const res = await api.canvasAgent(projectId, { confirm: true, pending_operation: pendingOp })
+      applyResult(res)
+    } catch {
+      appendAgent('Could not apply the change.')
+    } finally {
+      setAgentLoading(false)
+    }
+  }
+
+  const dismissProposal = () => {
+    setPendingOp(null)
+    appendAgent('Okay, leaving it as is.')
   }
 
   const canvasNodes = canvas?.nodes || []
@@ -1101,8 +1161,26 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
                 </div>
               </div>
             ))}
+            {agentLoading ? (
+              <div className='flex justify-start'>
+                <div className='rounded-2xl bg-background px-3 py-2 text-sm text-text-muted'>…</div>
+              </div>
+            ) : null}
             <div ref={chatEndRef} />
           </div>
+
+          {pendingOp ? (
+            <div className='border-t border-border bg-background/40 px-4 py-3'>
+              <div className='flex items-center gap-2'>
+                <Button variant='primary' size='sm' onClick={confirmProposal} disabled={agentLoading}>
+                  Apply change
+                </Button>
+                <Button variant='ghost' size='sm' onClick={dismissProposal} disabled={agentLoading}>
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           <div className='border-t border-border p-3'>
             <div className='flex items-center gap-2'>
@@ -1123,7 +1201,8 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
               <button
                 type='button'
                 onClick={handleSend}
-                className='grid h-9 w-9 place-items-center rounded-md border border-border bg-background text-text-primary transition hover:border-accent hover:text-accent'
+                disabled={agentLoading}
+                className='grid h-9 w-9 place-items-center rounded-md border border-border bg-background text-text-primary transition hover:border-accent hover:text-accent disabled:opacity-50'
               >
                 <i className='ti ti-send text-sm' />
               </button>
@@ -1734,8 +1813,13 @@ export default function ProjectWizard() {
     setStep((prev) => Math.max(1, prev - 1))
   }
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (step === 3 && !step3Finalized) {
+      try {
+        if (projectId) await api.finalizeCanvas(projectId)
+      } catch {
+        // surface non-blocking; finalize can be retried
+      }
       setStep3Finalized(true)
       setStep3ShowBanner(true)
       return
@@ -1829,6 +1913,7 @@ export default function ProjectWizard() {
 
           {step === 3 ? (
             <StepThreePanel
+              projectId={projectId}
               step3InputPrefill={step3InputPrefill}
               setStep3InputPrefill={setStep3InputPrefill}
               step3ShowBanner={step3ShowBanner}
