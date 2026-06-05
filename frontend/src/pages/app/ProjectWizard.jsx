@@ -1043,7 +1043,7 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
   }
 
   return (
-    <div className='mt-8 flex h-full min-h-[540px] gap-4'>
+    <div className='mt-8 mb-6 flex min-h-[560px] flex-1 gap-4'>
       <div
         ref={surfaceRef}
         className='relative flex-1 cursor-grab select-none overflow-auto rounded-xl border border-border/70 bg-background active:cursor-grabbing'
@@ -1938,7 +1938,7 @@ export default function ProjectWizard() {
       </div>
 
       <div className='pb-24 pt-36'>
-        <section className={fullWidth ? 'flex h-[calc(100vh-270px)] flex-col' : 'mx-auto flex min-h-[calc(100vh-270px)] w-full max-w-[640px] flex-col'}>
+        <section className={fullWidth ? 'flex min-h-[calc(100vh-270px)] flex-col' : 'mx-auto flex min-h-[calc(100vh-270px)] w-full max-w-[640px] flex-col'}>
           <div className='w-fit rounded-full border border-border px-3 py-1 text-xs font-normal text-text-muted'>
             Step {step} of 5
           </div>
