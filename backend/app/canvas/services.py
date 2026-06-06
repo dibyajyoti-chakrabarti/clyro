@@ -3,7 +3,7 @@
 Backs the canvas endpoints. In **stub mode** (no ``ORCHESTRATOR_RUNTIME_ARN``)
 it runs a deterministic, rule-based agent on top of ``canvas_core`` so the whole
 UI + persistence flow can be exercised before any AWS agent is deployed. When the
-ARN is set (Phase 6) it delegates to the deployed AgentCore Orchestrator runtime.
+ARN is set it delegates to the deployed AgentCore Orchestrator runtime.
 
 All canvas mutation, cost, layout, and constraint logic comes from
 ``canvas_core`` — the single source of truth shared with the agents.
@@ -276,9 +276,9 @@ def run_canvas_agent(
 
 
 def _invoke_runtime(prompt, confirm, pending_operation, project, version, canvas, intent) -> dict[str, Any]:
-    """Phase 6: call the deployed AgentCore Orchestrator runtime. The agent
-    returns the same {outcome, ...} contract; a confirmed mutation is persisted
-    here so the DB stays the system of record."""
+    """Call the deployed AgentCore Orchestrator runtime. The agent returns the
+    same {outcome, ...} contract; a confirmed mutation is persisted here so the
+    DB stays the system of record."""
     client = boto3.client("bedrock-agentcore", region_name=settings.AWS_REGION)
     payload = {
         "prompt": prompt,
