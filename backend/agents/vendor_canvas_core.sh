@@ -9,8 +9,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SRC="$REPO_ROOT/backend/canvas_core"
+BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"   # backend/ (canvas_core lives here)
+SRC="$BACKEND_DIR/canvas_core"
 AGENTS=(Reasoning Layout Orchestrator)
 
 [[ -d "$SRC" ]] || { echo "error: $SRC not found" >&2; exit 1; }
