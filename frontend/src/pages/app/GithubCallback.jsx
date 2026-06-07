@@ -11,7 +11,7 @@ export default function GithubCallback() {
     const installationId = searchParams.get('installation_id')
     const setupAction = searchParams.get('setup_action')
 
-    if (!installationId || setupAction !== 'install') {
+    if (!installationId || !['install', 'update'].includes(setupAction)) {
       setError('Invalid callback — missing installation_id or unexpected setup_action.')
       return
     }
