@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import {
+  PanelLeftClose,
+  PanelLeftOpen,
   FolderOpen,
   LayoutDashboard,
   LogOut,
@@ -17,6 +19,18 @@ const NAV_LINKS = [
   { to: '/app/profile', label: 'Profile', icon: User },
   { to: '/app/settings', label: 'Settings', icon: Settings },
 ]
+
+function AnimatedLabel({ children, collapsed, className = '' }) {
+  return (
+    <span
+      className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${
+        collapsed ? 'max-w-0 -translate-x-2 opacity-0' : 'max-w-[160px] translate-x-0 opacity-100'
+      } ${className}`.trim()}
+    >
+      {children}
+    </span>
+  )
+}
 
 function SidebarAvatar({ profile, collapsed }) {
   const name = profile?.name || ''
@@ -42,25 +56,14 @@ function SidebarAvatar({ profile, collapsed }) {
     </div>
   )
 
-  if (collapsed) {
-    return (
-      <Link
-        to='/app/profile'
-        title={name || 'Profile'}
-        className='flex items-center justify-center rounded-2xl border border-transparent p-1.5 transition-all duration-300 hover:border-white/10 hover:bg-white/[0.04]'
-      >
-        {avatar}
-      </Link>
-    )
-  }
-
   return (
     <Link
       to='/app/profile'
-      className='flex items-center gap-3 rounded-2xl border border-transparent px-2 py-2 transition-all duration-300 hover:border-white/10 hover:bg-white/[0.04]'
+      title={name || 'Profile'}
+      className='flex h-[60px] items-center gap-3 rounded-2xl border border-transparent px-2 py-2 transition-all duration-300 ease-in-out hover:border-white/10 hover:bg-white/[0.04]'
     >
       {avatar}
-      <div className='min-w-0 flex-1'>
+      <div className={`min-w-0 flex-1 transition-all duration-300 ease-in-out ${collapsed ? 'max-w-0 -translate-x-2 opacity-0' : 'max-w-[180px] translate-x-0 opacity-100'}`}>
         <p className='truncate text-sm font-semibold text-white'>{name || 'Profile'}</p>
         <p className='truncate text-xs text-white/65'>{profile?.email || ''}</p>
       </div>
@@ -78,29 +81,19 @@ export default function Sidebar() {
   }, [])
 
   return (
-    <div className={`shrink-0 transition-all duration-300 ${collapsed ? 'w-[80px]' : 'w-[260px]'}`}>
-      <aside className='sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-3xl border border-white/[0.08] bg-[#050912] px-4 py-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)] transition-all duration-300'>
+    <div className={`shrink-0 transition-all duration-300 ease-in-out ${collapsed ? 'w-[80px]' : 'w-[260px]'}`}>
+      <aside className='sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-3xl border border-white/[0.08] bg-[#050912] px-4 py-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)] transition-all duration-300 ease-in-out'>
         <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3 px-2'}`}>
-          {collapsed ? (
-            <div className='flex items-center justify-center'>
-              <img
-                src={clyroLogo}
-                alt='Clyro'
-                className='h-10 w-10 object-contain'
-              />
-            </div>
-          ) : (
-            <div className='flex items-center gap-3'>
-              <img
-                src={clyroLogo}
-                alt='Clyro'
-                className='h-10 w-10 object-contain'
-              />
-              <span className='text-2xl font-semibold text-white'>
-                Clyro
-              </span>
-            </div>
-          )}
+          <div className='flex items-center gap-3'>
+            <img
+              src={clyroLogo}
+              alt='Clyro'
+              className='h-10 w-10 object-contain'
+            />
+            <AnimatedLabel collapsed={collapsed} className='text-2xl font-semibold text-white'>
+              Clyro
+            </AnimatedLabel>
+          </div>
         </div>
 
         <nav className='mt-8 flex flex-1 flex-col gap-2'>
@@ -113,7 +106,7 @@ export default function Sidebar() {
                 to={item.to}
                 title={collapsed ? item.label : undefined}
                 className={({ isActive }) =>
-                  `group flex items-center rounded-2xl border px-4 py-3 transition-all duration-300 ${
+                  `group flex items-center rounded-2xl border px-4 py-3 transition-all duration-300 ease-in-out ${
                     collapsed ? 'justify-center' : 'gap-3'
                   } ${
                     isActive
@@ -125,11 +118,13 @@ export default function Sidebar() {
                 {({ isActive }) => (
                   <>
                     <Icon
-                      className={`h-5 w-5 shrink-0 transition-all duration-300 ${
+                      className={`h-5 w-5 shrink-0 transition-all duration-300 ease-in-out ${
                         isActive ? 'text-[#FFC400]' : 'text-white'
                       }`}
                     />
-                    {!collapsed && <span className='text-sm font-medium'>{item.label}</span>}
+                    <AnimatedLabel collapsed={collapsed} className='text-sm font-medium'>
+                      {item.label}
+                    </AnimatedLabel>
                   </>
                 )}
               </NavLink>
@@ -142,12 +137,16 @@ export default function Sidebar() {
             type='button'
             onClick={() => setCollapsed((prev) => !prev)}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className={`flex w-full items-center rounded-2xl border border-transparent px-4 py-3 text-sm font-medium text-white/65 transition-all duration-300 hover:border-white/10 hover:bg-white/[0.04] hover:text-white ${
+            className={`flex h-[48px] w-full items-center rounded-2xl border border-transparent px-4 text-sm font-medium text-white/65 transition-all duration-300 ease-in-out hover:border-white/10 hover:bg-white/[0.04] hover:text-white ${
               collapsed ? 'justify-center' : 'gap-3'
             }`}
           >
-            <span className='shrink-0 text-base font-semibold text-white'>{collapsed ? '>>' : '<<'}</span>
-            {!collapsed && <span>Collapse</span>}
+            <span className='flex h-5 w-5 shrink-0 items-center justify-center text-white'>
+              {collapsed ? <PanelLeftOpen className='h-5 w-5' /> : <PanelLeftClose className='h-5 w-5' />}
+            </span>
+            <AnimatedLabel collapsed={collapsed} className='text-sm font-medium text-white/65'>
+              {collapsed ? 'Expand' : 'Collapse'}
+            </AnimatedLabel>
           </button>
 
           <div className='mt-3'>
@@ -158,12 +157,14 @@ export default function Sidebar() {
             type='button'
             onClick={logout}
             title={collapsed ? 'Sign out' : undefined}
-            className={`mt-3 flex w-full items-center rounded-2xl border border-transparent px-4 py-3 text-sm font-medium text-white/65 transition-all duration-300 hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-300 ${
+            className={`mt-3 flex h-[48px] w-full items-center rounded-2xl border border-transparent px-4 text-sm font-medium text-white/65 transition-all duration-300 ease-in-out hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-300 ${
               collapsed ? 'justify-center' : 'gap-3'
             }`}
           >
             <LogOut className='h-5 w-5 shrink-0 text-white' />
-            {!collapsed && <span>Sign Out</span>}
+            <AnimatedLabel collapsed={collapsed} className='text-sm font-medium'>
+              Sign Out
+            </AnimatedLabel>
           </button>
         </div>
       </aside>
