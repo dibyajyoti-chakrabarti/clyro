@@ -3,8 +3,8 @@ import { Link, NavLink } from 'react-router-dom'
 import {
   PanelLeftClose,
   PanelLeftOpen,
-  FolderOpen,
-  LayoutDashboard,
+  Folder,
+  House,
   LogOut,
   Settings,
   User,
@@ -14,8 +14,8 @@ import useAuth from '../../context/useAuth'
 import clyroLogo from '../../assets/logos/Clyro_logo.png'
 
 const NAV_LINKS = [
-  { to: '/app/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/app/projects', label: 'Projects', icon: FolderOpen },
+  { to: '/app/dashboard', label: 'Home', icon: House },
+  { to: '/app/projects', label: 'Projects', icon: Folder },
   { to: '/app/profile', label: 'Profile', icon: User },
   { to: '/app/settings', label: 'Settings', icon: Settings },
 ]
@@ -24,7 +24,7 @@ function AnimatedLabel({ children, collapsed, className = '' }) {
   return (
     <span
       className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${
-        collapsed ? 'max-w-0 -translate-x-2 opacity-0' : 'max-w-[160px] translate-x-0 opacity-100'
+        collapsed ? 'max-w-[96px] translate-x-0 opacity-100' : 'max-w-[160px] translate-x-0 opacity-100'
       } ${className}`.trim()}
     >
       {children}
@@ -83,18 +83,22 @@ export default function Sidebar() {
   return (
     <div className={`shrink-0 transition-all duration-300 ease-in-out ${collapsed ? 'w-[80px]' : 'w-[260px]'}`}>
       <aside className='sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-3xl border border-white/[0.08] bg-[#050912] px-4 py-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)] transition-all duration-300 ease-in-out'>
-        <div className={`flex items-center ${collapsed ? 'justify-center' : 'gap-3 px-2'}`}>
+        <Link to='/app/dashboard' className={`flex items-center transition-all duration-300 ease-in-out ${collapsed ? 'justify-center px-0' : 'gap-3 px-2'}`}>
           <div className='flex items-center gap-3'>
             <img
               src={clyroLogo}
               alt='Clyro'
               className='h-10 w-10 object-contain'
             />
-            <AnimatedLabel collapsed={collapsed} className='text-2xl font-semibold text-white'>
+            <span
+              className={`overflow-hidden whitespace-nowrap text-2xl font-semibold text-white transition-all duration-300 ease-in-out ${
+                collapsed ? 'max-w-0 -translate-x-2 opacity-0' : 'max-w-[120px] translate-x-0 opacity-100'
+              }`}
+            >
               Clyro
-            </AnimatedLabel>
+            </span>
           </div>
-        </div>
+        </Link>
 
         <nav className='mt-8 flex flex-1 flex-col gap-2'>
           {NAV_LINKS.map((item) => {
@@ -107,7 +111,7 @@ export default function Sidebar() {
                 title={collapsed ? item.label : undefined}
                 className={({ isActive }) =>
                   `group flex items-center rounded-2xl border px-4 py-3 transition-all duration-300 ease-in-out ${
-                    collapsed ? 'justify-center' : 'gap-3'
+                    collapsed ? 'flex-col gap-1' : 'gap-3'
                   } ${
                     isActive
                       ? 'border-[#FFC400]/45 bg-[#FFC400]/10 text-[#FFC400] shadow-[0_0_24px_rgba(255,196,0,0.16)]'
@@ -117,12 +121,14 @@ export default function Sidebar() {
               >
                 {({ isActive }) => (
                   <>
-                    <Icon
-                      className={`h-5 w-5 shrink-0 transition-all duration-300 ease-in-out ${
-                        isActive ? 'text-[#FFC400]' : 'text-white'
-                      }`}
-                    />
-                    <AnimatedLabel collapsed={collapsed} className='text-sm font-medium'>
+                    <span className='flex h-6 w-6 shrink-0 items-center justify-center'>
+                      <Icon
+                        className={`h-5 w-5 shrink-0 transition-colors duration-300 ease-in-out ${
+                          isActive ? 'text-[#FFC400]' : 'text-white'
+                        }`}
+                      />
+                    </span>
+                    <AnimatedLabel collapsed={collapsed} className={`text-center ${collapsed ? 'text-[10px] font-medium leading-none' : 'text-sm font-medium'}`}>
                       {item.label}
                     </AnimatedLabel>
                   </>
@@ -138,7 +144,7 @@ export default function Sidebar() {
             onClick={() => setCollapsed((prev) => !prev)}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             className={`flex h-[48px] w-full items-center rounded-2xl border border-transparent px-4 text-sm font-medium text-white/65 transition-all duration-300 ease-in-out hover:border-white/10 hover:bg-white/[0.04] hover:text-white ${
-              collapsed ? 'justify-center' : 'gap-3'
+              collapsed ? 'justify-center gap-0' : 'gap-3'
             }`}
           >
             <span className='flex h-5 w-5 shrink-0 items-center justify-center text-white'>
@@ -158,7 +164,7 @@ export default function Sidebar() {
             onClick={logout}
             title={collapsed ? 'Sign out' : undefined}
             className={`mt-3 flex h-[48px] w-full items-center rounded-2xl border border-transparent px-4 text-sm font-medium text-white/65 transition-all duration-300 ease-in-out hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-300 ${
-              collapsed ? 'justify-center' : 'gap-3'
+              collapsed ? 'justify-center gap-0' : 'gap-3'
             }`}
           >
             <LogOut className='h-5 w-5 shrink-0 text-white' />
