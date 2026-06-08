@@ -280,6 +280,24 @@ def run_canvas_agent(
     return classify(canvas, intent, prompt)
 
 
+def _parse_runtime_response(raw: bytes | str) -> dict[str, Any]:
+    """Parse the AgentCore Runtime reply. A streaming entrypoint returns
+    ``text/event-stream`` framing (``data: <chunk>\\n\\n``) and each yielded
+    JSON string is itself JSON-encoded by the SSE layer (double-encoded), so we
+    strip the ``data:`` lines and decode JSON until we land on the object."""
+    text = (raw.decode() if isinstance(raw, bytes) else raw).strip()
+    data_lines = [
+        line[len("data:"):].strip()
+        for line in text.splitlines()
+        if line.strip().startswith("data:")
+    ]
+    payload = "".join(data_lines) if data_lines else text
+    obj = json.loads(payload)
+    if isinstance(obj, str):  # double-encoded: decode once more to the object
+        obj = json.loads(obj)
+    return obj
+
+
 def _invoke_reasoning(prompt, canvas, intent, project) -> dict[str, Any]:
     """Call the deployed Reasoning runtime for a new prompt. It returns the
     {outcome, message, operation?, cost_*} contract; on a proposal the frontend
@@ -293,5 +311,4 @@ def _invoke_reasoning(prompt, canvas, intent, project) -> dict[str, Any]:
         runtimeSessionId=str(project.id),
         payload=json.dumps(payload).encode(),
     )
-    body = response["response"].read()
-    return json.loads(body.decode() if isinstance(body, bytes) else body)
+    return _parse_runtime_response(response["response"].read())
