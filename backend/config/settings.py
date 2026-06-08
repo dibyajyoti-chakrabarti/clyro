@@ -106,9 +106,9 @@ AWS_PROFILE = env('AWS_PROFILE', default='default')
 AWS_REGION = env('AWS_REGION', default='us-east-1')
 
 # ── Step 3 (Canvas) ─────────────────────────────────────────────────────────
-# When set, the canvas agent calls the deployed AgentCore Orchestrator runtime;
-# when empty (default), it runs the local canvas_core deterministic stub.
-ORCHESTRATOR_RUNTIME_ARN = env('ORCHESTRATOR_RUNTIME_ARN', default='')
+# When set, a new canvas prompt is sent to the deployed Reasoning runtime; when
+# empty (default), it runs the local canvas_core deterministic stub.
+REASONING_RUNTIME_ARN = env('REASONING_RUNTIME_ARN', default='')
 
 # DEBUG-only convenience: treat every Step 3 canvas request as the seeded dev
 # user so the endpoints can be exercised without a Cognito token. Inert in

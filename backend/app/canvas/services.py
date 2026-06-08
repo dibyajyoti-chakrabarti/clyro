@@ -1,12 +1,13 @@
 """Step 3 canvas service layer.
 
-Backs the canvas endpoints. In **stub mode** (no ``ORCHESTRATOR_RUNTIME_ARN``)
-it runs a deterministic, rule-based agent on top of ``canvas_core`` so the whole
+Backs the canvas endpoints. In **stub mode** (no ``REASONING_RUNTIME_ARN``) it
+runs a deterministic, rule-based agent on top of ``canvas_core`` so the whole
 UI + persistence flow can be exercised before any AWS agent is deployed. When the
-ARN is set it delegates to the deployed AgentCore Orchestrator runtime.
+ARN is set it delegates a new prompt to the deployed Reasoning runtime; confirmed
+mutations are always applied + persisted here via ``canvas_core``.
 
 All canvas mutation, cost, layout, and constraint logic comes from
-``canvas_core`` — the single source of truth shared with the agents.
+``canvas_core`` — the single source of truth shared with the agent.
 """
 
 from __future__ import annotations
@@ -256,7 +257,7 @@ def finalize(project: Project) -> dict[str, Any] | None:
     return serialize_version(version)
 
 
-# ── Orchestrator entrypoint ──────────────────────────────────────────────────
+# ── Agent entrypoint ─────────────────────────────────────────────────────────
 
 def run_canvas_agent(
     project: Project, prompt: str, confirm: bool = False, pending_operation: dict | None = None
@@ -267,35 +268,30 @@ def run_canvas_agent(
     canvas = canvas_ops.parse_canvas(version.canvas_yaml)
     intent = intent_dict(project)
 
-    if settings.ORCHESTRATOR_RUNTIME_ARN:
-        return _invoke_runtime(prompt, confirm, pending_operation, project, version, canvas, intent)
-
+    # A confirmed mutation is deterministic — apply + persist directly via
+    # canvas_core in both stub and deployed mode (no model needed).
     if confirm and pending_operation:
         return apply_operation_and_persist(project, version, canvas, intent, pending_operation)
+
+    # A new prompt needs the model: the deployed Reasoning runtime if configured,
+    # else the local rule-based stub.
+    if settings.REASONING_RUNTIME_ARN:
+        return _invoke_reasoning(prompt, canvas, intent, project)
     return classify(canvas, intent, prompt)
 
 
-def _invoke_runtime(prompt, confirm, pending_operation, project, version, canvas, intent) -> dict[str, Any]:
-    """Call the deployed AgentCore Orchestrator runtime. The agent returns the
-    same {outcome, ...} contract; a confirmed mutation is persisted here so the
-    DB stays the system of record."""
+def _invoke_reasoning(prompt, canvas, intent, project) -> dict[str, Any]:
+    """Call the deployed Reasoning runtime for a new prompt. It returns the
+    {outcome, message, operation?, cost_*} contract; on a proposal the frontend
+    confirms and the confirmed op is applied + persisted here (DB is the system
+    of record)."""
     client = boto3.client("bedrock-agentcore", region_name=settings.AWS_REGION)
-    payload = {
-        "prompt": prompt,
-        "confirm": confirm,
-        "pending_operation": pending_operation,
-        "canvas": canvas,
-        "intent": intent,
-    }
+    payload = {"prompt": prompt, "canvas": canvas, "intent": intent}
     response = client.invoke_agent_runtime(
-        agentRuntimeArn=settings.ORCHESTRATOR_RUNTIME_ARN,
+        agentRuntimeArn=settings.REASONING_RUNTIME_ARN,
         qualifier="DEFAULT",
         runtimeSessionId=str(project.id),
         payload=json.dumps(payload).encode(),
     )
     body = response["response"].read()
-    result = json.loads(body.decode() if isinstance(body, bytes) else body)
-
-    if result.get("outcome") == "applied" and result.get("operation"):
-        return apply_operation_and_persist(project, version, canvas, intent, result["operation"])
-    return result
+    return json.loads(body.decode() if isinstance(body, bytes) else body)

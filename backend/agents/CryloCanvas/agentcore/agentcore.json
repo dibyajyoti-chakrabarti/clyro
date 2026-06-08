@@ -16,21 +16,6 @@
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
       "protocol": "HTTP"
-    },
-    {
-      "name": "Orchestrator",
-      "build": "CodeZip",
-      "entrypoint": "main.py",
-      "codeLocation": "app/Orchestrator/",
-      "runtimeVersion": "PYTHON_3_14",
-      "networkMode": "PUBLIC",
-      "protocol": "HTTP",
-      "envVars": [
-        {
-          "name": "REASONING_AGENT_RUNTIME_ARN",
-          "value": ""
-        }
-      ]
     }
   ],
   "memories": [],
