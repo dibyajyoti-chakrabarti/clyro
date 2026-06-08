@@ -10,7 +10,6 @@ app = BedrockAgentCoreApp()
 log = app.logger
 
 REASONING_ARN = os.environ.get("REASONING_AGENT_RUNTIME_ARN", "")
-LAYOUT_ARN = os.environ.get("LAYOUT_AGENT_RUNTIME_ARN", "")
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
 
 
@@ -53,10 +52,18 @@ def _normalize_payload(payload):
 
 @app.entrypoint
 async def invoke(payload, context):
-    """Deterministic sequencer: route to Reasoning (new prompt) or Layout (confirmed op).
+    """Entrypoint for the canvas sub-network.
 
-    Payload from Django: {prompt, confirm, pending_operation, canvas, intent, positions?, session_id?}
-    Returns the sub-agent result unchanged.
+    - **New prompt** (``confirm`` false): delegate to the Reasoning runtime (the
+      only agent that needs an LLM) and return its ``{outcome, message,
+      operation?, cost_*}`` result.
+    - **Confirmed mutation** (``confirm`` + ``pending_operation``): the change is
+      pure deterministic ``canvas_core`` work, so just echo the operation back as
+      ``{outcome: "applied", operation}``. The Django backend applies it via
+      ``canvas_core`` and persists the new ``CanvasVersion`` (the DB is the system
+      of record). No separate Layout runtime is needed for that.
+
+    Payload from Django: ``{prompt, confirm, pending_operation, canvas, intent, session_id?}``.
     """
     log.info("Orchestrator agent invoked")
     payload = _normalize_payload(payload)
@@ -66,29 +73,21 @@ async def invoke(payload, context):
     pending_operation = payload.get("pending_operation")
     canvas = payload.get("canvas", {})
     intent = payload.get("intent", {})
-    positions = payload.get("positions", {})
     session_id = payload.get("session_id", "default")
 
     if confirm and pending_operation:
-        if not LAYOUT_ARN:
-            yield json.dumps({"outcome": "answer", "message": "Layout agent ARN not configured."})
-            return
-        result = _invoke_agent(
-            LAYOUT_ARN,
-            {"operation": pending_operation, "canvas": canvas, "intent": intent, "positions": positions},
-            session_id,
-        )
-        yield json.dumps(result)
-    else:
-        if not REASONING_ARN:
-            yield json.dumps({"outcome": "answer", "message": "Reasoning agent ARN not configured."})
-            return
-        result = _invoke_agent(
-            REASONING_ARN,
-            {"prompt": prompt, "canvas": canvas, "intent": intent},
-            session_id,
-        )
-        yield json.dumps(result)
+        yield json.dumps({"outcome": "applied", "operation": pending_operation})
+        return
+
+    if not REASONING_ARN:
+        yield json.dumps({"outcome": "answer", "message": "Reasoning agent ARN not configured."})
+        return
+    result = _invoke_agent(
+        REASONING_ARN,
+        {"prompt": prompt, "canvas": canvas, "intent": intent},
+        session_id,
+    )
+    yield json.dumps(result)
 
 
 if __name__ == "__main__":

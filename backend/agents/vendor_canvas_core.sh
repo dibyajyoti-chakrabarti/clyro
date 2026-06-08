@@ -11,9 +11,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"   # backend/ (canvas_core lives here)
 SRC="$BACKEND_DIR/canvas_core"
-# Only the agents that import canvas_core. The Orchestrator is a pure router
-# (boto3 InvokeAgentRuntime) and never touches canvas_core, so it isn't vendored.
-AGENTS=(Reasoning Layout)
+# Only the agents that import canvas_core. Reasoning uses it for its local
+# cost/constraint @tools. The Orchestrator is a pure router (boto3
+# InvokeAgentRuntime) and never touches canvas_core, so it isn't vendored.
+AGENTS=(Reasoning)
 
 [[ -d "$SRC" ]] || { echo "error: $SRC not found" >&2; exit 1; }
 

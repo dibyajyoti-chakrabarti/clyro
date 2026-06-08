@@ -2,20 +2,26 @@
 
 The Step-3 canvas sub-network: a **Reasoning** agent (conversation → one proposal
 or one answer, cost deltas, semantic constraints; tools = Pricing/CFN/Docs MCP
-via the Gateway), a **Layout** agent (constrained executor: collision-free x/y,
-arrow re-route, apply one bounded op, append a version; no tools), and an
-**Orchestrator** (deterministic sequencer that holds the confirm→handoff flow and
-delegates to the other two via `InvokeAgentRuntime`).
+via the Gateway), and an **Orchestrator** (entrypoint: delegates a new prompt to
+Reasoning, and echoes a confirmed operation back for the Django backend to apply).
+
+> **Why no Layout agent?** Placing nodes / applying a bounded op is pure
+> deterministic `canvas_core` work, and the Django backend already runs it
+> natively (it's the system of record that persists each `CanvasVersion`). A
+> separate Layout *runtime* would just duplicate that over an extra
+> `InvokeAgentRuntime` hop with no added intelligence, so it was dropped. The
+> Orchestrator returns `{outcome: "applied", operation}` on confirm and Django
+> does the `canvas_core` apply + persist.
 
 All canvas math (cost, ops, layout, constraints) lives in the pure-Python
 `backend/canvas_core/` package — the single source of truth shared with the
-Django backend. Each agent **vendors a copy** of it at deploy time
-(`./vendor_canvas_core.sh`) so the runtime container is self-contained.
+Django backend. The Reasoning agent **vendors a copy** of it at deploy time
+(`./vendor_canvas_core.sh`) so its runtime container is self-contained.
 
 ```
 React → Django Canvas API ─(ORCHESTRATOR_RUNTIME_ARN set)→ Orchestrator (RT)
-                                                              ├─ Reasoning (RT) → Gateway → 3 MCP Lambdas
-                                                              └─ Layout (RT)
+            │                                                   └─ Reasoning (RT) → Gateway → 3 MCP Lambdas
+            └─ confirmed op → canvas_core apply + persist (Django, system of record)
 ```
 
 ## Prerequisites
@@ -75,11 +81,11 @@ cd backend/mcp
 ```bash
 cd ../agents
 
-# (a) vendored shared engine — copied into Reasoning + Layout
+# (a) vendored shared engine — copied into Reasoning
 ./vendor_canvas_core.sh
 
 # (b) per-agent Python venvs (only needed for `agentcore dev` / local runs)
-for a in Reasoning Layout Orchestrator; do (cd CryloCanvas/app/$a && uv sync); done
+for a in Reasoning Orchestrator; do (cd CryloCanvas/app/$a && uv sync); done
 ```
 
 `agentcore deploy` installs the CDK `node_modules/` itself on first run; if it
@@ -106,11 +112,13 @@ this repo.
 ```bash
 cd backend/agents
 agentcore create --name CryloCanvas --framework Strands --model-provider Bedrock --memory none
-# add the three runtimes
+# add the two runtimes
 agentcore add agent --name Reasoning    --framework Strands --model-provider Bedrock --memory none --language Python
-agentcore add agent --name Layout       --framework Strands --model-provider Bedrock --memory none --language Python
 agentcore add agent --name Orchestrator --framework Strands --model-provider Bedrock --memory none --language Python
 ```
+
+(The original scaffold also created a `Layout` runtime; it was later dropped —
+see the note at the top — so a fresh build no longer adds it.)
 
 This produces `backend/agents/CryloCanvas/` with `agentcore/agentcore.json`,
 `aws-targets.json`, `cdk/` (don't edit), and `app/<Agent>/{main.py,pyproject.toml}`.
@@ -121,12 +129,10 @@ This produces `backend/agents/CryloCanvas/` with `agentcore/agentcore.json`,
   (`AGENTCORE_GATEWAY_CRYLOCANVASGW_URL`, with a local-dev guard so it no-ops to
   zero tools when the URL is unset); local `@tool`s over `canvas_core.cost_engine`
   + `constraints`; emits `{outcome, message, operation?, cost_*}`.
-- `app/Layout/main.py` — constrained executor; `canvas_core.canvas_ops` +
-  `layout_solver`; `{operation, target_node, params, canvas}` → new canvas +
-  coords + version object. No tools.
-- `app/Orchestrator/main.py` — deterministic sequencer; `delegate_to_reasoning` /
-  `delegate_to_layout` via `bedrock-agentcore:InvokeAgentRuntime`; holds the
-  confirm→handoff flow. Needs `InvokeAgentRuntime` on the Reasoning/Layout ARNs.
+- `app/Orchestrator/main.py` — entrypoint; delegates a new prompt to Reasoning
+  via `bedrock-agentcore:InvokeAgentRuntime`, and on a confirmed op echoes
+  `{outcome: "applied", operation}` for Django to apply + persist. Needs
+  `InvokeAgentRuntime` on the Reasoning ARN only.
 
 ### 3. Vendor canvas_core (you run, before each deploy)
 
@@ -166,8 +172,8 @@ agentcore add gateway-target --gateway CryloCanvasGw --name docs \
   --tool-schema-file ../../mcp/docs/tools.json
 ```
 
-Then write the Reasoning/Layout ARNs into the Orchestrator's env and
-`agentcore deploy` again.
+Then write the Reasoning ARN into the Orchestrator's env (`agentcore.json`
+`envVars`) and `agentcore deploy` again.
 
 ### 6. Flip the backend to the real agents
 
@@ -186,7 +192,6 @@ gitignored.
 ```bash
 cp app/Reasoning/.env.example    app/Reasoning/.env
 cp app/Orchestrator/.env.example app/Orchestrator/.env
-# Layout needs none.
 ```
 
 | Agent | Variable | How to populate |
@@ -194,9 +199,7 @@ cp app/Orchestrator/.env.example app/Orchestrator/.env
 | Reasoning | `AGENTCORE_GATEWAY_CRYLOCANVASGW_URL` | Auto-injected on deploy. Local: leave blank (no MCP tools) or paste the deployed gateway URL. |
 | Reasoning | `AWS_REGION` | Region with Bedrock model access (e.g. `ap-south-1`). |
 | Orchestrator | `REASONING_AGENT_RUNTIME_ARN` | Reasoning runtime ARN from `agentcore status` after the first deploy. |
-| Orchestrator | `LAYOUT_AGENT_RUNTIME_ARN` | Layout runtime ARN from `agentcore status`. |
 | Orchestrator | `AWS_REGION` | Region the runtimes live in (default `ap-south-1`). |
-| Layout | — | None. Pure executor, no AWS calls. |
 
 AWS credentials always come from your AWS CLI config / the runtime execution
 role — never from these files.
@@ -204,7 +207,11 @@ role — never from these files.
 ## Verify
 
 ```bash
-agentcore invoke Orchestrator '{"prompt":"Use Aurora instead of RDS"}'
+# new prompt → delegates to Reasoning (LLM) → JSON proposal with a cost delta
+agentcore invoke --runtime Orchestrator '{"prompt":"Use Aurora instead of RDS","canvas":{"nodes":[{"id":"db","label":"PostgreSQL","type":"database","aws_service":"rds_postgres"}],"connections":[]},"intent":{"scale":"small","criticality":"high","environment":"production"}}'
+
+# confirmed op → echoed back as {outcome:"applied", operation} (Django persists)
+agentcore invoke --runtime Orchestrator '{"confirm":true,"pending_operation":{"op":"UPDATE_NODE","target_node":"db","params":{"aws_service":"aurora_postgres"}}}'
 ```
 …then the same prompts through the UI: proposal + cost delta → confirm → `db`
 node updates + new version; "Add a CDN…" → answer, no change; "Remove the
@@ -215,5 +222,5 @@ backend/agents/
 ├── vendor_canvas_core.sh
 └── CryloCanvas/            # generated by `agentcore create` (you run)
     ├── agentcore/          # config + auto-managed CDK (don't edit cdk/)
-    └── app/{Reasoning,Layout,Orchestrator}/  # main.py written in-repo + vendored canvas_core/
+    └── app/{Reasoning,Orchestrator}/  # main.py written in-repo (Reasoning vendors canvas_core/)
 ```

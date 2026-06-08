@@ -18,15 +18,6 @@
       "protocol": "HTTP"
     },
     {
-      "name": "Layout",
-      "build": "CodeZip",
-      "entrypoint": "main.py",
-      "codeLocation": "app/Layout/",
-      "runtimeVersion": "PYTHON_3_14",
-      "networkMode": "PUBLIC",
-      "protocol": "HTTP"
-    },
-    {
       "name": "Orchestrator",
       "build": "CodeZip",
       "entrypoint": "main.py",
@@ -37,10 +28,6 @@
       "envVars": [
         {
           "name": "REASONING_AGENT_RUNTIME_ARN",
-          "value": ""
-        },
-        {
-          "name": "LAYOUT_AGENT_RUNTIME_ARN",
           "value": ""
         }
       ]
