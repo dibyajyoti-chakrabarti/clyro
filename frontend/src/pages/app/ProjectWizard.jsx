@@ -884,18 +884,18 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
   )
 }
 
+const CHAT_WELCOME = {
+  role: 'agent',
+  text: 'Your architecture has been generated from your repository scan. You can ask me to explain any component, compare services, or suggest changes.',
+}
+
 function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, step3ShowBanner, onDismissStep3Banner }) {
   const [canvas, setCanvas] = useState(null)
   const [nodePositions, setNodePositions] = useState({})
 
   const [selectedNode, setSelectedNode] = useState(null)
   const [chatInput, setChatInput] = useState('')
-  const [chatHistory, setChatHistory] = useState([
-    {
-      role: 'agent',
-      text: 'Your architecture has been generated from your repository scan. You can ask me to explain any component, compare services, or suggest changes.',
-    },
-  ])
+  const [chatHistory, setChatHistory] = useState([CHAT_WELCOME])
   const [agentLoading, setAgentLoading] = useState(false)
   const [pendingOp, setPendingOp] = useState(null)
   const chatEndRef = useRef(null)
@@ -929,6 +929,19 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
         if (!active) return
         setCanvas(res.canvas)
         setNodePositions(res.positions || {})
+      })
+      .catch(() => {})
+    // Restore the persisted conversation + any pending Apply so a refresh
+    // doesn't lose mid-edit working state.
+    api.getCanvasChat(projectId)
+      .then((res) => {
+        if (!active) return
+        if (res.messages && res.messages.length > 0) {
+          setChatHistory([CHAT_WELCOME, ...res.messages])
+        }
+        if (res.pending_operation) {
+          setPendingOp(res.pending_operation)
+        }
       })
       .catch(() => {})
     return () => {
@@ -1011,6 +1024,14 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
   const dismissProposal = () => {
     setPendingOp(null)
     appendAgent('Okay, leaving it as is.')
+    api.dismissCanvasProposal(projectId).catch(() => {})
+  }
+
+  const clearConversation = () => {
+    setChatHistory([CHAT_WELCOME])
+    setPendingOp(null)
+    setSelectedNode(null)
+    api.flushCanvasChat(projectId).catch(() => {})
   }
 
   const canvasNodes = canvas?.nodes || []
@@ -1201,6 +1222,15 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
           <div className='flex items-center gap-2 border-b border-border px-4 py-3'>
             <i className='ti ti-sparkles text-sm text-accent' />
             <p className='text-sm font-semibold text-text-primary'>Canvas agent</p>
+            <button
+              type='button'
+              onClick={clearConversation}
+              disabled={agentLoading}
+              title='Clear conversation'
+              className='ml-auto text-xs text-text-muted transition hover:text-text-primary disabled:opacity-50'
+            >
+              Clear
+            </button>
           </div>
 
           <div className='min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3'>

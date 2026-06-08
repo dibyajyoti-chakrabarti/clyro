@@ -23,6 +23,7 @@ from canvas_core import canvas_ops, constraints, cost_engine, layout_solver
 from canvas_core.cost_engine import DISPLAY_NAME
 from core.models import CanvasVersion, IntentRecord, Project
 
+from . import chat_memory
 from .serializers import serialize_version
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -254,6 +255,7 @@ def finalize(project: Project) -> dict[str, Any] | None:
     version.save(update_fields=["status", "finalized_at"])
     project.status = Project.Status.CANVAS_FINALIZED
     project.save(update_fields=["status", "updated_at"])
+    chat_memory.flush(project)  # the canvas conversation has no use after finalize
     return serialize_version(version)
 
 
@@ -275,13 +277,39 @@ def run_canvas_agent(
     # A confirmed mutation is deterministic — apply + persist directly via
     # canvas_core in both stub and deployed mode (no model needed).
     if confirm and pending_operation:
-        return apply_operation_and_persist(project, version, canvas, intent, pending_operation)
+        result = apply_operation_and_persist(project, version, canvas, intent, pending_operation)
+        # Record the resolution so the restored chat no longer shows a pending Apply.
+        chat_memory.save_exchange(
+            project, user_text=None, agent_text=result.get("message"),
+            data={"outcome": result.get("outcome")},
+        )
+        return result
 
     # A new prompt needs the model: the deployed Reasoning runtime if configured,
     # else the local rule-based stub.
     if settings.REASONING_RUNTIME_ARN:
-        return _invoke_reasoning(prompt, canvas, intent, project, history or [])
-    return classify(canvas, intent, prompt)
+        result = _invoke_reasoning(prompt, canvas, intent, project, history or [])
+    else:
+        result = classify(canvas, intent, prompt)
+    chat_memory.save_exchange(
+        project, user_text=prompt, agent_text=result.get("message"),
+        data={
+            "outcome": result.get("outcome"),
+            "operation": result.get("operation"),
+            "cost_before": result.get("cost_before"),
+            "cost_after": result.get("cost_after"),
+            "cost_delta": result.get("cost_delta"),
+        },
+    )
+    return result
+
+
+def dismiss_proposal(project: Project) -> dict[str, Any]:
+    """Record that the user dismissed a pending proposal so the restored chat no
+    longer prompts to apply it."""
+    message = "Okay, leaving it as is."
+    chat_memory.save_exchange(project, user_text=None, agent_text=message, data={"outcome": "dismissed"})
+    return {"outcome": "dismissed", "message": message}
 
 
 def _parse_runtime_response(raw: bytes | str) -> dict[str, Any]:

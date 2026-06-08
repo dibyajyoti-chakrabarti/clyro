@@ -51,6 +51,34 @@ def canvas_agent(request, pk):
 @api_view(["GET"])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)
+def canvas_chat(request, pk):
+    """Restore the persisted chat + pending proposal on mount (survives refresh)."""
+    project = get_object_or_404(Project, pk=pk, user=request.user)
+    return Response(services.chat_memory.load_chat(project))
+
+
+@api_view(["POST"])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def canvas_chat_flush(request, pk):
+    """Clear the project's saved canvas conversation."""
+    project = get_object_or_404(Project, pk=pk, user=request.user)
+    services.chat_memory.flush(project)
+    return Response({"ok": True})
+
+
+@api_view(["POST"])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def canvas_dismiss(request, pk):
+    """Record that the user dismissed the pending proposal."""
+    project = get_object_or_404(Project, pk=pk, user=request.user)
+    return Response(services.dismiss_proposal(project))
+
+
+@api_view(["GET"])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
 def canvas_versions(request, pk):
     project = get_object_or_404(Project, pk=pk, user=request.user)
     versions = CanvasVersion.objects.filter(project=project).order_by("-version_number")

@@ -45,6 +45,9 @@ export const api = {
   // Canvas (Step 3)
   getCanvas: (id) => request('GET', `/api/projects/${id}/canvas/latest/`),
   canvasAgent: (id, payload) => request('POST', `/api/projects/${id}/canvas/agent/`, payload),
+  getCanvasChat: (id) => request('GET', `/api/projects/${id}/canvas/chat/`),
+  flushCanvasChat: (id) => request('POST', `/api/projects/${id}/canvas/chat/flush/`),
+  dismissCanvasProposal: (id) => request('POST', `/api/projects/${id}/canvas/dismiss/`),
   listCanvasVersions: (id) => request('GET', `/api/projects/${id}/canvas/versions/`),
   revertCanvas: (id, version) =>
     request('POST', `/api/projects/${id}/canvas/versions/${version}/revert/`),

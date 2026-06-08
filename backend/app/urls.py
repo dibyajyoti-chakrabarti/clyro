@@ -2,6 +2,9 @@ from django.urls import path
 
 from .canvas.views import (
     canvas_agent,
+    canvas_chat,
+    canvas_chat_flush,
+    canvas_dismiss,
     canvas_finalize,
     canvas_latest,
     canvas_revert,
@@ -32,6 +35,9 @@ urlpatterns = [
     path('projects/<uuid:pk>/wizard-state/', wizard_state),
     path('projects/<uuid:pk>/canvas/latest/', canvas_latest),
     path('projects/<uuid:pk>/canvas/agent/', canvas_agent),
+    path('projects/<uuid:pk>/canvas/chat/', canvas_chat),
+    path('projects/<uuid:pk>/canvas/chat/flush/', canvas_chat_flush),
+    path('projects/<uuid:pk>/canvas/dismiss/', canvas_dismiss),
     path('projects/<uuid:pk>/canvas/versions/', canvas_versions),
     path('projects/<uuid:pk>/canvas/versions/<int:version_number>/revert/', canvas_revert),
     path('projects/<uuid:pk>/canvas/finalize/', canvas_finalize),
