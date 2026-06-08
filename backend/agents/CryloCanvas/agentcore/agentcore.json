@@ -9,15 +9,6 @@
   },
   "runtimes": [
     {
-      "name": "CryloCanvas",
-      "build": "CodeZip",
-      "entrypoint": "main.py",
-      "codeLocation": "app/CryloCanvas/",
-      "runtimeVersion": "PYTHON_3_14",
-      "networkMode": "PUBLIC",
-      "protocol": "HTTP"
-    },
-    {
       "name": "Reasoning",
       "build": "CodeZip",
       "entrypoint": "main.py",
