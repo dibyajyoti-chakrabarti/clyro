@@ -174,6 +174,33 @@ Then write the Reasoning/Layout ARNs into the Orchestrator's env and
 Set `ORCHESTRATOR_RUNTIME_ARN` in the Django env → `services.py` delegates to the
 deployed Orchestrator instead of the local `canvas_core` stub.
 
+## Environment variables
+
+Each agent reads its config from environment variables. For **local dev**
+(`agentcore dev`) copy the per-agent template to `.env`; for **deployed**
+runtimes the same values are set as `envVars` in `agentcore.json` (the gateway
+URL is auto-injected when the gateway is bound). `.env.example` files are
+committed templates (placeholders only — no secrets); the real `.env` is
+gitignored.
+
+```bash
+cp app/Reasoning/.env.example    app/Reasoning/.env
+cp app/Orchestrator/.env.example app/Orchestrator/.env
+# Layout needs none.
+```
+
+| Agent | Variable | How to populate |
+| --- | --- | --- |
+| Reasoning | `AGENTCORE_GATEWAY_CRYLOCANVASGW_URL` | Auto-injected on deploy. Local: leave blank (no MCP tools) or paste the deployed gateway URL. |
+| Reasoning | `AWS_REGION` | Region with Bedrock model access (e.g. `ap-south-1`). |
+| Orchestrator | `REASONING_AGENT_RUNTIME_ARN` | Reasoning runtime ARN from `agentcore status` after the first deploy. |
+| Orchestrator | `LAYOUT_AGENT_RUNTIME_ARN` | Layout runtime ARN from `agentcore status`. |
+| Orchestrator | `AWS_REGION` | Region the runtimes live in (default `ap-south-1`). |
+| Layout | — | None. Pure executor, no AWS calls. |
+
+AWS credentials always come from your AWS CLI config / the runtime execution
+role — never from these files.
+
 ## Verify
 
 ```bash

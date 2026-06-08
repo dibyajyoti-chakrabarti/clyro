@@ -44,6 +44,9 @@ htmlcov/
 .env.*
 *.env
 .envrc
+# but DO track committed templates (no secrets — placeholders only)
+!.env.example
+!*.env.example
 .venv/
 venv/
 ENV/
