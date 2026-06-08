@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
 import Button from '../../components/ui/Button'
 import { api } from '../../api'
 
@@ -976,11 +977,14 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
       return
     }
 
+    // chatHistory here is the prior turns (the just-added user message is still
+    // queued in state), so it's exactly the conversation context for the agent.
+    const priorTurns = chatHistory.slice(-8)
     setChatHistory((prev) => [...prev, { role: 'user', text: message }])
     setChatInput('')
     setAgentLoading(true)
     try {
-      const res = await api.canvasAgent(projectId, { prompt: message })
+      const res = await api.canvasAgent(projectId, { prompt: message, history: priorTurns })
       applyResult(res)
     } catch {
       appendAgent('Something went wrong talking to the canvas agent.')
@@ -1209,7 +1213,13 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
                       : 'bg-background text-text-primary'
                   }`}
                 >
-                  {message.text}
+                  {message.role === 'user' ? (
+                    message.text
+                  ) : (
+                    <div className='space-y-2 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-4 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_a]:underline'>
+                      <ReactMarkdown>{message.text}</ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

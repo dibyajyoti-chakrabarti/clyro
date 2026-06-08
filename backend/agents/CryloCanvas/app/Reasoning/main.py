@@ -154,32 +154,52 @@ _tools: list[Any] = [estimate_cost_delta, check_constraint]
 if mcp_client:
     _tools.append(mcp_client)
 
-_agent = None
+_model = None
 
 
-def get_or_create_agent():
-    global _agent
-    if _agent is None:
-        _agent = Agent(
-            model=load_model(),
-            system_prompt=SYSTEM_PROMPT,
-            tools=_tools,
-        )
-    return _agent
+def _get_model():
+    global _model
+    if _model is None:
+        _model = load_model()
+    return _model
+
+
+def build_agent():
+    # Fresh agent per call. The runtime may keep this module warm across
+    # invocations (and across projects), so reusing one Agent would leak its
+    # accumulated message history between unrelated requests. Building a new one
+    # keeps each call clean — the only conversation context is what we inject
+    # below from the caller-supplied history.
+    return Agent(model=_get_model(), system_prompt=SYSTEM_PROMPT, tools=_tools)
+
+
+def _format_history(history: list) -> str:
+    lines = []
+    for turn in history[-8:]:
+        if not isinstance(turn, dict):
+            continue
+        text = (turn.get("text") or "").strip()
+        if not text:
+            continue
+        role = "User" if turn.get("role") == "user" else "Assistant"
+        lines.append(f"{role}: {text}")
+    return "Conversation so far:\n" + "\n".join(lines) + "\n\n" if lines else ""
 
 
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Reasoning agent invoked")
     payload = _normalize_payload(payload)
-    agent = get_or_create_agent()
+    agent = build_agent()
 
     canvas = payload.get("canvas", {})
     intent = payload.get("intent", {})
     prompt = payload.get("prompt", "")
+    history = payload.get("history") or []
 
     user_message = (
-        f"Canvas (JSON): {json.dumps(canvas)}\n"
+        f"{_format_history(history)}"
+        f"Current canvas (JSON): {json.dumps(canvas)}\n"
         f"Intent (JSON): {json.dumps(intent)}\n"
         f"User prompt: {prompt}\n\n"
         "Output a single JSON object only."

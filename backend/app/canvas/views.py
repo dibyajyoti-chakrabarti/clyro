@@ -35,13 +35,16 @@ def canvas_agent(request, pk):
     prompt = (request.data.get("prompt") or "").strip()
     confirm = bool(request.data.get("confirm", False))
     pending_operation = request.data.get("pending_operation")
+    history = request.data.get("history") or []
 
     if not confirm and not prompt:
         return Response({"error": "prompt is required"}, status=status.HTTP_400_BAD_REQUEST)
     if confirm and not pending_operation:
         return Response({"error": "pending_operation is required to confirm"}, status=status.HTTP_400_BAD_REQUEST)
 
-    result = services.run_canvas_agent(project, prompt, confirm=confirm, pending_operation=pending_operation)
+    result = services.run_canvas_agent(
+        project, prompt, confirm=confirm, pending_operation=pending_operation, history=history
+    )
     return Response(result)
 
 

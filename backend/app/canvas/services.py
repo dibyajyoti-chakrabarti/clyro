@@ -260,7 +260,11 @@ def finalize(project: Project) -> dict[str, Any] | None:
 # ── Agent entrypoint ─────────────────────────────────────────────────────────
 
 def run_canvas_agent(
-    project: Project, prompt: str, confirm: bool = False, pending_operation: dict | None = None
+    project: Project,
+    prompt: str,
+    confirm: bool = False,
+    pending_operation: dict | None = None,
+    history: list | None = None,
 ) -> dict[str, Any]:
     version = latest_version(project)
     if version is None:
@@ -276,7 +280,7 @@ def run_canvas_agent(
     # A new prompt needs the model: the deployed Reasoning runtime if configured,
     # else the local rule-based stub.
     if settings.REASONING_RUNTIME_ARN:
-        return _invoke_reasoning(prompt, canvas, intent, project)
+        return _invoke_reasoning(prompt, canvas, intent, project, history or [])
     return classify(canvas, intent, prompt)
 
 
@@ -298,13 +302,14 @@ def _parse_runtime_response(raw: bytes | str) -> dict[str, Any]:
     return obj
 
 
-def _invoke_reasoning(prompt, canvas, intent, project) -> dict[str, Any]:
+def _invoke_reasoning(prompt, canvas, intent, project, history=None) -> dict[str, Any]:
     """Call the deployed Reasoning runtime for a new prompt. It returns the
     {outcome, message, operation?, cost_*} contract; on a proposal the frontend
     confirms and the confirmed op is applied + persisted here (DB is the system
-    of record)."""
+    of record). ``history`` carries the recent chat turns for conversational
+    context."""
     client = boto3.client("bedrock-agentcore", region_name=settings.AWS_REGION)
-    payload = {"prompt": prompt, "canvas": canvas, "intent": intent}
+    payload = {"prompt": prompt, "canvas": canvas, "intent": intent, "history": history or []}
     response = client.invoke_agent_runtime(
         agentRuntimeArn=settings.REASONING_RUNTIME_ARN,
         qualifier="DEFAULT",
