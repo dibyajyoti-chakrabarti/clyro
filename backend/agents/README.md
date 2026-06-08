@@ -83,10 +83,22 @@ agentcore deploy              # Reasoning picks up the gateway URL after deploy
 ### 5. Wire the gateway + targets (you run)
 
 ```bash
-agentcore add gateway --name CryloCanvasGw
-agentcore add gateway-target --gateway CryloCanvasGw --type lambda-function-arn \
-  --arn "$CRYLO_MCP_PRICING_ARN" --schema ../../mcp/pricing/tools.json
-# …repeat for cfn + docs (ARNs in backend/mcp/arns.env)
+# Source ARNs from the MCP deploy output
+source ../../mcp/arns.env
+
+agentcore add gateway --name CryloCanvasGw --authorizer-type NONE
+
+agentcore add gateway-target --gateway CryloCanvasGw --name pricing \
+  --type lambda-function-arn --lambda-arn "$CRYLO_MCP_PRICING_ARN" \
+  --tool-schema-file ../../mcp/pricing/tools.json
+
+agentcore add gateway-target --gateway CryloCanvasGw --name cfn \
+  --type lambda-function-arn --lambda-arn "$CRYLO_MCP_CFN_ARN" \
+  --tool-schema-file ../../mcp/cfn/tools.json
+
+agentcore add gateway-target --gateway CryloCanvasGw --name docs \
+  --type lambda-function-arn --lambda-arn "$CRYLO_MCP_DOCS_ARN" \
+  --tool-schema-file ../../mcp/docs/tools.json
 ```
 
 Then write the Reasoning/Layout ARNs into the Orchestrator's env and
