@@ -120,9 +120,3 @@ REASONING_RUNTIME_ARN = env('REASONING_RUNTIME_ARN', default='')
 # AgentCore Memory id for persisting the canvas chat (so it survives a refresh).
 # When empty, chat persistence no-ops and the UI runs without it.
 AGENTCORE_MEMORY_ID = env('AGENTCORE_MEMORY_ID', default='')
-
-# DEBUG-only convenience: treat every Step 3 canvas request as the seeded dev
-# user so the endpoints can be exercised without a Cognito token. Inert in
-# production (requires DEBUG=True). Off by default.
-DEV_AUTH_BYPASS = env.bool('DEV_AUTH_BYPASS', default=False)
-DEV_USER_EMAIL = env('DEV_USER_EMAIL', default='dev@crylo.local')

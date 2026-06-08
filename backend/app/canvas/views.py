@@ -8,11 +8,12 @@ from rest_framework.response import Response
 
 from core.models import CanvasVersion, Project
 
+from app.auth import CognitoAuthentication
+
 from . import services
-from .auth import CanvasAuth
 from .serializers import serialize_version, serialize_version_summary
 
-_AUTH = [CanvasAuth]
+_AUTH = [CognitoAuthentication]
 _PERMS = [IsAuthenticated]
 
 

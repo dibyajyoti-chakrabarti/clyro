@@ -7,7 +7,7 @@ solver, and the hard constraints. Pure Python — no AWS or Django dependencies.
 
 from __future__ import annotations
 
-from . import canvas_ops, constraints, cost_engine, examples, layout_solver
+from . import canvas_ops, constraints, cost_engine, layout_solver
 
-__all__ = ["canvas_ops", "constraints", "cost_engine", "examples", "layout_solver"]
+__all__ = ["canvas_ops", "constraints", "cost_engine", "layout_solver"]
 __version__ = "0.1.0"
