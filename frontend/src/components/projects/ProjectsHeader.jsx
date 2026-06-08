@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import Button from '../ui/Button'
 
@@ -17,7 +18,7 @@ export default function ProjectsHeader({ count = 0 }) {
 
       <Link to='/app/projects/new'>
         <Button variant='primary' className='w-full sm:w-auto'>
-          <i className='ti ti-plus text-sm' />
+          <Plus className='h-4 w-4' />
           New Project
         </Button>
       </Link>

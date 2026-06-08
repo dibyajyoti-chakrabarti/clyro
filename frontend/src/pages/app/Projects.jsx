@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Search } from 'lucide-react'
 import { api } from '../../api'
 import ProjectsHeader from '../../components/projects/ProjectsHeader'
 import ProjectsToolbar from '../../components/projects/ProjectsToolbar'
@@ -62,7 +63,7 @@ export default function Projects() {
         </div>
       ) : filtered.length === 0 ? (
         <div className='flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/[0.08] bg-surface/40 py-16 text-center'>
-          <i className='ti ti-search text-2xl text-text-muted' />
+          <Search className='h-6 w-6 text-text-muted' />
           <p className='mt-3 text-sm text-text-muted'>
             No projects match <span className='text-text-primary'>"{search}"</span>
           </p>
