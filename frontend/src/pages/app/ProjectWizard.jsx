@@ -1047,7 +1047,7 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
   }
 
   return (
-    <div className='mt-8 mb-6 flex min-h-[560px] flex-1 gap-4'>
+    <div className='mt-8 mb-6 flex h-[calc(100vh-13rem)] min-h-[420px] gap-4'>
       <div
         ref={surfaceRef}
         className='relative flex-1 cursor-grab select-none overflow-auto rounded-xl border border-border/70 bg-background active:cursor-grabbing'
