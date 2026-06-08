@@ -26,13 +26,13 @@ function Card({ children, className = '' }) {
 
 function SectionHeader({ icon: Icon, title, description }) {
   return (
-    <div className='flex flex-col gap-3 lg:flex-row lg:items-center'>
+    <div className='flex flex-col gap-4 lg:flex-row lg:items-center'>
       <div className='grid h-12 w-12 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.04] text-amber-300'>
-        <Icon size={22} />
+        <Icon size={18} />
       </div>
       <div className='min-w-0'>
         <h2 className='text-2xl font-semibold text-white'>{title}</h2>
-        <p className='mt-0.5 max-w-3xl text-text-muted'>{description}</p>
+        <p className='mt-0.5 max-w-3xl text-sm text-text-muted'>{description}</p>
       </div>
     </div>
   )
@@ -50,7 +50,7 @@ function ComingSoonRow({ icon: Icon, label, description }) {
           <p className='text-sm text-text-muted'>{description}</p>
         </div>
       </div>
-      <span className='shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1.5 text-sm text-text-muted'>
+      <span className='shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs text-text-muted'>
         Coming soon
       </span>
     </div>
@@ -72,13 +72,13 @@ export default function Settings() {
 
   return (
     <div className='space-y-5'>
-      <div className='mb-5'>
+      <div className='mb-6'>
         <h1 className='text-5xl font-semibold text-white'>Settings</h1>
-        <p className='mt-2 text-lg text-text-muted'>Manage your preferences.</p>
+        <p className='mt-2 text-base text-text-muted'>Manage your preferences.</p>
       </div>
 
       <Card>
-        <div className='space-y-5'>
+        <div className='space-y-4'>
           <SectionHeader
             icon={Globe}
             title='Default AWS Region'
@@ -112,7 +112,7 @@ export default function Settings() {
       </Card>
 
       <Card>
-        <div className='space-y-5'>
+        <div className='space-y-4'>
           <SectionHeader
             icon={Bell}
             title='Notifications'
@@ -140,7 +140,7 @@ export default function Settings() {
       </Card>
 
       <Card>
-        <div className='space-y-5'>
+        <div className='space-y-4'>
           <SectionHeader
             icon={Palette}
             title='Appearance'
