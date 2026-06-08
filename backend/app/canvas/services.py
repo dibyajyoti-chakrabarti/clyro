@@ -280,8 +280,7 @@ def run_canvas_agent(
         result = apply_operation_and_persist(project, version, canvas, intent, pending_operation)
         # Record the resolution so the restored chat no longer shows a pending Apply.
         chat_memory.save_exchange(
-            project, user_text=None, agent_text=result.get("message"),
-            data={"outcome": result.get("outcome")},
+            project, agent_payload={"outcome": result.get("outcome"), "message": result.get("message")},
         )
         return result
 
@@ -292,9 +291,11 @@ def run_canvas_agent(
     else:
         result = classify(canvas, intent, prompt)
     chat_memory.save_exchange(
-        project, user_text=prompt, agent_text=result.get("message"),
-        data={
+        project,
+        user_text=prompt,
+        agent_payload={
             "outcome": result.get("outcome"),
+            "message": result.get("message"),
             "operation": result.get("operation"),
             "cost_before": result.get("cost_before"),
             "cost_after": result.get("cost_after"),
@@ -308,7 +309,7 @@ def dismiss_proposal(project: Project) -> dict[str, Any]:
     """Record that the user dismissed a pending proposal so the restored chat no
     longer prompts to apply it."""
     message = "Okay, leaving it as is."
-    chat_memory.save_exchange(project, user_text=None, agent_text=message, data={"outcome": "dismissed"})
+    chat_memory.save_exchange(project, agent_payload={"outcome": "dismissed", "message": message})
     return {"outcome": "dismissed", "message": message}
 
 

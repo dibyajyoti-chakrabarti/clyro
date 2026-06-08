@@ -39,37 +39,38 @@ def _keys(project) -> tuple[str, str]:
     return pid, pid
 
 
-def save_exchange(project, *, user_text: str | None, agent_text: str | None, data: dict | None = None) -> None:
-    """Persist one chat exchange (a user prompt and/or an agent reply) as a single
-    event. ``data`` carries the structured {outcome, operation, cost_*} so the
-    pending Apply/Deny state can be restored on refresh."""
+def save_exchange(project, *, user_text: str | None = None, agent_payload: dict | None = None) -> None:
+    """Persist one chat exchange. The user prompt is stored as plain text; the
+    agent reply is stored as the JSON-encoded ``{outcome, message, operation?,
+    cost_*}`` so the displayed message *and* the pending Apply/Deny state can be
+    restored on refresh. (We use the event text, not metadata — AgentCore event
+    metadata only allows ``[a-zA-Z0-9 ._:/=+@-]``, which can't hold JSON.)"""
     if not _enabled():
         return
     payload: list[dict] = []
     if user_text:
         payload.append({"conversational": {"content": {"text": user_text}, "role": "USER"}})
-    if agent_text:
-        payload.append({"conversational": {"content": {"text": agent_text}, "role": "ASSISTANT"}})
+    if agent_payload is not None:
+        payload.append({"conversational": {"content": {"text": json.dumps(agent_payload)}, "role": "ASSISTANT"}})
     if not payload:
         return
     actor, session = _keys(project)
-    kwargs: dict[str, Any] = {
-        "memoryId": settings.AGENTCORE_MEMORY_ID,
-        "actorId": actor,
-        "sessionId": session,
-        "eventTimestamp": datetime.now(timezone.utc),
-        "payload": payload,
-    }
-    if data is not None:
-        kwargs["metadata"] = {"data": {"stringValue": json.dumps(data)}}
     try:
-        _client().create_event(**kwargs)
+        _client().create_event(
+            memoryId=settings.AGENTCORE_MEMORY_ID,
+            actorId=actor,
+            sessionId=session,
+            eventTimestamp=datetime.now(timezone.utc),
+            payload=payload,
+        )
     except Exception:  # never break the request on a memory failure
         logger.exception("canvas chat save_exchange failed")
 
 
 def _parse_events(events: list[dict]) -> dict[str, Any]:
-    """Turn raw ListEvents output into the frontend shape (pure — unit-testable)."""
+    """Turn raw ListEvents output into the frontend shape (pure — unit-testable).
+    User turns are plain text; agent turns are JSON-encoded payloads, so we parse
+    them to recover the display message and the latest pending proposal."""
     ordered = sorted(events, key=lambda e: e.get("eventTimestamp"))
     messages: list[dict] = []
     last_data: dict | None = None
@@ -78,16 +79,18 @@ def _parse_events(events: list[dict]) -> dict[str, Any]:
             conv = item.get("conversational")
             if not conv:
                 continue
-            role = "user" if conv.get("role") == "USER" else "agent"
-            text = (conv.get("content") or {}).get("text", "")
-            if text:
-                messages.append({"role": role, "text": text})
-        raw = (ev.get("metadata") or {}).get("data", {}).get("stringValue")
-        if raw:
-            try:
-                last_data = json.loads(raw)
-            except (ValueError, TypeError):
-                last_data = None
+            raw = (conv.get("content") or {}).get("text", "")
+            if conv.get("role") == "USER":
+                if raw:
+                    messages.append({"role": "user", "text": raw})
+            else:  # ASSISTANT — a JSON payload
+                try:
+                    data = json.loads(raw)
+                except (ValueError, TypeError):
+                    data = {"message": raw}
+                if data.get("message"):
+                    messages.append({"role": "agent", "text": data["message"]})
+                last_data = data
     pending = last_data.get("operation") if last_data and last_data.get("outcome") == "proposal" else None
     return {"messages": messages, "pending_operation": pending}
 
