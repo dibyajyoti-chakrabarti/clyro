@@ -28,27 +28,92 @@ React → Django Canvas API ─(ORCHESTRATOR_RUNTIME_ARN set)→ Orchestrator (R
 - The 3 MCP Lambdas already deployed (`backend/mcp/`), ARNs in
   `backend/mcp/arns.env`.
 
-## Runbook
+## Replicate on another machine (fresh clone)
+
+The whole `CryloCanvas/` scaffold + agent code is **committed**, so a teammate
+does **not** re-run `agentcore create` / `agentcore add agent`. They restore the
+gitignored artifacts (per-agent `.venv/`, the vendored `canvas_core/`, CDK
+`node_modules/`) and deploy to **their own AWS account**. Nothing here is tied to
+a specific account — `aws-targets.json` is empty in git and gets filled in on the
+first deploy.
+
+### 0. Install the toolchain
+
+| Tool | Why | Install |
+| --- | --- | --- |
+| **Node.js 20+** | AgentCore CLI + auto-managed CDK | nvm / system package |
+| **Python 3.10+ & uv** | per-agent venvs | <https://docs.astral.sh/uv> |
+| **AWS CLI** (configured) | deploy targets your account | `aws configure` |
+| **Docker** | builds the MCP Lambda images (`backend/mcp/`) | system package |
+| **AgentCore CLI** | scaffold/deploy | `npm install -g @aws/agentcore` (need ≥ 0.9.0) |
+
+### 1. Clone + point at the right account/region
+
+```bash
+git clone <repo-url> clyro
+cd clyro
+aws configure                      # their access key / secret
+export AWS_REGION=ap-south-1        # all Step-3 + MCP resources live here
+```
+
+Then enable **Bedrock Claude model access in `ap-south-1`** (Bedrock console →
+Model access → request `anthropic.claude-sonnet-4-5`). Without this the Reasoning
+agent's model call 403s.
+
+### 2. Deploy the MCP Lambdas first (their account)
+
+The agents' Gateway routes to these, so they must exist before wiring the gateway.
+
+```bash
+cd backend/mcp
+./deploy_mcp.sh                    # builds 3 images, creates 3 Lambdas + roles
+                                   # writes backend/mcp/arns.env (gitignored)
+```
+
+### 3. Restore the gitignored agent artifacts
+
+```bash
+cd ../agents
+
+# (a) vendored shared engine — copied into Reasoning + Layout
+./vendor_canvas_core.sh
+
+# (b) per-agent Python venvs (only needed for `agentcore dev` / local runs)
+for a in Reasoning Layout Orchestrator; do (cd CryloCanvas/app/$a && uv sync); done
+```
+
+`agentcore deploy` installs the CDK `node_modules/` itself on first run; if it
+doesn't, `cd CryloCanvas/agentcore/cdk && npm install`.
+
+### 4. Deploy the agents + wire the gateway
+
+Run **Deploy steps 4–6 below** exactly as written (deploy → gateway targets →
+Orchestrator ARNs → flip the backend). They're account-agnostic — the CLI reads
+the committed `agentcore.json` and provisions fresh resources in the teammate's
+account.
+
+> Re-running `./vendor_canvas_core.sh` before **every** `agentcore deploy` keeps
+> the bundled engine in sync with `backend/canvas_core/`.
+
+## Runbook (original from-scratch build — a fresh clone skips steps 1–2)
 
 The CLI generates the project + the auto-managed CDK infra, so **you run the
 scaffold/deploy commands**; the agent logic (`app/<Agent>/main.py`) is written in
 this repo.
 
-### 1. Scaffold (you run)
+### 1. Scaffold (you run — already committed; skip on a fresh clone)
 
 ```bash
 cd backend/agents
-agentcore create --name CryloCanvas --framework Strands --model-provider Bedrock
+agentcore create --name CryloCanvas --framework Strands --model-provider Bedrock --memory none
 # add the three runtimes
-agentcore add agent Reasoning
-agentcore add agent Layout
-agentcore add agent Orchestrator
+agentcore add agent --name Reasoning    --framework Strands --model-provider Bedrock --memory none --language Python
+agentcore add agent --name Layout       --framework Strands --model-provider Bedrock --memory none --language Python
+agentcore add agent --name Orchestrator --framework Strands --model-provider Bedrock --memory none --language Python
 ```
 
 This produces `backend/agents/CryloCanvas/` with `agentcore/agentcore.json`,
 `aws-targets.json`, `cdk/` (don't edit), and `app/<Agent>/{main.py,pyproject.toml}`.
-Share the generated tree (`tree CryloCanvas -L 3`) so the agent code is written
-to match it exactly.
 
 ### 2. Agent code (written in-repo, after the scaffold exists)
 
