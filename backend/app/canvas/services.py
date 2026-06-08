@@ -19,9 +19,9 @@ import boto3
 from django.conf import settings
 from django.utils import timezone
 
-from canvas_core import canvas_ops, constraints, cost_engine, layout_solver
+from canvas_core import canvas_builder, canvas_ops, constraints, cost_engine, layout_solver
 from canvas_core.cost_engine import DISPLAY_NAME
-from core.models import CanvasVersion, IntentRecord, Project
+from core.models import CanvasVersion, IntentRecord, Project, ScanResult
 
 from . import chat_memory
 from .serializers import serialize_version
@@ -42,8 +42,10 @@ def latest_version(project: Project) -> CanvasVersion | None:
     return CanvasVersion.objects.filter(project=project).order_by("-version_number").first()
 
 
-def intent_dict(project: Project) -> dict[str, Any]:
-    intent = IntentRecord.objects.filter(project=project).order_by("-created_at").first()
+def _intent_to_dict(intent: IntentRecord | None) -> dict[str, Any]:
+    """An IntentRecord as the dict the engine + builder read. ``estimate_cost``
+    uses scale/criticality/environment; ``build_canvas_from_detection`` uses the
+    ``*_choice`` fields. Extra keys are ignored by consumers that don't need them."""
     if not intent:
         return {}
     return {
@@ -51,7 +53,56 @@ def intent_dict(project: Project) -> dict[str, Any]:
         "criticality": intent.criticality,
         "environment": intent.environment,
         "description": intent.description,
+        "compute_choice": intent.compute_choice,
+        "database_choice": intent.database_choice,
+        "worker_compute_choice": intent.worker_compute_choice,
     }
+
+
+def intent_dict(project: Project) -> dict[str, Any]:
+    intent = IntentRecord.objects.filter(project=project).order_by("-created_at").first()
+    return _intent_to_dict(intent)
+
+
+def ensure_initial_canvas(project: Project) -> CanvasVersion | None:
+    """Build ``CanvasVersion`` v1 from the real Step 1 (``ScanResult.detected_resources``)
+    + Step 2 (``IntentRecord``) records the first time Step 3 is entered. Idempotent:
+    returns the existing latest version if one already exists, or ``None`` when there's
+    no completed scan to build from. This is the Step 1/2 → Step 3 bridge — it replaces
+    the old ``seed_step3`` fixture with the real records."""
+    existing = latest_version(project)
+    if existing is not None:
+        return existing
+
+    scan = (
+        ScanResult.objects.filter(project=project, status=ScanResult.Status.COMPLETE)
+        .order_by("-scan_timestamp")
+        .first()
+    )
+    if scan is None or not scan.detected_resources:
+        return None
+
+    intent_record = IntentRecord.objects.filter(project=project).order_by("-created_at").first()
+    intent = _intent_to_dict(intent_record)
+
+    canvas = canvas_builder.build_canvas_from_detection(scan.detected_resources, intent)
+    positions = layout_solver.compute_positions(canvas)
+    cost = cost_engine.estimate_cost(canvas, intent)
+
+    version = CanvasVersion.objects.create(
+        project=project,
+        intent_record=intent_record,
+        version_number=1,
+        status=CanvasVersion.Status.DRAFT,
+        canvas_yaml=canvas_ops.dump_canvas(canvas),
+        canvas_snapshot=canvas_ops.build_canvas_snapshot(canvas, positions, cost),
+        operation=CanvasVersion.Operation.INITIAL,
+        estimated_cost=cost,
+    )
+    if project.status not in (Project.Status.CANVAS_DRAFT, Project.Status.CANVAS_FINALIZED):
+        project.status = Project.Status.CANVAS_DRAFT
+        project.save(update_fields=["status", "updated_at"])
+    return version
 
 
 def _pretty(aws_service: str | None) -> str:
@@ -268,7 +319,7 @@ def run_canvas_agent(
     pending_operation: dict | None = None,
     history: list | None = None,
 ) -> dict[str, Any]:
-    version = latest_version(project)
+    version = ensure_initial_canvas(project)
     if version is None:
         return _answer("This project doesn't have a canvas yet.")
     canvas = canvas_ops.parse_canvas(version.canvas_yaml)

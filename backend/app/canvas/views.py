@@ -22,7 +22,8 @@ _PERMS = [IsAuthenticated]
 @permission_classes(_PERMS)
 def canvas_latest(request, pk):
     project = get_object_or_404(Project, pk=pk, user=request.user)
-    version = services.latest_version(project)
+    # Build CanvasVersion v1 from the real Step 1/2 records on first entry.
+    version = services.ensure_initial_canvas(project)
     if version is None:
         return Response({"error": "No canvas for this project yet."}, status=status.HTTP_404_NOT_FOUND)
     return Response(serialize_version(version))
