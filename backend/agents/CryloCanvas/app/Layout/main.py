@@ -10,6 +10,30 @@ app = BedrockAgentCoreApp()
 log = app.logger
 
 
+def _normalize_payload(payload):
+    """Accept both the raw structured dict the Django backend sends via boto3 and
+    the ``agentcore invoke`` CLI shape, which wraps all input as
+    ``{"prompt": "<your-input>"}`` — so a structured payload arrives as a JSON
+    string nested under ``prompt``. Unwrap that so ``operation``/``canvas`` are
+    found at the top level either way."""
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            return {}
+    if isinstance(payload, dict):
+        inner = payload.get("prompt")
+        if isinstance(inner, str) and inner.strip().startswith("{"):
+            try:
+                parsed = json.loads(inner)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (ValueError, TypeError):
+                pass
+        return payload
+    return {}
+
+
 @app.entrypoint
 async def invoke(payload, context):
     """Constrained executor: apply one bounded canvas operation and return the
@@ -19,6 +43,7 @@ async def invoke(payload, context):
     Returns: {outcome, canvas, positions, cost, change} or {outcome, reason}
     """
     log.info("Layout agent invoked")
+    payload = _normalize_payload(payload)
 
     operation = payload.get("operation", {})
     canvas = payload.get("canvas", {})

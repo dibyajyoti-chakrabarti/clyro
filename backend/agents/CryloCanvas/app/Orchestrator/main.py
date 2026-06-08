@@ -27,6 +27,30 @@ def _invoke_agent(arn: str, payload: dict, session_id: str) -> dict:
     return json.loads(text)
 
 
+def _normalize_payload(payload):
+    """Accept both the raw structured dict the Django backend sends via boto3 and
+    the ``agentcore invoke`` CLI shape, which wraps all input as
+    ``{"prompt": "<your-input>"}``. A structured payload passed to the CLI then
+    arrives as a JSON string under ``prompt``; unwrap it. A natural-language
+    prompt (doesn't start with ``{``) is left untouched."""
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            return {"prompt": payload}
+    if isinstance(payload, dict):
+        inner = payload.get("prompt")
+        if isinstance(inner, str) and inner.strip().startswith("{"):
+            try:
+                parsed = json.loads(inner)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (ValueError, TypeError):
+                pass
+        return payload
+    return {}
+
+
 @app.entrypoint
 async def invoke(payload, context):
     """Deterministic sequencer: route to Reasoning (new prompt) or Layout (confirmed op).
@@ -35,6 +59,7 @@ async def invoke(payload, context):
     Returns the sub-agent result unchanged.
     """
     log.info("Orchestrator agent invoked")
+    payload = _normalize_payload(payload)
 
     prompt = payload.get("prompt", "")
     confirm = payload.get("confirm", False)

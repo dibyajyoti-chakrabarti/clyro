@@ -33,7 +33,17 @@
       "codeLocation": "app/Orchestrator/",
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
-      "protocol": "HTTP"
+      "protocol": "HTTP",
+      "envVars": [
+        {
+          "name": "REASONING_AGENT_RUNTIME_ARN",
+          "value": ""
+        },
+        {
+          "name": "LAYOUT_AGENT_RUNTIME_ARN",
+          "value": ""
+        }
+      ]
     }
   ],
   "memories": [],

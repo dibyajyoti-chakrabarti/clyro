@@ -11,5 +11,7 @@ cdk/node_modules/
 # Ephemeral Staging
 .cache/*
 
-# Exception: Commit the State
-!.cli/deployed-state.json
+# Account-specific deploy state — kept OUT of git (contains the AWS account id +
+# per-deploy runtime/role ARNs that are only valid for one account's deploy).
+# deployed-state.json stays ignored via .cli/* above (no committed exception).
+aws-targets.json

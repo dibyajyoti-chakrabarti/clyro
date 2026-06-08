@@ -119,6 +119,35 @@ def _extract_json(text: str) -> dict[str, Any]:
     return {"outcome": "answer", "message": text or "I couldn't process that request."}
 
 
+def _normalize_payload(payload: Any) -> dict[str, Any]:
+    """Accept both invocation shapes:
+
+    - the raw structured dict the Django backend sends via boto3
+      (``{"prompt": "<NL>", "canvas": {...}, "intent": {...}}``), and
+    - the ``agentcore invoke`` CLI shape, which wraps all input as
+      ``{"prompt": "<your-input>"}`` — so a structured payload arrives as a
+      JSON *string* nested under ``prompt``.
+
+    A natural-language prompt (doesn't start with ``{``) is left untouched.
+    """
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (ValueError, TypeError):
+            return {"prompt": payload}
+    if isinstance(payload, dict):
+        inner = payload.get("prompt")
+        if isinstance(inner, str) and inner.strip().startswith("{"):
+            try:
+                parsed = json.loads(inner)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (ValueError, TypeError):
+                pass
+        return payload
+    return {}
+
+
 mcp_client = get_mcp_client()
 
 _tools: list[Any] = [estimate_cost_delta, check_constraint]
@@ -142,6 +171,7 @@ def get_or_create_agent():
 @app.entrypoint
 async def invoke(payload, context):
     log.info("Reasoning agent invoked")
+    payload = _normalize_payload(payload)
     agent = get_or_create_agent()
 
     canvas = payload.get("canvas", {})
