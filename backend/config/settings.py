@@ -100,7 +100,14 @@ COGNITO_USER_POOL_ID = env('COGNITO_USER_POOL_ID', default='')
 
 GITHUB_APP_ID = env.int('GITHUB_APP_ID', default=0)
 GITHUB_APP_NAME = env('GITHUB_APP_NAME', default='')
-GITHUB_APP_PRIVATE_KEY_PATH = env('GITHUB_APP_PRIVATE_KEY_PATH', default='')
+_github_app_private_key_path = Path(
+    env('GITHUB_APP_PRIVATE_KEY_PATH', default='github-app.pem')
+)
+GITHUB_APP_PRIVATE_KEY_PATH = (
+    _github_app_private_key_path
+    if _github_app_private_key_path.is_absolute()
+    else BASE_DIR / _github_app_private_key_path
+)
 
 AWS_PROFILE = env('AWS_PROFILE', default='default')
 AWS_REGION = env('AWS_REGION', default='us-east-1')

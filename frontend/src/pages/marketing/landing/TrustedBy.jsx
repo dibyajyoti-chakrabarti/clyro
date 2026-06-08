@@ -1,5 +1,5 @@
 import awsLogo from '../../../assets/logos/AWS_Logo.svg'
-import githubLogo from '../../../assets/logos/github_logo.svg'
+import githubLogo from '../../../assets/logos/github-fill.svg'
 import terraformLogo from '../../../assets/logos/terraform_logo.svg'
 import cloudfrontLogo from '../../../assets/logos/cloudfront_logo.svg'
 

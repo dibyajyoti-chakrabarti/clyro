@@ -4,7 +4,7 @@ import { signUp, signInWithRedirect } from 'aws-amplify/auth'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import { GitHubIcon, GoogleIcon } from '../../components/ui/BrandIcons'
-import signUpArt from '../../assets/sign_up_art.svg'
+import signUpArt from '../../assets/signup_art_.jpg'
 import clyroLogo from "../../assets/logos/Clyro_logo.png";
 
 export default function Signup() {
@@ -55,25 +55,29 @@ export default function Signup() {
               alt="Sign up illustration"
               className="absolute inset-0 h-full w-full object-cover"
             />
-
-            <div className="relative z-10 flex items-center justify-between gap-4">
-              <Link to="/" className="flex w-fit items-center gap-3">
-                <img src={clyroLogo} alt="Clyro Logo" className="h-10 w-auto" />
-                <span className="text-2xl font-semibold tracking-tight text-white">
-                  Clyro
-                </span>
-              </Link>
-              <Link
-                to="/"
-                className="hidden rounded-full border border-white/[0.12] bg-white/[0.035] px-4 py-2 text-sm text-text-muted hover:border-amber-300/45 hover:text-amber-200 sm:inline-flex"
-              >
-                Back to website
-              </Link>
-            </div>
           </section>
 
           <section className="order-1 flex items-center bg-[radial-gradient(circle_at_78%_16%,rgba(255,255,255,0.06),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.01))] px-6 py-8 sm:px-10 sm:py-10 lg:order-2 lg:px-16">
             <div className="mx-auto w-full max-w-xl">
+              <div className="mb-10 flex items-center justify-between">
+                <Link to="/" className="flex items-center gap-3">
+                  <img
+                    src={clyroLogo}
+                    alt="Clyro Logo"
+                    className="h-10 w-auto"
+                  />
+                  <span className="text-2xl font-semibold tracking-tight text-white">
+                    Clyro
+                  </span>
+                </Link>
+
+                <Link
+                  to="/"
+                  className="rounded-full border border-white/[0.12] bg-white/[0.035] px-4 py-2 text-sm text-text-muted transition hover:border-amber-300/45 hover:text-amber-200"
+                >
+                  Back to website
+                </Link>
+              </div>
               <h2 className="text-4xl font-semibold tracking-normal text-white sm:text-5xl">
                 Create your account
               </h2>
