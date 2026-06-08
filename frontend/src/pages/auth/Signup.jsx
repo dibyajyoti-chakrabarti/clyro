@@ -4,7 +4,7 @@ import { signUp, signInWithRedirect } from 'aws-amplify/auth'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import { GitHubIcon, GoogleIcon } from '../../components/ui/BrandIcons'
-import signUpArt from '../../assets/login_art6.jpg'
+import signUpArt from '../../assets/signup_art_.jpg'
 import clyroLogo from "../../assets/logos/Clyro_logo.png";
 
 export default function Signup() {
