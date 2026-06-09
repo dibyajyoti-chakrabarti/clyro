@@ -19,12 +19,12 @@ def _extract_json(raw: str) -> dict:
 
 def _run_scan_agent(token: str, project: Project) -> dict:
     """Get the scan result JSON for a project. Delegates to the deployed RepoRecon
-    runtime when ``STEP1_RUNTIME_ARN`` is set (returns a parsed dict), else runs the
-    in-process scanner agent (returns a string that we parse). The downstream
+    runtime when ``REPORECON_RUNTIME_ARN`` is set (returns a parsed dict), else runs
+    the in-process scanner agent (returns a string that we parse). The downstream
     persistence in ``run_scan_for_project`` is identical for both paths."""
-    if settings.STEP1_RUNTIME_ARN:
+    if settings.REPORECON_RUNTIME_ARN:
         return agentcore.invoke_runtime(
-            settings.STEP1_RUNTIME_ARN,
+            settings.REPORECON_RUNTIME_ARN,
             {
                 "installation_token": token,
                 "repo_full_name": project.repo_full_name,
