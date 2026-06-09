@@ -117,6 +117,11 @@ AWS_REGION = env('AWS_REGION', default='us-east-1')
 # empty (default), it runs the local canvas_core deterministic stub.
 REASONING_RUNTIME_ARN = env('REASONING_RUNTIME_ARN', default='')
 
+# ── Step 1 (Repo Recon) ─────────────────────────────────────────────────────
+# When set, the repo scan is delegated to the deployed RepoRecon runtime; when
+# empty (default), it runs the in-process scanner agent (local fallback).
+STEP1_RUNTIME_ARN = env('STEP1_RUNTIME_ARN', default='')
+
 # AgentCore Memory id for persisting the canvas chat (so it survives a refresh).
 # When empty, chat persistence no-ops and the UI runs without it.
 AGENTCORE_MEMORY_ID = env('AGENTCORE_MEMORY_ID', default='')

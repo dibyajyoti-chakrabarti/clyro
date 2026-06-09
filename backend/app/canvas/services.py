@@ -12,16 +12,16 @@ All canvas mutation, cost, layout, and constraint logic comes from
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-import boto3
 from django.conf import settings
 from django.utils import timezone
 
 from canvas_core import canvas_builder, canvas_ops, constraints, cost_engine, layout_solver
 from canvas_core.cost_engine import DISPLAY_NAME
 from core.models import CanvasVersion, IntentRecord, Project, ScanResult
+
+from app import agentcore
 
 from . import chat_memory
 from .serializers import serialize_version
@@ -364,36 +364,11 @@ def dismiss_proposal(project: Project) -> dict[str, Any]:
     return {"outcome": "dismissed", "message": message}
 
 
-def _parse_runtime_response(raw: bytes | str) -> dict[str, Any]:
-    """Parse the AgentCore Runtime reply. A streaming entrypoint returns
-    ``text/event-stream`` framing (``data: <chunk>\\n\\n``) and each yielded
-    JSON string is itself JSON-encoded by the SSE layer (double-encoded), so we
-    strip the ``data:`` lines and decode JSON until we land on the object."""
-    text = (raw.decode() if isinstance(raw, bytes) else raw).strip()
-    data_lines = [
-        line[len("data:"):].strip()
-        for line in text.splitlines()
-        if line.strip().startswith("data:")
-    ]
-    payload = "".join(data_lines) if data_lines else text
-    obj = json.loads(payload)
-    if isinstance(obj, str):  # double-encoded: decode once more to the object
-        obj = json.loads(obj)
-    return obj
-
-
 def _invoke_reasoning(prompt, canvas, intent, project, history=None) -> dict[str, Any]:
     """Call the deployed Reasoning runtime for a new prompt. It returns the
     {outcome, message, operation?, cost_*} contract; on a proposal the frontend
     confirms and the confirmed op is applied + persisted here (DB is the system
     of record). ``history`` carries the recent chat turns for conversational
     context."""
-    client = boto3.client("bedrock-agentcore", region_name=settings.AWS_REGION)
     payload = {"prompt": prompt, "canvas": canvas, "intent": intent, "history": history or []}
-    response = client.invoke_agent_runtime(
-        agentRuntimeArn=settings.REASONING_RUNTIME_ARN,
-        qualifier="DEFAULT",
-        runtimeSessionId=str(project.id),
-        payload=json.dumps(payload).encode(),
-    )
-    return _parse_runtime_response(response["response"].read())
+    return agentcore.invoke_runtime(settings.REASONING_RUNTIME_ARN, payload, str(project.id))

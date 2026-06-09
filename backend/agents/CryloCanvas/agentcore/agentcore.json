@@ -16,6 +16,15 @@
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
       "protocol": "HTTP"
+    },
+    {
+      "name": "RepoRecon",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/RepoRecon/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP"
     }
   ],
   "memories": [
