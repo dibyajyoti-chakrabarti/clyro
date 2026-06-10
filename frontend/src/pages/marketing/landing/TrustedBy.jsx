@@ -24,10 +24,10 @@ const brands = [
 
 export default function TrustedBy() {
   return (
-    <section className='w-full border-y border-black/[0.08] bg-[#F6F2EA] text-text-primary'>
+    <section className='w-full border-y border-white/[0.06] bg-background text-text-primary'>
       <div className='mx-auto w-full max-w-[1700px] px-4 py-10 text-center sm:px-6 lg:px-10 lg:py-12 xl:px-12'>
-        <p className='text-xs font-semibold uppercase tracking-[0.18em] text-black/60'>
-          TRUSTED BY DEVELOPERS & TEAMS
+        <p className='text-xs font-semibold uppercase tracking-[0.18em] text-text-muted'>
+          BUILT WITH
         </p>
 
         <ul className='mt-6 grid grid-cols-2 items-center justify-center gap-8 sm:flex lg:gap-12'>
@@ -37,12 +37,12 @@ export default function TrustedBy() {
                 <img
                   src={brand.logo}
                   alt={`${brand.name} logo`}
-                  className='h-8 w-auto object-contain opacity-80'
+                  className='h-8 w-auto object-contain opacity-60'
                 />
-                <span className='text-xl font-medium text-black/85'>{brand.name}</span>
+                <span className='text-xl font-medium text-text-muted'>{brand.name}</span>
               </div>
               {index < brands.length - 1 ? (
-                <div className='hidden h-10 w-px bg-black/[0.12] lg:block' />
+                <div className='hidden h-10 w-px bg-white/[0.1] lg:block' />
               ) : null}
             </li>
           ))}

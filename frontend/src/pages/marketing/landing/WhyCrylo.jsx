@@ -26,9 +26,9 @@ const features = [
 
 export default function WhyCrylo() {
   return (
-    <section className="w-full bg-[#F6F2EA] py-14 text-text-primary lg:py-10">
+    <section className="w-full bg-background py-14 text-text-primary lg:py-10">
       <div className="mx-auto w-full max-w-[1700px] px-4 sm:px-6 lg:px-10 xl:px-12">
-        <h2 className="text-center text-3xl font-semibold tracking-normal text-black/90 sm:text-4xl">
+        <h2 className="text-center text-3xl font-semibold tracking-normal text-text-primary sm:text-4xl">
           Why Clyro?
         </h2>
 
@@ -39,15 +39,15 @@ export default function WhyCrylo() {
             return (
               <Card
                 key={feature.title}
-                className="border-black/[0.08] bg-white/70 p-5 shadow-sm"
+                className="border-white/[0.07] bg-surface/60 p-5 shadow-sm"
               >
-                <div className="flex size-10 items-center justify-center rounded-full border border-amber-300/25 bg-amber-400/[0.06] text-lg font-semibold text-amber-300">
+                <div className="flex size-10 items-center justify-center rounded-full border border-amber-300/25 bg-amber-400/[0.08] text-lg font-semibold text-amber-300">
                   <Icon className="h-10 w-10 text-amber-300" />
                 </div>
-                <h3 className="mt-4 text-base font-semibold text-black/90">
+                <h3 className="mt-4 text-base font-semibold text-text-primary">
                   {feature.title}
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-black/70">
+                <p className="mt-2 text-sm leading-6 text-text-muted">
                   {feature.description}
                 </p>
               </Card>
