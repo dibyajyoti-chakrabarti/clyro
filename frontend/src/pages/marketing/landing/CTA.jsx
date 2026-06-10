@@ -3,7 +3,7 @@ import Button from "../../../components/ui/Button";
 
 export default function CTA() {
   return (
-    <section className="w-full bg-background py-8 text-text-primary">
+    <section className="w-full bg-[#F6F2EA] py-8 text-text-primary">
       <div className="mx-auto w-full max-w-[1700px] px-4 sm:px-6 lg:px-10 xl:px-12">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#FF6A13] via-[#F97316] to-[#EAB308] px-6 py-6 shadow-[0_20px_60px_rgba(249,115,22,0.25)] lg:px-10 lg:py-8">
           <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">

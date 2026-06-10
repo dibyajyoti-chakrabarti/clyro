@@ -2,7 +2,7 @@ import Card from "../../../components/ui/Card";
 
 export default function Testimonials() {
   return (
-    <section className="w-full bg-background py-6 text-text-primary lg:py-8">
+    <section className="w-full bg-[#F6F2EA] py-6 text-text-primary lg:py-8">
       <div className="mx-auto grid w-full max-w-[1700px] gap-4 px-4 sm:px-6 lg:grid-cols-[0.32fr_0.68fr] lg:px-10 xl:px-12">
         <Card className="border-white/[0.08] bg-surface/40 p-4 shadow-sm">
           <h2 className="text-lg font-semibold text-text-primary">

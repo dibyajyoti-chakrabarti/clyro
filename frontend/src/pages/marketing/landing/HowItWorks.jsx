@@ -26,9 +26,9 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section className="w-full bg-background py-12 text-text-primary lg:py-14">
+    <section className="w-full bg-[#F6F2EA] py-12 text-text-primary lg:py-14">
       <div className="mx-auto w-full max-w-[1700px] px-4 sm:px-6 lg:px-10 xl:px-12">
-        <h2 className="text-center text-3xl font-semibold tracking-normal text-text-primary sm:text-4xl">
+        <h2 className="text-center text-3xl font-semibold tracking-normal text-black/90 sm:text-4xl">
           How Clyro Works
         </h2>
 
@@ -39,13 +39,13 @@ export default function HowItWorks() {
             return (
               <div
                 key={step.title}
-                className="rounded-2xl border border-white/[0.08] bg-surface/40 p-6 text-center shadow-sm"
+                className="rounded-2xl border border-white/[0.08] bg-[#111318] p-6 text-center shadow-sm"
               >
                 <div className="mx-auto flex size-7 items-center justify-center rounded-full bg-amber-400 text-xs font-bold text-black shadow-[0_8px_20px_rgba(251,191,36,0.18)]">
                   {step.number}
                 </div>
 
-                <div className="mx-auto mt-3 flex size-20 items-center justify-center rounded-lg border border-white/[0.08] bg-surface/40 text-amber-300">
+                <div className="mx-auto mt-3 flex size-20 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-amber-300">
                   <Icon className="h-9 w-9 text-amber-300" />
                 </div>
 
