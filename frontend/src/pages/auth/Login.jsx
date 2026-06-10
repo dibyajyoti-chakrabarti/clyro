@@ -34,10 +34,10 @@ export default function Login() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030609] px-4 py-5 text-text-primary sm:px-6 lg:px-8">
-      <div className="mx-auto flex min-h-full w-full max-w-[1480px] items-center">
-        <div className="grid w-full grid-cols-1 overflow-hidden rounded-2xl border border-white/[0.12] bg-[#070b0f] shadow-[0_24px_90px_rgba(0,0,0,0.55)] lg:min-h-[820px] lg:grid-cols-[1.1fr_1.6fr] xl:grid-cols-[1fr_2fr]">
-          <section className="order-1 flex flex-col border-white/[0.1] bg-[radial-gradient(circle_at_20%_0%,rgba(251,191,36,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.015))] px-6 py-7 sm:px-9 sm:py-10 lg:border-r lg:px-12 lg:py-12">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030609] text-text-primary">
+      <div className="flex min-h-full w-full">
+        <div className="grid w-full grid-cols-1 bg-[#070b0f] lg:grid-cols-[1.1fr_1.6fr] xl:grid-cols-[1fr_2fr]">
+          <section className="order-1 flex min-h-screen flex-col border-white/[0.1] bg-[radial-gradient(circle_at_20%_0%,rgba(251,191,36,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.015))] px-6 py-7 sm:px-9 sm:py-10 lg:border-r lg:px-12 lg:py-12">
             <div className="mx-auto flex w-full max-w-xl flex-1 flex-col lg:max-w-none">
               <div className="flex items-center justify-between gap-4">
                 <Link to="/" className="flex w-fit items-center gap-3">
@@ -164,7 +164,7 @@ export default function Login() {
             </div>
           </section>
 
-          <section className="relative order-2 hidden min-h-[460px] overflow-hidden border-t border-white/[0.1] bg-[#04080c] lg:flex lg:min-h-full lg:border-l lg:border-t-0">
+          <section className="relative order-2 hidden min-h-screen overflow-hidden border-l border-white/[0.1] bg-[#04080c] lg:flex">
             <img
               src={loginArt}
               alt="Login illustration"
@@ -174,5 +174,6 @@ export default function Login() {
         </div>
       </div>
     </div>
+
   );
 }

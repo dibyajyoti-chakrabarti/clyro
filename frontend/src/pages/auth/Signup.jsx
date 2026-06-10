@@ -46,10 +46,10 @@ export default function Signup() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030609] px-4 py-5 text-text-primary sm:px-6 lg:px-8">
-      <div className="mx-auto flex min-h-full w-full max-w-[1460px] items-center">
-        <div className="grid w-full grid-cols-1 overflow-hidden rounded-2xl border border-white/[0.12] bg-[#060a0e] shadow-[0_24px_90px_rgba(0,0,0,0.58)] lg:min-h-[820px] lg:grid-cols-[1.6fr_1.1fr] xl:grid-cols-[2fr_1fr]">
-          <section className="relative order-2 hidden min-h-[420px] flex-col overflow-hidden border-t border-white/[0.1] bg-[#060a0e] px-6 py-8 sm:min-h-[560px] sm:px-10 sm:py-10 lg:order-1 lg:flex lg:min-h-full lg:border-r lg:border-t-0 lg:px-11 lg:py-11">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030609] text-text-primary">
+      <div className="flex min-h-full w-full">
+        <div className="grid w-full grid-cols-1 bg-[#060a0e] lg:grid-cols-[1.6fr_1.1fr] xl:grid-cols-[2fr_1fr]">
+          <section className="relative order-2 hidden min-h-screen flex-col overflow-hidden border-r border-white/[0.1] bg-[#060a0e] lg:order-1 lg:flex">
             <img
               src={signUpArt}
               alt="Sign up illustration"
@@ -57,7 +57,7 @@ export default function Signup() {
             />
           </section>
 
-          <section className="order-1 flex items-center bg-[radial-gradient(circle_at_78%_16%,rgba(255,255,255,0.06),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.01))] px-6 py-8 sm:px-10 sm:py-10 lg:order-2 lg:px-16">
+          <section className="order-1 flex min-h-screen items-center bg-[radial-gradient(circle_at_78%_16%,rgba(255,255,255,0.06),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.01))] px-6 py-8 sm:px-10 sm:py-10 lg:order-2 lg:px-16">
             <div className="mx-auto w-full max-w-xl">
               <div className="mb-10 flex items-center justify-between">
                 <Link to="/" className="flex items-center gap-3">
