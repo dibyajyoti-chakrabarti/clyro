@@ -24,7 +24,7 @@ const brands = [
 
 export default function TrustedBy() {
   return (
-    <section className='w-full border-y border-black/[0.08] bg-[#F6F2EA] text-text-primary'>
+    <section className='w-full border-t border-t-black/[0.06] border-b-2 border-b-black/[0.14] bg-[#F6F2EA] text-text-primary'>
       <div className='mx-auto w-full max-w-[1700px] px-4 py-10 text-center sm:px-6 lg:px-10 lg:py-12 xl:px-12'>
         <p className='text-xs font-semibold uppercase tracking-[0.18em] text-black/60'>
           BUILT WITH
