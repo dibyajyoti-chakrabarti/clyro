@@ -1,64 +1,121 @@
-import { PenTool, BarChart3, Rocket } from "lucide-react";
+import { useRef } from "react";
+
+import HowItWorksCard from "../../../components/marketing/HowItWorksCard";
+import step1Illustration from "../../../assets/howItWorks/step1_ill.png";
+import step2Illustration from "../../../assets/howItWorks/step2_ill.png";
+import step3Illustration from "../../../assets/howItWorks/step3_ill.png";
+import step4Illustration from "../../../assets/howItWorks/step4_ill.png";
+import step5Illustration from "../../../assets/howItWorks/step5_ill.png";
+import useHowItWorksAnimation from "../../../hooks/useHowItWorksAnimation";
 
 const steps = [
   {
-    number: "1",
-    title: "Design",
-    icon: PenTool,
-    description:
-      "Drag and drop cloud services or describe your system in plain English on a visual canvas.",
+    step: "01",
+    headingTop: "UNDERSTAND YOUR",
+    headingHighlight: "REPOSITORY",
+    illustration: step1Illustration,
+    accent: "yellow",
   },
   {
-    number: "2",
-    title: "Validate",
-    icon: BarChart3,
-    description:
-      "Clyro analyzes your architecture for cost, security, and deployment readiness in real time.",
+    step: "02",
+    headingTop: "COLLECT YOUR",
+    headingHighlight: "INTENT",
+    illustration: step2Illustration,
+    accent: "orange",
   },
   {
-    number: "3",
-    title: "Deploy",
-    icon: Rocket,
-    description:
-      "Deploy your infrastructure to AWS with one click and no manual configuration.",
+    step: "03",
+    headingTop: "DESIGN YOUR",
+    headingHighlight: "INFRASTRUCTURE",
+    illustration: step3Illustration,
+    accent: "blue",
+  },
+  {
+    step: "04",
+    headingTop: "DEPLOY YOUR",
+    headingHighlight: "INFRASTRUCTURE",
+    illustration: step4Illustration,
+    accent: "green",
+  },
+  {
+    step: "05",
+    headingTop: "MONITOR & OPTIMIZE YOUR",
+    headingHighlight: "INFRASTRUCTURE",
+    illustration: step5Illustration,
+    accent: "orange",
   },
 ];
 
+const CARD_HEIGHT = "62vh";
+
 export default function HowItWorks() {
+  const sectionRef = useRef(null);
+  const containerRef = useRef(null);
+  const cardsRef = useRef([]);
+
+  useHowItWorksAnimation(sectionRef, containerRef, cardsRef);
+
   return (
-    <section className="w-full bg-[#F6F2EA] py-12 text-text-primary lg:py-14">
-      <div className="mx-auto w-full max-w-[1700px] px-4 sm:px-6 lg:px-10 xl:px-12">
-        <h2 className="text-center text-3xl font-semibold tracking-normal text-black/90 sm:text-4xl">
-          How Clyro Works
-        </h2>
+    <section ref={sectionRef} className="relative w-full bg-[#F6F2EA]">
+      <div className="mx-auto max-w-[1700px] px-4 sm:px-6 lg:px-10 xl:px-12">
+        <div ref={containerRef}>
+          {/* Heading */}
+          <div className="pt-16 pb-6">
+            <h2 className="text-3xl font-semibold tracking-tight text-black sm:text-4xl">
+              HOW IT WORKS
+            </h2>
+            <p className="mt-3 text-lg leading-8 text-black/70 sm:text-xl">
+              From Repository to Production
+            </p>
+            <p className="mt-4 max-w-3xl text-base leading-7 text-black/65 sm:text-lg">
+              Five intelligent steps that transform your GitHub repository into
+              production-ready AWS infrastructure.
+            </p>
+          </div>
 
-        <div className="mt-8 grid gap-6 md:grid-cols-3 lg:gap-8">
-          {steps.map((step) => {
-            const Icon = step.icon;
-
-            return (
+          {/* Card stage */}
+          <div
+            style={{
+              position: "relative",
+              height: CARD_HEIGHT,
+              marginBottom: "2rem",
+            }}
+          >
+            {steps.map((item, index) => (
               <div
-                key={step.title}
-                className="rounded-2xl border border-white/[0.08] bg-[#111318] p-6 text-center shadow-sm"
+                key={item.step}
+                ref={(el) => {
+                  cardsRef.current[index] = el;
+                }}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "center",
+                }}
               >
-                <div className="mx-auto flex size-7 items-center justify-center rounded-full bg-amber-400 text-xs font-bold text-black shadow-[0_8px_20px_rgba(251,191,36,0.18)]">
-                  {step.number}
+                <div
+                  style={{
+                    height: CARD_HEIGHT,
+                    width: "100%",
+                    maxWidth: "1600px",
+                  }}
+                >
+                  <HowItWorksCard
+                    step={item.step}
+                    headingTop={item.headingTop}
+                    headingHighlight={item.headingHighlight}
+                    illustration={item.illustration}
+                    accent={item.accent}
+                  />
                 </div>
-
-                <div className="mx-auto mt-3 flex size-20 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-amber-300">
-                  <Icon className="h-9 w-9 text-amber-300" />
-                </div>
-
-                <h3 className="mt-3 text-lg font-semibold text-text-primary">
-                  {step.title}
-                </h3>
-
-                <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-text-muted">
-                  {step.description}
-                </p>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       </div>
     </section>
