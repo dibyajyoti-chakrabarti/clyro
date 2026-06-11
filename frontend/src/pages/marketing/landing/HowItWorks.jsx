@@ -57,7 +57,7 @@ export default function HowItWorks() {
   return (
     <section
       ref={sectionRef}
-      className="relative w-full bg-transparent py-6 px-4 sm:px-6"
+      className="relative w-full bg-[#F6F2EA] py-6 px-4 sm:px-6"
     >
       {/* Rounded wrapper */}
       <div className="mx-auto max-w-[1700px] bg-[#F6F2EA] rounded-3xl overflow-hidden">
