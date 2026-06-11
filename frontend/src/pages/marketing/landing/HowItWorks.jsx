@@ -1,11 +1,10 @@
 import { useRef } from "react";
-
 import HowItWorksCard from "../../../components/marketing/HowItWorksCard";
-import step1Illustration from "../../../assets/howItWorks/step1_ill.png";
-import step2Illustration from "../../../assets/howItWorks/step2_ill.png";
-import step3Illustration from "../../../assets/howItWorks/step3_ill.png";
-import step4Illustration from "../../../assets/howItWorks/step4_ill.png";
-import step5Illustration from "../../../assets/howItWorks/step5_ill.png";
+import step1Illustration from "../../../assets/howItWorks/step1_ill.webp";
+import step2Illustration from "../../../assets/howItWorks/step2_ill.webp";
+import step3Illustration from "../../../assets/howItWorks/step3_ill.webp";
+import step4Illustration from "../../../assets/howItWorks/step4_ill.webp";
+import step5Illustration from "../../../assets/howItWorks/step5_ill.webp";
 import useHowItWorksAnimation from "../../../hooks/useHowItWorksAnimation";
 
 const steps = [
@@ -56,65 +55,75 @@ export default function HowItWorks() {
   useHowItWorksAnimation(sectionRef, containerRef, cardsRef);
 
   return (
-    <section ref={sectionRef} className="relative w-full bg-[#F6F2EA]">
-      <div className="mx-auto max-w-[1700px] px-4 sm:px-6 lg:px-10 xl:px-12">
-        <div ref={containerRef}>
-          {/* Heading */}
-          <div className="pt-16 pb-6">
-            <h2 className="text-3xl font-semibold tracking-tight text-black sm:text-4xl">
-              HOW IT WORKS
-            </h2>
-            <p className="mt-3 text-lg leading-8 text-black/70 sm:text-xl">
-              From Repository to Production
-            </p>
-            <p className="mt-4 max-w-3xl text-base leading-7 text-black/65 sm:text-lg">
-              Five intelligent steps that transform your GitHub repository into
-              production-ready AWS infrastructure.
-            </p>
-          </div>
+    <section
+      ref={sectionRef}
+      className="relative w-full bg-transparent py-6 px-4 sm:px-6"
+    >
+      {/* Rounded wrapper */}
+      <div className="mx-auto max-w-[1700px] bg-[#F6F2EA] rounded-3xl overflow-hidden">
+        <div className="px-4 sm:px-6 lg:px-10 xl:px-12">
+          <div ref={containerRef}>
+            {/* Heading */}
+            <div className="pt-16 pb-10 flex flex-col items-center text-center">
+              {/* Main heading */}
+              <h2 className="text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl leading-none">
+                <span className="text-black">How It </span>
+                <span className="text-black/15">Works.</span>
+              </h2>
 
-          {/* Card stage */}
-          <div
-            style={{
-              position: "relative",
-              height: CARD_HEIGHT,
-              marginBottom: "2rem",
-            }}
-          >
-            {steps.map((item, index) => (
-              <div
-                key={item.step}
-                ref={(el) => {
-                  cardsRef.current[index] = el;
-                }}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "center",
-                }}
-              >
+              {/* Decorative divider */}
+              <div className="mt-8 flex items-center gap-3">
+                <div className="h-px w-12 bg-black/10" />
+                <span className="text-[11px] tracking-[0.15em] text-black/30 uppercase font-medium">
+                  5 Steps
+                </span>
+                <div className="h-px w-12 bg-black/10" />
+              </div>
+            </div>
+
+            {/* Card stage */}
+            <div
+              style={{
+                position: "relative",
+                height: CARD_HEIGHT,
+                marginBottom: "4rem",
+              }}
+            >
+              {steps.map((item, index) => (
                 <div
+                  key={item.step}
+                  ref={(el) => {
+                    cardsRef.current[index] = el;
+                  }}
                   style={{
-                    height: CARD_HEIGHT,
-                    width: "100%",
-                    maxWidth: "1600px",
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "center",
                   }}
                 >
-                  <HowItWorksCard
-                    step={item.step}
-                    headingTop={item.headingTop}
-                    headingHighlight={item.headingHighlight}
-                    illustration={item.illustration}
-                    accent={item.accent}
-                  />
+                  <div
+                    style={{
+                      height: CARD_HEIGHT,
+                      width: "100%",
+                      maxWidth: "1600px",
+                    }}
+                  >
+                    <HowItWorksCard
+                      step={item.step}
+                      headingTop={item.headingTop}
+                      headingHighlight={item.headingHighlight}
+                      illustration={item.illustration}
+                      accent={item.accent}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>
