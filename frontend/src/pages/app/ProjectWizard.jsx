@@ -1112,56 +1112,106 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
                 <path d='M 0 0 L 8 4 L 0 8 z' className='fill-slate-500/70' />
               </marker>
             </defs>
-            {canvasConnections.map((connection) => {
-              const fromPos = nodePositions[connection.from]
-              const toPos = nodePositions[connection.to]
-              if (!fromPos || !toPos) return null
+            {(() => {
               const W = 176
               const H = 74
-              const cx1 = fromPos.x + W / 2
-              const cy1 = fromPos.y + H / 2
-              const cx2 = toPos.x + W / 2
-              const cy2 = toPos.y + H / 2
-              // Clip the center-to-center line to each card's border so arrows
-              // meet the edges of the cards instead of running into them.
-              const edge = (cx, cy, tx, ty) => {
-                const dx = tx - cx
-                const dy = ty - cy
-                if (!dx && !dy) return [cx, cy]
-                const scale = Math.min(
-                  dx ? W / 2 / Math.abs(dx) : Infinity,
-                  dy ? H / 2 / Math.abs(dy) : Infinity,
-                )
-                return [cx + dx * scale, cy + dy * scale]
-              }
-              const [x1, y1] = edge(cx1, cy1, cx2, cy2)
-              const [x2, y2] = edge(cx2, cy2, cx1, cy1)
-              const midX = (x1 + x2) / 2
-              const midY = (y1 + y2) / 2
+              // Rectangles for every node, used to route edges around them.
+              const nodeRects = canvasNodes
+                .map((n) => {
+                  const p = nodePositions[n.id]
+                  return p ? { id: n.id, x: p.x, y: p.y } : null
+                })
+                .filter(Boolean)
 
-              return (
-                <g key={`${connection.from}-${connection.to}`}>
-                  <line
-                    x1={x1}
-                    y1={y1}
-                    x2={x2}
-                    y2={y2}
-                    stroke='rgba(148, 163, 184, 0.75)'
-                    strokeWidth='1.5'
-                    markerEnd='url(#arrow-head)'
-                  />
-                  <text
-                    x={midX}
-                    y={midY - 4}
-                    textAnchor='middle'
-                    fontSize='10'
-                    fill='rgba(148, 163, 184, 0.9)'
-                  >
-                    {connection.label}
-                  </text>
-                </g>
-              )
-            })}
+              // Return the first node (other than the edge's endpoints) whose card
+              // the straight segment passes through — sampled along the segment.
+              const obstacleFor = (ax, ay, bx, by, skip) => {
+                const margin = 6
+                for (const r of nodeRects) {
+                  if (skip.includes(r.id)) continue
+                  const minX = r.x - margin
+                  const maxX = r.x + W + margin
+                  const minY = r.y - margin
+                  const maxY = r.y + H + margin
+                  for (let i = 0; i <= 24; i++) {
+                    const t = i / 24
+                    const px = ax + (bx - ax) * t
+                    const py = ay + (by - ay) * t
+                    if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
+                      return { cx: r.x + W / 2, cy: r.y + H / 2 }
+                    }
+                  }
+                }
+                return null
+              }
+
+              return canvasConnections.map((connection) => {
+                const fromPos = nodePositions[connection.from]
+                const toPos = nodePositions[connection.to]
+                if (!fromPos || !toPos) return null
+                const cx1 = fromPos.x + W / 2
+                const cy1 = fromPos.y + H / 2
+                const cx2 = toPos.x + W / 2
+                const cy2 = toPos.y + H / 2
+                // Clip the center-to-center line to each card's border so arrows
+                // meet the edges of the cards instead of running into them.
+                const edge = (cx, cy, tx, ty) => {
+                  const dx = tx - cx
+                  const dy = ty - cy
+                  if (!dx && !dy) return [cx, cy]
+                  const scale = Math.min(
+                    dx ? W / 2 / Math.abs(dx) : Infinity,
+                    dy ? H / 2 / Math.abs(dy) : Infinity,
+                  )
+                  return [cx + dx * scale, cy + dy * scale]
+                }
+                const [x1, y1] = edge(cx1, cy1, cx2, cy2)
+                const [x2, y2] = edge(cx2, cy2, cx1, cy1)
+                const midX = (x1 + x2) / 2
+                const midY = (y1 + y2) / 2
+
+                // If the straight path crosses another card, bow the edge to the
+                // side (quadratic curve) so it routes cleanly around it.
+                let cpx = midX
+                let cpy = midY
+                const obstacle = obstacleFor(x1, y1, x2, y2, [connection.from, connection.to])
+                if (obstacle) {
+                  const len = Math.hypot(x2 - x1, y2 - y1) || 1
+                  const perpX = -(y2 - y1) / len
+                  const perpY = (x2 - x1) / len
+                  // Bow away from the obstacle's centre (default to one side if it
+                  // sits on the line). Offset 240 ≈ a 120px apex — clears a card.
+                  const side = (obstacle.cx - midX) * perpX + (obstacle.cy - midY) * perpY
+                  const sign = side > 0 ? -1 : 1
+                  cpx = midX + sign * 240 * perpX
+                  cpy = midY + sign * 240 * perpY
+                }
+                // Label rides the curve (quadratic midpoint).
+                const lx = 0.25 * x1 + 0.5 * cpx + 0.25 * x2
+                const ly = 0.25 * y1 + 0.5 * cpy + 0.25 * y2
+
+                return (
+                  <g key={`${connection.from}-${connection.to}`}>
+                    <path
+                      d={`M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`}
+                      fill='none'
+                      stroke='rgba(148, 163, 184, 0.75)'
+                      strokeWidth='1.5'
+                      markerEnd='url(#arrow-head)'
+                    />
+                    <text
+                      x={lx}
+                      y={ly - 4}
+                      textAnchor='middle'
+                      fontSize='10'
+                      fill='rgba(148, 163, 184, 0.9)'
+                    >
+                      {connection.label}
+                    </text>
+                  </g>
+                )
+              })
+            })()}
           </svg>
 
           {canvasNodes.map((node) => {
