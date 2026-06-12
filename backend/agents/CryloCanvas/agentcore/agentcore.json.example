@@ -1,0 +1,81 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "CryloCanvas",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "CryloCanvas"
+  },
+  "runtimes": [
+    {
+      "name": "Reasoning",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/Reasoning/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP"
+    },
+    {
+      "name": "RepoRecon",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/RepoRecon/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP"
+    }
+  ],
+  "memories": [
+    {
+      "name": "CryloCanvasMem",
+      "eventExpiryDuration": 30,
+      "strategies": []
+    }
+  ],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [
+    {
+      "name": "CryloCanvasGw",
+      "description": "Gateway for CryloCanvasGw",
+      "targets": [
+        {
+          "name": "pricing",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-pricing",
+            "toolSchemaFile": "../../mcp/pricing/tools.json"
+          }
+        },
+        {
+          "name": "cfn",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-cfn",
+            "toolSchemaFile": "../../mcp/cfn/tools.json"
+          }
+        },
+        {
+          "name": "docs",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-docs",
+            "toolSchemaFile": "../../mcp/docs/tools.json"
+          }
+        }
+      ],
+      "authorizerType": "NONE",
+      "enableSemanticSearch": true,
+      "exceptionLevel": "NONE"
+    }
+  ],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "httpGateways": [],
+  "harnesses": [],
+  "datasets": []
+}

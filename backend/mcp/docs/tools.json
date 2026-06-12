@@ -1,0 +1,56 @@
+[
+  {
+    "name": "search_documentation",
+    "description": "Search official AWS documentation and return ranked results (title, url, context snippet). Use to ground architecture/cost reasoning in AWS guidance before answering or proposing a change.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "search_phrase": {
+          "type": "string",
+          "description": "Search phrase, e.g. 'Aurora Serverless v2 pricing' or 'RDS Multi-AZ failover'."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of results to return (1-50, default 10)."
+        }
+      },
+      "required": ["search_phrase"]
+    }
+  },
+  {
+    "name": "read_documentation",
+    "description": "Fetch an AWS documentation page (by URL from search_documentation) and return it as markdown text. Supports pagination for long pages via start_index.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL of the AWS documentation page to read (must be a docs.aws.amazon.com URL)."
+        },
+        "max_length": {
+          "type": "integer",
+          "description": "Maximum number of characters to return (default 5000)."
+        },
+        "start_index": {
+          "type": "integer",
+          "description": "Character index to start reading from, to continue a previously truncated fetch (default 0)."
+        }
+      },
+      "required": ["url"]
+    }
+  },
+  {
+    "name": "recommend",
+    "description": "Get related/recommended AWS documentation pages for a given documentation URL. Useful for discovering adjacent guidance after reading a page.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "URL of the AWS documentation page to get recommendations for."
+        }
+      },
+      "required": ["url"]
+    }
+  }
+]

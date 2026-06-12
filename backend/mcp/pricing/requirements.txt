@@ -1,0 +1,2 @@
+# AWS Pricing MCP server (awslabs). Pinned for reproducible Lambda images.
+awslabs.aws-pricing-mcp-server==1.0.30

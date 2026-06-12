@@ -1,0 +1,6 @@
+# Dev-only tooling — not needed at runtime.
+# Type stubs so pyright/basedpyright understands Django models (.objects, field
+# value types, etc.); install into the same venv your editor uses.
+django-types==0.24.0
+# Test runner for canvas_core + backend tests.
+pytest>=8.0
