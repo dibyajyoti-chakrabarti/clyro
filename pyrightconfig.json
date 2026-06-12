@@ -1,0 +1,15 @@
+{
+  "include": ["backend"],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.venv",
+    "**/migrations",
+    "backend/canvas_core/tests"
+  ],
+  "venvPath": "backend",
+  "venv": ".venv",
+  "extraPaths": ["backend"],
+  "typeCheckingMode": "standard",
+  "reportMissingModuleSource": "none"
+}

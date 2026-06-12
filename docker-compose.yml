@@ -35,6 +35,8 @@ services:
     volumes:
       - ./backend:/app
       - /app/venv
+      # Local dev: give the container the host's AWS creds (for Bedrock AgentCore).
+      - ${HOME}/.aws:/root/.aws:ro
 
   frontend:
     build: ./frontend

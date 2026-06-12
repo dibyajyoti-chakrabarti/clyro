@@ -111,3 +111,17 @@ GITHUB_APP_PRIVATE_KEY_PATH = (
 
 AWS_PROFILE = env('AWS_PROFILE', default='default')
 AWS_REGION = env('AWS_REGION', default='us-east-1')
+
+# ── Step 3 (Canvas) ─────────────────────────────────────────────────────────
+# When set, a new canvas prompt is sent to the deployed Reasoning runtime; when
+# empty (default), it runs the local canvas_core deterministic stub.
+REASONING_RUNTIME_ARN = env('REASONING_RUNTIME_ARN', default='')
+
+# ── Step 1 (Repo Recon) ─────────────────────────────────────────────────────
+# When set, the repo scan is delegated to the deployed RepoRecon runtime; when
+# empty (default), it runs the in-process scanner agent (local fallback).
+REPORECON_RUNTIME_ARN = env('REPORECON_RUNTIME_ARN', default='')
+
+# AgentCore Memory id for persisting the canvas chat (so it survives a refresh).
+# When empty, chat persistence no-ops and the UI runs without it.
+AGENTCORE_MEMORY_ID = env('AGENTCORE_MEMORY_ID', default='')

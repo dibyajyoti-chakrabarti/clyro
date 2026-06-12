@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
 import Button from '../../components/ui/Button'
 import { api } from '../../api'
 
@@ -883,22 +884,24 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
   )
 }
 
-function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBanner, onDismissStep3Banner }) {
-  const [canvas, setCanvas] = useState(null) // TODO: fetch from GET /api/projects/{id}/canvas/latest/
-  const [nodePositions, setNodePositions] = useState({}) // TODO: persisted in canvas_snapshot
+const CHAT_WELCOME = {
+  role: 'agent',
+  text: 'Your architecture has been generated from your repository scan. You can ask me to explain any component, compare services, or suggest changes.',
+}
+
+function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, step3ShowBanner, onDismissStep3Banner }) {
+  const [canvas, setCanvas] = useState(null)
+  const [nodePositions, setNodePositions] = useState({})
 
   const [selectedNode, setSelectedNode] = useState(null)
   const [chatInput, setChatInput] = useState('')
-  const [chatHistory, setChatHistory] = useState([
-    {
-      role: 'agent',
-      text: 'Your architecture has been generated from your repository scan. You can ask me to explain any component, compare services, or suggest changes.',
-    },
-  ])
-  // TODO: call POST /api/projects/{id}/canvas/agent/ with the user's message
+  const [chatHistory, setChatHistory] = useState([CHAT_WELCOME])
   const [agentLoading, setAgentLoading] = useState(false)
+  const [pendingOp, setPendingOp] = useState(null)
   const chatEndRef = useRef(null)
   const chatInputRef = useRef(null)
+  const surfaceRef = useRef(null)
+  const panState = useRef(null)
 
   useEffect(() => {
     if (!step3InputPrefill) {
@@ -918,6 +921,34 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
     }
   }, [chatHistory])
 
+  useEffect(() => {
+    if (!projectId) return
+    let active = true
+    api.getCanvas(projectId)
+      .then((res) => {
+        if (!active) return
+        setCanvas(res.canvas)
+        setNodePositions(res.positions || {})
+      })
+      .catch(() => {})
+    // Restore the persisted conversation + any pending Apply so a refresh
+    // doesn't lose mid-edit working state.
+    api.getCanvasChat(projectId)
+      .then((res) => {
+        if (!active) return
+        if (res.messages && res.messages.length > 0) {
+          setChatHistory([CHAT_WELCOME, ...res.messages])
+        }
+        if (res.pending_operation) {
+          setPendingOp(res.pending_operation)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [projectId])
+
   const iconClassByType = {
     service: 'ti ti-server',
     static: 'ti ti-world',
@@ -936,15 +967,71 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
     queue: 'border-l-yellow-500',
   }
 
-  const handleSend = () => {
+  const appendAgent = (text) => setChatHistory((prev) => [...prev, { role: 'agent', text }])
+
+  const applyResult = (res) => {
+    if (res.outcome === 'applied' && res.version) {
+      setCanvas(res.version.canvas)
+      setNodePositions(res.version.positions || {})
+      setPendingOp(null)
+      appendAgent(res.message || 'Done — I updated the canvas.')
+    } else if (res.outcome === 'proposal') {
+      setPendingOp(res.operation || null)
+      appendAgent(res.message)
+    } else {
+      setPendingOp(null)
+      appendAgent(res.message)
+    }
+  }
+
+  const handleSend = async () => {
     const message = chatInput.trim()
-    if (!message) {
+    if (!message || agentLoading) {
       return
     }
 
+    // chatHistory here is the prior turns (the just-added user message is still
+    // queued in state), so it's exactly the conversation context for the agent.
+    const priorTurns = chatHistory.slice(-8)
     setChatHistory((prev) => [...prev, { role: 'user', text: message }])
     setChatInput('')
-    // TODO: call POST /api/projects/{id}/canvas/agent/ with the user's message
+    setAgentLoading(true)
+    try {
+      const res = await api.canvasAgent(projectId, { prompt: message, history: priorTurns })
+      applyResult(res)
+    } catch {
+      appendAgent('Something went wrong talking to the canvas agent.')
+    } finally {
+      setAgentLoading(false)
+    }
+  }
+
+  const confirmProposal = async () => {
+    if (!pendingOp || agentLoading) {
+      return
+    }
+    setAgentLoading(true)
+    try {
+      const res = await api.canvasAgent(projectId, { confirm: true, pending_operation: pendingOp })
+      applyResult(res)
+    } catch {
+      appendAgent('Could not apply the change.')
+    } finally {
+      setAgentLoading(false)
+    }
+  }
+
+  const dismissProposal = () => {
+    setPendingOp(null)
+    appendAgent('Okay, leaving it as is.')
+    api.dismissCanvasProposal(projectId).catch(() => {})
+  }
+
+  const clearConversation = () => {
+    setChatHistory([CHAT_WELCOME])
+    setPendingOp(null)
+    setSelectedNode(null)
+    api.flushCanvasChat(projectId).catch(() => {})
   }
 
   const canvasNodes = canvas?.nodes || []
@@ -953,10 +1040,42 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
   const totalCost = canvasCost.reduce((sum, item) => sum + item.monthly, 0)
   const selected = canvasNodes.find((node) => node.id === selectedNode) || null
 
+  // Size the surface to the diagram so every node is reachable by panning.
+  const surfaceBounds = canvasNodes.reduce(
+    (acc, node) => {
+      const pos = nodePositions[node.id]
+      if (!pos) return acc
+      return { width: Math.max(acc.width, pos.x + 220), height: Math.max(acc.height, pos.y + 180) }
+    },
+    { width: 0, height: 520 },
+  )
+
+  // Click-and-drag to pan the canvas (drag-scroll the overflow container).
+  const startPan = (event) => {
+    if (event.target.closest('button')) return // don't pan when interacting with a node
+    const el = surfaceRef.current
+    if (!el) return
+    panState.current = { x: event.clientX, y: event.clientY, left: el.scrollLeft, top: el.scrollTop }
+  }
+  const movePan = (event) => {
+    const el = surfaceRef.current
+    if (!panState.current || !el) return
+    el.scrollLeft = panState.current.left - (event.clientX - panState.current.x)
+    el.scrollTop = panState.current.top - (event.clientY - panState.current.y)
+  }
+  const endPan = () => {
+    panState.current = null
+  }
+
   return (
-    <div className='mt-8 flex h-full min-h-[540px] gap-4'>
+    <div className='mt-8 mb-6 flex h-[calc(100vh-13rem)] min-h-[420px] gap-4'>
       <div
-        className='relative flex-1 overflow-auto rounded-xl border border-border/70 bg-background'
+        ref={surfaceRef}
+        className='relative flex-1 cursor-grab select-none overflow-auto rounded-xl border border-border/70 bg-background active:cursor-grabbing'
+        onMouseDown={startPan}
+        onMouseMove={movePan}
+        onMouseUp={endPan}
+        onMouseLeave={endPan}
         onClick={() => setSelectedNode(null)}
       >
         {step3ShowBanner ? (
@@ -980,6 +1099,8 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
         <div
           className='relative min-h-[520px]'
           style={{
+            minWidth: `${surfaceBounds.width}px`,
+            minHeight: `${surfaceBounds.height}px`,
             backgroundColor: 'transparent',
             backgroundImage: 'radial-gradient(rgba(148, 163, 184, 0.15) 1px, transparent 1px)',
             backgroundSize: '24px 24px',
@@ -991,40 +1112,106 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
                 <path d='M 0 0 L 8 4 L 0 8 z' className='fill-slate-500/70' />
               </marker>
             </defs>
-            {canvasConnections.map((connection) => {
-              const fromPos = nodePositions[connection.from]
-              const toPos = nodePositions[connection.to]
-              if (!fromPos || !toPos) return null
-              const x1 = fromPos.x + 88
-              const y1 = fromPos.y + 56
-              const x2 = toPos.x + 88
-              const y2 = toPos.y
-              const midX = (x1 + x2) / 2
-              const midY = (y1 + y2) / 2
+            {(() => {
+              const W = 176
+              const H = 74
+              // Rectangles for every node, used to route edges around them.
+              const nodeRects = canvasNodes
+                .map((n) => {
+                  const p = nodePositions[n.id]
+                  return p ? { id: n.id, x: p.x, y: p.y } : null
+                })
+                .filter(Boolean)
 
-              return (
-                <g key={`${connection.from}-${connection.to}`}>
-                  <line
-                    x1={x1}
-                    y1={y1}
-                    x2={x2}
-                    y2={y2}
-                    stroke='rgba(148, 163, 184, 0.75)'
-                    strokeWidth='1.5'
-                    markerEnd='url(#arrow-head)'
-                  />
-                  <text
-                    x={midX}
-                    y={midY - 4}
-                    textAnchor='middle'
-                    fontSize='10'
-                    fill='rgba(148, 163, 184, 0.9)'
-                  >
-                    {connection.label}
-                  </text>
-                </g>
-              )
-            })}
+              // Return the first node (other than the edge's endpoints) whose card
+              // the straight segment passes through — sampled along the segment.
+              const obstacleFor = (ax, ay, bx, by, skip) => {
+                const margin = 6
+                for (const r of nodeRects) {
+                  if (skip.includes(r.id)) continue
+                  const minX = r.x - margin
+                  const maxX = r.x + W + margin
+                  const minY = r.y - margin
+                  const maxY = r.y + H + margin
+                  for (let i = 0; i <= 24; i++) {
+                    const t = i / 24
+                    const px = ax + (bx - ax) * t
+                    const py = ay + (by - ay) * t
+                    if (px >= minX && px <= maxX && py >= minY && py <= maxY) {
+                      return { cx: r.x + W / 2, cy: r.y + H / 2 }
+                    }
+                  }
+                }
+                return null
+              }
+
+              return canvasConnections.map((connection) => {
+                const fromPos = nodePositions[connection.from]
+                const toPos = nodePositions[connection.to]
+                if (!fromPos || !toPos) return null
+                const cx1 = fromPos.x + W / 2
+                const cy1 = fromPos.y + H / 2
+                const cx2 = toPos.x + W / 2
+                const cy2 = toPos.y + H / 2
+                // Clip the center-to-center line to each card's border so arrows
+                // meet the edges of the cards instead of running into them.
+                const edge = (cx, cy, tx, ty) => {
+                  const dx = tx - cx
+                  const dy = ty - cy
+                  if (!dx && !dy) return [cx, cy]
+                  const scale = Math.min(
+                    dx ? W / 2 / Math.abs(dx) : Infinity,
+                    dy ? H / 2 / Math.abs(dy) : Infinity,
+                  )
+                  return [cx + dx * scale, cy + dy * scale]
+                }
+                const [x1, y1] = edge(cx1, cy1, cx2, cy2)
+                const [x2, y2] = edge(cx2, cy2, cx1, cy1)
+                const midX = (x1 + x2) / 2
+                const midY = (y1 + y2) / 2
+
+                // If the straight path crosses another card, bow the edge to the
+                // side (quadratic curve) so it routes cleanly around it.
+                let cpx = midX
+                let cpy = midY
+                const obstacle = obstacleFor(x1, y1, x2, y2, [connection.from, connection.to])
+                if (obstacle) {
+                  const len = Math.hypot(x2 - x1, y2 - y1) || 1
+                  const perpX = -(y2 - y1) / len
+                  const perpY = (x2 - x1) / len
+                  // Bow away from the obstacle's centre (default to one side if it
+                  // sits on the line). Offset 240 ≈ a 120px apex — clears a card.
+                  const side = (obstacle.cx - midX) * perpX + (obstacle.cy - midY) * perpY
+                  const sign = side > 0 ? -1 : 1
+                  cpx = midX + sign * 240 * perpX
+                  cpy = midY + sign * 240 * perpY
+                }
+                // Label rides the curve (quadratic midpoint).
+                const lx = 0.25 * x1 + 0.5 * cpx + 0.25 * x2
+                const ly = 0.25 * y1 + 0.5 * cpy + 0.25 * y2
+
+                return (
+                  <g key={`${connection.from}-${connection.to}`}>
+                    <path
+                      d={`M ${x1} ${y1} Q ${cpx} ${cpy} ${x2} ${y2}`}
+                      fill='none'
+                      stroke='rgba(148, 163, 184, 0.75)'
+                      strokeWidth='1.5'
+                      markerEnd='url(#arrow-head)'
+                    />
+                    <text
+                      x={lx}
+                      y={ly - 4}
+                      textAnchor='middle'
+                      fontSize='10'
+                      fill='rgba(148, 163, 184, 0.9)'
+                    >
+                      {connection.label}
+                    </text>
+                  </g>
+                )
+              })
+            })()}
           </svg>
 
           {canvasNodes.map((node) => {
@@ -1085,6 +1272,15 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
           <div className='flex items-center gap-2 border-b border-border px-4 py-3'>
             <i className='ti ti-sparkles text-sm text-accent' />
             <p className='text-sm font-semibold text-text-primary'>Canvas agent</p>
+            <button
+              type='button'
+              onClick={clearConversation}
+              disabled={agentLoading}
+              title='Clear conversation'
+              className='ml-auto text-xs text-text-muted transition hover:text-text-primary disabled:opacity-50'
+            >
+              Clear
+            </button>
           </div>
 
           <div className='min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3'>
@@ -1097,12 +1293,36 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
                       : 'bg-background text-text-primary'
                   }`}
                 >
-                  {message.text}
+                  {message.role === 'user' ? (
+                    message.text
+                  ) : (
+                    <div className='space-y-2 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-4 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_a]:underline'>
+                      <ReactMarkdown>{message.text}</ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
+            {agentLoading ? (
+              <div className='flex justify-start'>
+                <div className='rounded-2xl bg-background px-3 py-2 text-sm text-text-muted'>…</div>
+              </div>
+            ) : null}
             <div ref={chatEndRef} />
           </div>
+
+          {pendingOp ? (
+            <div className='border-t border-border bg-background/40 px-4 py-3'>
+              <div className='flex items-center gap-2'>
+                <Button variant='primary' size='sm' onClick={confirmProposal} disabled={agentLoading}>
+                  Apply change
+                </Button>
+                <Button variant='ghost' size='sm' onClick={dismissProposal} disabled={agentLoading}>
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           <div className='border-t border-border p-3'>
             <div className='flex items-center gap-2'>
@@ -1123,7 +1343,8 @@ function StepThreePanel({ setStep3InputPrefill, step3InputPrefill, step3ShowBann
               <button
                 type='button'
                 onClick={handleSend}
-                className='grid h-9 w-9 place-items-center rounded-md border border-border bg-background text-text-primary transition hover:border-accent hover:text-accent'
+                disabled={agentLoading}
+                className='grid h-9 w-9 place-items-center rounded-md border border-border bg-background text-text-primary transition hover:border-accent hover:text-accent disabled:opacity-50'
               >
                 <i className='ti ti-send text-sm' />
               </button>
@@ -1734,8 +1955,13 @@ export default function ProjectWizard() {
     setStep((prev) => Math.max(1, prev - 1))
   }
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (step === 3 && !step3Finalized) {
+      try {
+        if (projectId) await api.finalizeCanvas(projectId)
+      } catch {
+        // surface non-blocking; finalize can be retried
+      }
       setStep3Finalized(true)
       setStep3ShowBanner(true)
       return
@@ -1802,7 +2028,7 @@ export default function ProjectWizard() {
       </div>
 
       <div className='pb-24 pt-36'>
-        <section className={fullWidth ? 'flex h-[calc(100vh-270px)] flex-col' : 'mx-auto flex min-h-[calc(100vh-270px)] w-full max-w-[640px] flex-col'}>
+        <section className={fullWidth ? 'flex min-h-[calc(100vh-270px)] flex-col' : 'mx-auto flex min-h-[calc(100vh-270px)] w-full max-w-[640px] flex-col'}>
           <div className='w-fit rounded-full border border-border px-3 py-1 text-xs font-normal text-text-muted'>
             Step {step} of 5
           </div>
@@ -1829,6 +2055,7 @@ export default function ProjectWizard() {
 
           {step === 3 ? (
             <StepThreePanel
+              projectId={projectId}
               step3InputPrefill={step3InputPrefill}
               setStep3InputPrefill={setStep3InputPrefill}
               step3ShowBanner={step3ShowBanner}

@@ -1,0 +1,52 @@
+[
+  {
+    "name": "get_pricing",
+    "description": "Get detailed AWS pricing from the AWS Price List API for a service, with optional region and filters. Use this to compute monthly cost deltas when changing the architecture (e.g. RDS vs Aurora). Returns on-demand/flat-rate price points; pricing is current (not historical).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "service_code": {
+          "type": "string",
+          "description": "AWS service code, e.g. 'AmazonEC2', 'AmazonRDS', 'AmazonS3', 'AWSLambda', 'AmazonCloudFront'."
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region whose prices to fetch, e.g. 'us-east-1' or 'ap-south-1'. Omit for global services like CloudFront or DataTransfer."
+        },
+        "filters": {
+          "type": "array",
+          "description": "Optional filters to narrow results. Discover valid Field/Value pairs before guessing.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "Field": {
+                "type": "string",
+                "description": "Attribute to filter on, e.g. 'instanceType', 'location', 'databaseEngine'."
+              },
+              "Type": {
+                "type": "string",
+                "description": "Filter match type.",
+                "enum": ["EQUALS", "ANY_OF", "CONTAINS", "NONE_OF"]
+              },
+              "Value": {
+                "type": "array",
+                "description": "One or more values to match. Use a single-element array for EQUALS.",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["Field", "Value"]
+          }
+        },
+        "max_allowed_characters": {
+          "type": "integer",
+          "description": "Response size cap in characters (default 100000, use -1 for unlimited)."
+        },
+        "max_results": {
+          "type": "integer",
+          "description": "Max results per page (1-100, default 100)."
+        }
+      },
+      "required": ["service_code"]
+    }
+  }
+]

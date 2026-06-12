@@ -1,0 +1,11 @@
+# Local per-MCP test virtualenvs (recreate with: python -m venv .venv && pip install -r requirements.txt)
+*/.venv/
+.venv/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Deploy outputs (arns.env holds real ARNs incl. account id; logs may too)
+arns.env
+*.log

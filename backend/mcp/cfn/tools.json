@@ -1,0 +1,26 @@
+[
+  {
+    "name": "validate_cloudformation_template",
+    "description": "Validate a CloudFormation template's syntax, AWS resource types, and property schemas using cfn-lint (offline; read-only). Use this to confirm a proposed architecture node maps to a real AWS resource type with valid properties before proposing a change, and to validate generated CloudFormation templates before deployment. Returns is_valid plus error/warning/info counts and per-issue line numbers and paths.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "template_content": {
+          "type": "string",
+          "description": "CloudFormation template as a YAML or JSON string."
+        },
+        "regions": {
+          "type": "array",
+          "description": "Optional AWS regions to validate against, e.g. ['us-east-1'].",
+          "items": { "type": "string" }
+        },
+        "ignore_checks": {
+          "type": "array",
+          "description": "Optional cfn-lint rule IDs to ignore, e.g. ['W2001', 'E3012'].",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["template_content"]
+    }
+  }
+]

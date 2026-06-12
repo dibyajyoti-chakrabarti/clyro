@@ -1,0 +1,2 @@
+# AWS Documentation MCP server (awslabs). Pinned for reproducible Lambda images.
+awslabs.aws-documentation-mcp-server==1.1.24

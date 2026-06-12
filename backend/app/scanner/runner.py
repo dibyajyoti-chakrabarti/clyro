@@ -1,7 +1,10 @@
 import json
 import re
 
+from django.conf import settings
+
 from core.models import EnvVarKey, Project, ScanResult
+from app import agentcore
 from app.github_utils import get_installation_access_token
 from . import agent as scanner_agent
 
@@ -14,6 +17,25 @@ def _extract_json(raw: str) -> dict:
     return json.loads(match.group())
 
 
+def _run_scan_agent(token: str, project: Project) -> dict:
+    """Get the scan result JSON for a project. Delegates to the deployed RepoRecon
+    runtime when ``REPORECON_RUNTIME_ARN`` is set (returns a parsed dict), else runs
+    the in-process scanner agent (returns a string that we parse). The downstream
+    persistence in ``run_scan_for_project`` is identical for both paths."""
+    if settings.REPORECON_RUNTIME_ARN:
+        return agentcore.invoke_runtime(
+            settings.REPORECON_RUNTIME_ARN,
+            {
+                "installation_token": token,
+                "repo_full_name": project.repo_full_name,
+                "branch": project.repo_branch,
+            },
+            str(project.id),
+        )
+    raw = scanner_agent.run_scan(token, project.repo_full_name, project.repo_branch)
+    return _extract_json(raw)
+
+
 def run_scan_for_project(project: Project) -> ScanResult:
     scan = ScanResult.objects.create(
         project=project,
@@ -22,8 +44,7 @@ def run_scan_for_project(project: Project) -> ScanResult:
 
     try:
         token = get_installation_access_token(project.github_installation.installation_id)
-        raw = scanner_agent.run_scan(token, project.repo_full_name, project.repo_branch)
-        result = _extract_json(raw)
+        result = _run_scan_agent(token, project)
 
         agent_status = result.get("status", "complete")
 

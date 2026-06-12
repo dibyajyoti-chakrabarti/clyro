@@ -42,6 +42,17 @@ export const api = {
   saveIntent: (id, payload) => request('POST', `/api/projects/${id}/intent/`, payload),
   getWizardState: (id) => request('GET', `/api/projects/${id}/wizard-state/`),
 
+  // Canvas (Step 3)
+  getCanvas: (id) => request('GET', `/api/projects/${id}/canvas/latest/`),
+  canvasAgent: (id, payload) => request('POST', `/api/projects/${id}/canvas/agent/`, payload),
+  getCanvasChat: (id) => request('GET', `/api/projects/${id}/canvas/chat/`),
+  flushCanvasChat: (id) => request('POST', `/api/projects/${id}/canvas/chat/flush/`),
+  dismissCanvasProposal: (id) => request('POST', `/api/projects/${id}/canvas/dismiss/`),
+  listCanvasVersions: (id) => request('GET', `/api/projects/${id}/canvas/versions/`),
+  revertCanvas: (id, version) =>
+    request('POST', `/api/projects/${id}/canvas/versions/${version}/revert/`),
+  finalizeCanvas: (id) => request('POST', `/api/projects/${id}/canvas/finalize/`),
+
   // GitHub
   storeInstallation: (installation_id) =>
     request('POST', '/api/github/installations/', { installation_id }),
