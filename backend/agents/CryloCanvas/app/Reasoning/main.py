@@ -4,12 +4,12 @@ import json
 import re
 from typing import Any
 
-from strands import Agent, tool
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from model.load import load_model
-from mcp_client.client import get_mcp_client
+from strands import Agent, tool
 
 from canvas_core import canvas_ops, constraints, cost_engine
+from mcp_client.client import get_mcp_client
+from model.load import load_model
 
 app = BedrockAgentCoreApp()
 log = app.logger
@@ -46,6 +46,7 @@ Operation shapes:
 
 Hard constraints (never violate):
 - Cannot remove the backend node.
+- Cannot remove a node with "locked": true — these map to services detected in the user's codebase, so the app depends on them. Never propose REMOVE_NODE for a locked node; explain the dependency and offer to change its service type instead.
 - Cannot add networking nodes (ALB, VPC, subnets, security groups) — those are Step 4 concerns.
 - Cannot change image: ecr on service/worker nodes.
 - Node types: service, static, database, cache, worker, queue, storage only.
@@ -93,11 +94,13 @@ def check_constraint(canvas_json: str, operation_json: str) -> str:
         canvas = json.loads(canvas_json)
         operation = json.loads(operation_json)
         result = constraints.check_operation(canvas, operation)
-        return json.dumps({
-            "ok": result.ok,
-            "reason": result.reason,
-            "alternative": result.alternative,
-        })
+        return json.dumps(
+            {
+                "ok": result.ok,
+                "reason": result.reason,
+                "alternative": result.alternative,
+            }
+        )
     except Exception as exc:
         return json.dumps({"ok": False, "reason": str(exc), "alternative": None})
 

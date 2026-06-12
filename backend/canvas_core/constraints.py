@@ -173,6 +173,16 @@ def check_operation(canvas: Canvas, operation: Operation) -> ConstraintResult:
                 ok=False,
                 reason="Every Crylo project needs a backend — it can't be removed.",
             )
+        if node.get("locked"):
+            label = node.get("label", target)
+            return ConstraintResult(
+                ok=False,
+                reason=(
+                    f"The {label} maps to a service detected in your codebase, so it "
+                    "can't be removed — your application depends on it."
+                ),
+                alternative="You can change its service type instead, or remove a node you added yourself.",
+            )
         return ConstraintResult(ok=True)
 
     if op == "UPDATE_NODE":

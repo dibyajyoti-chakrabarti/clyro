@@ -113,6 +113,12 @@ def build_canvas_from_detection(detected: dict[str, Any], intent: dict[str, Any]
             "aws_service": "sqs",
         })
 
+    # Detected nodes map to real services found in the codebase, so they are
+    # locked: the user can change a node's service type but not remove a node the
+    # scan derived from their code (enforced in constraints.check_operation).
+    for node in nodes:
+        node["locked"] = True
+
     present = {n["id"] for n in nodes}
 
     # Edges, emitted only when both endpoints exist. worker→db / worker→cache are

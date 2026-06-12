@@ -16,7 +16,7 @@ from . import constraints
 from .types import Canvas, ChangeRecord, CostEstimate, Node, Operation, Positions, Version
 
 # Canonical node-key order for stable YAML output.
-_NODE_KEY_ORDER = ("id", "label", "type", "aws_service", "image", "port")
+_NODE_KEY_ORDER = ("id", "label", "type", "aws_service", "image", "port", "locked")
 _CONN_KEY_ORDER = ("from", "to", "label")
 
 
