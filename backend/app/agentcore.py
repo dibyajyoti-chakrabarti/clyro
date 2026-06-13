@@ -9,10 +9,30 @@ framing, so the parsing is identical.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import boto3
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+
+logger = logging.getLogger(__name__)
+
+
+def require_runtime_arn(name: str) -> str:
+    """Return the AgentCore runtime ARN named ``name`` from settings, or raise a
+    clear, console-logged error when it isn't configured. There is no local
+    fallback — the agents run only on their deployed runtimes."""
+    arn = getattr(settings, name, "")
+    if not arn:
+        msg = (
+            f"Missing required environment variable {name}. Set it to the deployed "
+            f"AgentCore runtime ARN in backend/.env.local "
+            f"(e.g. {name}=arn:aws:bedrock-agentcore:<region>:<account>:runtime/<RuntimeId>)."
+        )
+        logger.error(msg)
+        raise ImproperlyConfigured(msg)
+    return arn
 
 
 def parse_runtime_response(raw: bytes | str) -> dict[str, Any]:
