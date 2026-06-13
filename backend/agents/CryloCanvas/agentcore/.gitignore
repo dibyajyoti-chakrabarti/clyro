@@ -1,0 +1,22 @@
+# Secrets (local environment files are never committed)
+.env.local
+
+# CDK Build Artifacts
+cdk/cdk.out/
+cdk/node_modules/
+
+# CLI Internals
+.cli/*
+
+# Ephemeral Staging
+.cache/*
+
+# Account-specific deploy state — kept OUT of git (contains the AWS account id +
+# per-deploy runtime/role ARNs that are only valid for one account's deploy).
+# deployed-state.json stays ignored via .cli/* above (no committed exception).
+aws-targets.json
+
+# Working agentcore.json holds the real AWS account id in the gateway-target
+# Lambda ARNs. Commit agentcore.json.example (placeholders) instead; each deploy
+# uses a local agentcore.json with the account id filled in.
+agentcore.json

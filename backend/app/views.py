@@ -185,35 +185,14 @@ def save_intent(request, pk):
         defaults={**serializer.validated_data, 'completed_at': timezone.now()},
     )
 
-    _update_canvas_with_intent(project, intent)
+    # The Step 3 canvas (CanvasVersion v1) is built deterministically from the
+    # ScanResult detected_resources + this IntentRecord when Step 3 is entered
+    # (canvas_core.canvas_builder via canvas.services.ensure_initial_canvas).
 
     project.status = Project.Status.INTENT_COLLECTED
     project.save(update_fields=['status', 'updated_at'])
 
     return Response(IntentRecordSerializer(intent).data, status=status.HTTP_201_CREATED)
-
-
-def _update_canvas_with_intent(project, intent):
-    import yaml
-
-    scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
-    if not scan or not scan.draft_canvas_yaml:
-        return
-
-    try:
-        canvas = yaml.safe_load(scan.draft_canvas_yaml)
-    except Exception:
-        return
-
-    if intent.database_choice:
-        canvas.setdefault('infrastructure', {}).setdefault('database', {})['type'] = intent.database_choice
-
-    if intent.worker_compute_choice:
-        if 'services' in canvas and 'worker' in canvas.get('services', {}):
-            canvas['services']['worker']['type'] = intent.worker_compute_choice
-
-    scan.draft_canvas_yaml = yaml.dump(canvas, default_flow_style=False, allow_unicode=True)
-    scan.save(update_fields=['draft_canvas_yaml'])
 
 
 # ── GitHub ────────────────────────────────────────────────────────────────────

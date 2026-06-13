@@ -1,0 +1,4 @@
+# AWS IaC MCP server (awslabs) — successor to the yanked awslabs.cfn-mcp-server.
+# Pinned for reproducible Lambda images. We expose only its read-only
+# validate_cloudformation_template tool (cfn-lint); see handler.py / tools.json.
+awslabs.aws-iac-mcp-server==1.0.19
