@@ -1558,9 +1558,20 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
 
           {stackOpened && !roleConnected ? (
             <div className='mx-auto mt-6 w-full max-w-md text-left'>
-              <p className='mb-2 text-sm text-text-muted'>
-                After the stack finishes (≈30s), copy the <strong className='text-text-primary'>RoleArn</strong> from the Outputs tab and paste it here:
-              </p>
+              <ol className='mb-3 space-y-1 text-sm text-text-muted list-none'>
+                <li className='flex items-start gap-2'>
+                  <span className='shrink-0 font-semibold text-accent'>1.</span>
+                  Wait for the stack status to show <strong className='text-text-primary'>CREATE_COMPLETE</strong> (≈30s)
+                </li>
+                <li className='flex items-start gap-2'>
+                  <span className='shrink-0 font-semibold text-accent'>2.</span>
+                  Click the <strong className='text-text-primary'>Outputs</strong> tab in the CloudFormation console
+                </li>
+                <li className='flex items-start gap-2'>
+                  <span className='shrink-0 font-semibold text-accent'>3.</span>
+                  Copy the value next to <strong className='text-text-primary'>RoleArn</strong> — it starts with <code className='text-xs bg-white/5 px-1 py-0.5 rounded'>arn:aws:iam::</code>
+                </li>
+              </ol>
               <div className='flex gap-2'>
                 <input
                   type='text'
