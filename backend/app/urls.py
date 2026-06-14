@@ -23,6 +23,12 @@ from .views import (
     trigger_scan,
     wizard_state,
 )
+from .provisioning.views import (
+    aws_connection_init,
+    aws_connection_verify,
+    env_vars_list,
+    env_vars_save,
+)
 
 urlpatterns = [
     path('hello', hello),
@@ -41,6 +47,10 @@ urlpatterns = [
     path('projects/<uuid:pk>/canvas/versions/', canvas_versions),
     path('projects/<uuid:pk>/canvas/versions/<int:version_number>/revert/', canvas_revert),
     path('projects/<uuid:pk>/canvas/finalize/', canvas_finalize),
+    path('projects/<uuid:pk>/aws-connection/', aws_connection_init),
+    path('projects/<uuid:pk>/aws-connection/verify/', aws_connection_verify),
+    path('projects/<uuid:pk>/env-vars/', env_vars_list),
+    path('projects/<uuid:pk>/env-vars/save/', env_vars_save),
     path('github/installations/', github_installations),
     path('github/repos/', github_repos),
     path('github/branches/', github_branches),
