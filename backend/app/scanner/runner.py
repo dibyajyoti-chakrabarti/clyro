@@ -1,39 +1,22 @@
-import json
-import re
-
-from django.conf import settings
-
 from core.models import EnvVarKey, Project, ScanResult
 from app import agentcore
 from app.github_utils import get_installation_access_token
-from . import agent as scanner_agent
-
-
-def _extract_json(raw: str) -> dict:
-    """Pull the first JSON object out of the agent's response string."""
-    match = re.search(r'\{.*\}', raw, re.DOTALL)
-    if not match:
-        raise ValueError("Agent returned no JSON object")
-    return json.loads(match.group())
 
 
 def _run_scan_agent(token: str, project: Project) -> dict:
-    """Get the scan result JSON for a project. Delegates to the deployed RepoRecon
-    runtime when ``REPORECON_RUNTIME_ARN`` is set (returns a parsed dict), else runs
-    the in-process scanner agent (returns a string that we parse). The downstream
-    persistence in ``run_scan_for_project`` is identical for both paths."""
-    if settings.REPORECON_RUNTIME_ARN:
-        return agentcore.invoke_runtime(
-            settings.REPORECON_RUNTIME_ARN,
-            {
-                "installation_token": token,
-                "repo_full_name": project.repo_full_name,
-                "branch": project.repo_branch,
-            },
-            str(project.id),
-        )
-    raw = scanner_agent.run_scan(token, project.repo_full_name, project.repo_branch)
-    return _extract_json(raw)
+    """Scan the project's repo via the deployed RepoRecon runtime and return the
+    parsed detection JSON. Requires ``REPORECON_RUNTIME_ARN`` — there is no
+    in-process fallback; a clear error is raised+logged if it isn't set."""
+    arn = agentcore.require_runtime_arn("REPORECON_RUNTIME_ARN")
+    return agentcore.invoke_runtime(
+        arn,
+        {
+            "installation_token": token,
+            "repo_full_name": project.repo_full_name,
+            "branch": project.repo_branch,
+        },
+        str(project.id),
+    )
 
 
 def run_scan_for_project(project: Project) -> ScanResult:

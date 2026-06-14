@@ -50,7 +50,6 @@ six==1.17.0
 sqlparse==0.5.5
 sse-starlette==3.4.4
 starlette==1.2.1
-strands-agents==1.42.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 urllib3==2.6.3

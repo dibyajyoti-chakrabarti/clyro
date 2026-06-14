@@ -1,7 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  Cloud,
+  Copy,
+  Database,
+  Eye,
+  EyeOff,
+  Globe,
+  Layers,
+  Lock,
+  Plus,
+  Rocket,
+  Send,
+  Server,
+  Settings2,
+  ShieldCheck,
+  Sparkles,
+  XCircle,
+  Zap,
+} from 'lucide-react'
 import Button from '../../components/ui/Button'
+import Select from '../../components/ui/Select'
+import { WizardCard, WizardPanel } from '../../components/wizard/WizardPanel'
+import StepProgress from '../../components/wizard/StepProgress'
+import githubMark from '../../assets/logos/github-fill.svg'
 import { api } from '../../api'
 
 const stepConfig = [
@@ -32,24 +60,14 @@ const stepConfig = [
   },
 ]
 
-function GithubMark() {
+function GithubMark({ size = 'lg' }) {
+  const box = size === 'sm' ? 'h-9 w-9 rounded-md' : 'h-14 w-14 rounded-xl'
+  const img = size === 'sm' ? 'h-4 w-4' : 'h-6 w-6'
   return (
-    <div className='grid h-14 w-14 place-items-center rounded-xl border border-border bg-background text-lg font-semibold'>
-      GH
+    <div className={`grid place-items-center border border-border bg-background ${box}`}>
+      <img src={githubMark} alt='GitHub' className={img} />
     </div>
   )
-}
-
-function statusBadgeClass(cls) {
-  if (cls === 'user secret') {
-    return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-  }
-
-  if (cls === 'auto-generated') {
-    return 'border-green-500/30 bg-green-500/10 text-green-300'
-  }
-
-  return 'border-border bg-background text-text-muted'
 }
 
 function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanContinue }) {
@@ -207,96 +225,96 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
 
   if (phase === 'connect') {
     return (
-      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-        <div className='mx-auto grid min-h-[260px] max-w-md place-items-center rounded-lg border border-border/70 bg-surface p-6 text-center'>
-          <div className='space-y-4'>
-            <div className='flex justify-center'>
-              <GithubMark />
-            </div>
-            <h3 className='text-2xl font-semibold tracking-tight'>Connect your GitHub account</h3>
-            <p className='text-sm font-normal text-text-muted'>
-              Clyro uses a GitHub App to securely access your repository. You choose exactly which repos to grant access to.
-            </p>
-            <Button variant='primary' onClick={handleInstall}>Install Clyro GitHub App</Button>
-            {existingInstallations.length > 0 && (
-              <div className='mt-2 space-y-1'>
-                <p className='text-xs font-normal text-text-muted'>or use an existing installation:</p>
+      <WizardPanel>
+        <WizardCard className='text-center'>
+          <div className='flex justify-center'>
+            <GithubMark />
+          </div>
+          <h3 className='mt-4 text-xl font-semibold tracking-tight'>Connect your GitHub account</h3>
+          <p className='mx-auto mt-2 max-w-sm text-sm font-normal text-text-muted'>
+            Clyro uses a GitHub App to securely access your repository. You choose exactly which repos to grant access to.
+          </p>
+          <Button variant='primary' className='mt-5' onClick={handleInstall}>
+            Install Clyro GitHub App
+          </Button>
+
+          {existingInstallations.length > 0 && (
+            <div className='mt-6 text-left'>
+              <div className='flex items-center gap-3'>
+                <div className='h-px flex-1 bg-border' />
+                <span className='text-xs font-normal text-text-muted'>or use an existing account</span>
+                <div className='h-px flex-1 bg-border' />
+              </div>
+              <div className='mt-3 space-y-1.5'>
                 {existingInstallations.map((inst) => (
                   <button
                     key={inst.id}
                     type='button'
-                    className='block w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary hover:border-accent hover:bg-surface'
+                    className='flex w-full items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary transition-colors hover:border-accent/60 hover:bg-surface'
                     onClick={() => handleUseExisting(inst)}
                   >
-                    {inst.account_login}
+                    <GithubMark size='sm' />
+                    <span className='truncate'>{inst.account_login}</span>
+                    <ArrowRight className='ml-auto h-4 w-4 text-text-muted' />
                   </button>
                 ))}
               </div>
-            )}
-            <p className='text-xs font-normal text-text-muted'>Only repositories you explicitly grant access to will be visible</p>
-          </div>
-        </div>
-      </div>
+            </div>
+          )}
+
+          <p className='mt-6 flex items-center justify-center gap-1.5 text-xs font-normal text-text-muted'>
+            <ShieldCheck className='h-3.5 w-3.5 text-success' />
+            Only repositories you explicitly grant access to will be visible
+          </p>
+        </WizardCard>
+      </WizardPanel>
     )
   }
 
   if (phase === 'select') {
     return (
-      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-        <div className='mx-auto max-w-md rounded-lg border border-border/70 bg-surface p-6'>
-          <div className='space-y-4'>
-            <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary'>Repository</label>
-              <select
-                className='w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50'
-                value={selectedRepo}
-                disabled={loadingRepos}
-                onChange={(event) => handleRepoChange(event.target.value)}
-              >
-                <option className='text-black' value=''>
-                  {loadingRepos ? 'Loading repositories...' : 'Select a repository...'}
-                </option>
-                {availableRepos.map((repo) => (
-                  <option key={repo.full_name} className='text-black' value={repo.full_name}>
-                    {repo.full_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+      <WizardPanel>
+        <WizardCard>
+          <button
+            type='button'
+            className='mb-4 inline-flex items-center gap-1 text-xs font-normal text-text-muted transition-colors hover:text-text-primary'
+            onClick={() => setPhase('connect')}
+          >
+            <ArrowLeft className='h-3.5 w-3.5' />
+            Change account
+          </button>
 
-            <div>
-              <label className='mb-2 block text-sm font-medium text-text-primary'>Branch</label>
-              <select
-                className='w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50'
-                value={selectedBranch}
-                onChange={(event) => setSelectedBranch(event.target.value)}
-                disabled={selectedRepo === '' || loadingBranches}
-              >
-                <option className='text-black' value=''>
-                  {loadingBranches ? 'Loading branches...' : 'Select a branch...'}
-                </option>
-                {availableBranches.map((b) => (
-                  <option key={b.name} className='text-black' value={b.name}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className='space-y-4'>
+            <Select
+              label='Repository'
+              value={selectedRepo}
+              disabled={loadingRepos}
+              placeholder={loadingRepos ? 'Loading repositories…' : 'Select a repository…'}
+              options={availableRepos.map((repo) => ({ value: repo.full_name, label: repo.full_name }))}
+              onChange={(event) => handleRepoChange(event.target.value)}
+            />
+
+            <Select
+              label='Branch'
+              value={selectedBranch}
+              disabled={selectedRepo === '' || loadingBranches}
+              placeholder={
+                selectedRepo === ''
+                  ? 'Select a repository first'
+                  : loadingBranches
+                    ? 'Loading branches…'
+                    : 'Select a branch…'
+              }
+              options={availableBranches.map((b) => ({ value: b.name, label: b.name }))}
+              onChange={(event) => setSelectedBranch(event.target.value)}
+            />
 
             <Button variant='primary' className='w-full' onClick={handleScan} disabled={!canScan}>
               Connect repository
             </Button>
-
-            <button
-              type='button'
-              className='text-xs font-normal text-text-muted hover:text-text-primary'
-              onClick={() => setPhase('connect')}
-            >
-              {'← Change account'}
-            </button>
           </div>
-        </div>
-      </div>
+        </WizardCard>
+      </WizardPanel>
     )
   }
 
@@ -305,8 +323,8 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
     const progressPercent = Math.round((scanStep / total) * 100)
 
     return (
-      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-        <div className='mx-auto max-w-md rounded-lg border border-border/70 bg-surface p-6'>
+      <WizardPanel>
+        <WizardCard>
           <h3 className='text-lg font-semibold'>Connecting repository</h3>
           <div className='mt-4 space-y-3'>
             {scanMessages.map((item, index) => {
@@ -321,13 +339,13 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
               return (
                 <div key={item} className='flex items-center gap-3'>
                   {isDone ? (
-                    <div className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>
-                      ✓
-                    </div>
+                    <span className='grid h-5 w-5 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-green-300'>
+                      <Check className='h-3 w-3' strokeWidth={3} />
+                    </span>
                   ) : isActive ? (
-                    <div className='h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]' />
+                    <span className='h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent' />
                   ) : (
-                    <div className='h-4 w-4 rounded-full border border-border bg-background' />
+                    <span className='h-5 w-5 rounded-full border border-border bg-background' />
                   )}
                   <p className={`text-sm font-normal ${textClass}`}>{item}</p>
                 </div>
@@ -341,25 +359,26 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
               style={{ width: `${progressPercent}%` }}
             />
           </div>
-        </div>
-      </div>
+          <p className='mt-2 text-right text-xs text-text-muted'>{progressPercent}%</p>
+        </WizardCard>
+      </WizardPanel>
     )
   }
 
   if (phase === 'blocked') {
     return (
-      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-        <div className='mx-auto max-w-md rounded-lg border border-red-500/30 bg-red-500/5 p-6 text-center'>
-          <div className='mx-auto grid h-10 w-10 place-items-center rounded-full border border-red-500/30 bg-red-500/10 text-red-300'>
-            !
+      <WizardPanel>
+        <WizardCard className='border-danger/30 text-center'>
+          <div className='mx-auto grid h-11 w-11 place-items-center rounded-full border border-danger/30 bg-danger/10 text-danger'>
+            <AlertTriangle className='h-5 w-5' />
           </div>
           <h3 className='mt-4 text-xl font-semibold'>Connection failed</h3>
-          <p className='mt-3 text-sm font-normal text-text-muted'>{blockReason}</p>
+          <p className='mx-auto mt-2 max-w-sm text-sm font-normal text-text-muted'>{blockReason}</p>
           <Button variant='secondary' className='mt-5' onClick={() => setPhase('select')}>
             Try again
           </Button>
-        </div>
-      </div>
+        </WizardCard>
+      </WizardPanel>
     )
   }
 
@@ -388,15 +407,15 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
   const optional = envVars.filter((v) => v.classification === 'optional')
 
   return (
-    <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-      <div className='rounded-lg border border-border/70 bg-surface p-4 space-y-5'>
+    <WizardPanel>
+      <WizardCard width='lg' className='space-y-5 p-5'>
 
-        <div className='flex rounded-md border border-border bg-background'>
-          <div className='w-1 rounded-l-md bg-accent' />
+        <div className='flex items-stretch overflow-hidden rounded-lg border border-border bg-background'>
+          <div className='w-1 bg-accent' />
           <div className='flex flex-1 items-center gap-3 p-3'>
-            <div className='grid h-9 w-9 place-items-center rounded-md border border-border bg-surface text-xs font-semibold'>GH</div>
-            <div>
-              <p className='text-sm font-medium text-text-primary'>{selectedRepo}</p>
+            <GithubMark size='sm' />
+            <div className='min-w-0'>
+              <p className='truncate text-sm font-medium text-text-primary'>{selectedRepo}</p>
               <p className='text-xs font-normal text-text-muted'>Branch: {selectedBranch}{isMonorepo != null ? ` · ${isMonorepo ? 'monorepo' : 'single-service'}` : ''}</p>
             </div>
           </div>
@@ -408,7 +427,7 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
             <div className='space-y-1.5'>
               {detectedServices.map((s) => (
                 <div key={s} className='flex items-center gap-2 text-sm text-text-primary'>
-                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>✓</span>
+                  <span className='grid h-4 w-4 shrink-0 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-green-300'><Check className='h-2.5 w-2.5' strokeWidth={3} /></span>
                   {s}
                 </div>
               ))}
@@ -422,7 +441,7 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
             <div className='space-y-1.5'>
               {detectedInfra.map((s) => (
                 <div key={s} className='flex items-center gap-2 text-sm text-text-primary'>
-                  <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>✓</span>
+                  <span className='grid h-4 w-4 shrink-0 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-green-300'><Check className='h-2.5 w-2.5' strokeWidth={3} /></span>
                   {s}
                 </div>
               ))}
@@ -454,11 +473,11 @@ function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanConti
         )}
 
         <div className='flex items-center gap-2 pt-1 text-xs font-normal text-text-muted border-t border-border'>
-          <span className='grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300 shadow-[0_0_8px_rgba(34,197,94,0.2)]'>✓</span>
+          <span className='grid h-4 w-4 shrink-0 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-green-300'><Check className='h-2.5 w-2.5' strokeWidth={3} /></span>
           Architecture draft generated — ready for Step 2
         </div>
-      </div>
-    </div>
+      </WizardCard>
+    </WizardPanel>
   )
 }
 
@@ -774,7 +793,7 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
   })
 
   return (
-    <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
+    <WizardPanel>
       <div className='mx-auto max-w-md'>
         {activeQuestion?.momentLabel && (
           <div className='mb-1 text-[11px] font-semibold uppercase tracking-widest text-accent/70'>
@@ -792,18 +811,25 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
         {!isComplete && currentVisiblePosition > 0 ? (
           <button
             type='button'
-            className='mt-4 text-xs font-normal text-text-muted hover:text-text-primary'
+            className='mt-4 inline-flex items-center gap-1 text-xs font-normal text-text-muted transition-colors hover:text-text-primary'
             onClick={handleBack}
           >
-            {'← Back'}
+            <ArrowLeft className='h-3.5 w-3.5' />
+            Back
           </button>
         ) : null}
 
         {isComplete ? (
-          <div className='mt-4 rounded-lg border border-border/70 bg-surface p-5'>
+          <div className='mt-4 rounded-xl border border-white/[0.07] bg-surface p-5 shadow-sm shadow-black/20 ring-1 ring-inset ring-white/[0.04]'>
             <div className='flex items-center gap-2'>
-              <h3 className='text-2xl font-semibold tracking-tight'>All set</h3>
-              {isSaving && <div className='h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent' />}
+              {isSaving ? (
+                <div className='h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent' />
+              ) : (
+                <span className='grid h-6 w-6 place-items-center rounded-full bg-success/15 text-success'>
+                  <Check className='h-3.5 w-3.5' strokeWidth={3} />
+                </span>
+              )}
+              <h3 className='text-xl font-semibold tracking-tight'>{isSaving ? 'Saving your answers…' : 'All set'}</h3>
             </div>
             <div className='mt-4 overflow-hidden rounded-md border border-border'>
               <table className='w-full text-left text-sm'>
@@ -818,13 +844,19 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
               </table>
             </div>
             {saveError ? (
-              <p className='mt-3 text-xs text-red-400'>{saveError}</p>
-            ) : (
-              <p className='mt-4 text-xs font-normal text-text-muted'>Intent saved — your architecture is ready to review</p>
-            )}
+              <p className='mt-3 flex items-center gap-1.5 text-xs text-danger'>
+                <AlertTriangle className='h-3.5 w-3.5' />
+                {saveError}
+              </p>
+            ) : !isSaving ? (
+              <p className='mt-4 flex items-center gap-1.5 text-xs font-normal text-text-muted'>
+                <Check className='h-3.5 w-3.5 text-success' />
+                Intent saved — your architecture is ready to review
+              </p>
+            ) : null}
           </div>
         ) : (
-          <div className='mt-4 overflow-hidden rounded-lg border border-border/70 bg-surface'>
+          <div className='mt-4 overflow-hidden rounded-xl border border-white/[0.07] bg-surface shadow-sm shadow-black/20 ring-1 ring-inset ring-white/[0.04]'>
             <div className={`p-5 transition-all duration-[120ms] ${cardClass()}`}>
               <p className='text-base font-medium text-text-primary'>{activeQuestion.question}</p>
 
@@ -851,18 +883,26 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
                 <div className='mt-4'>
                   {activeQuestion.id === 'description' ? (
                     <textarea
-                      className='min-h-[108px] w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
-                      placeholder='Tell us what your app does...'
+                      autoFocus
+                      className='min-h-[108px] w-full rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary transition-[border-color,box-shadow] duration-150 hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
+                      placeholder='e.g. A marketplace where photographers sell prints.'
                       value={descriptionValue}
                       onChange={(event) => setDescriptionValue(event.target.value)}
                     />
                   ) : (
                     <input
                       type='text'
-                      className='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                      autoFocus
+                      className='w-full rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary transition-[border-color,box-shadow] duration-150 hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
                       placeholder='app.myproduct.com'
                       value={domainValue}
                       onChange={(event) => setDomainValue(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          handleFreeNext()
+                        }
+                      }}
                     />
                   )}
 
@@ -872,7 +912,8 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
                     disabled={(activeQuestion.id === 'description' ? descriptionValue : domainValue).trim() === ''}
                     onClick={handleFreeNext}
                   >
-                    Next →
+                    Next
+                    <ArrowRight className='h-4 w-4' />
                   </Button>
                 </div>
               )}
@@ -880,7 +921,7 @@ function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanConti
           </div>
         )}
       </div>
-    </div>
+    </WizardPanel>
   )
 }
 
@@ -949,13 +990,13 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
     }
   }, [projectId])
 
-  const iconClassByType = {
-    service: 'ti ti-server',
-    static: 'ti ti-world',
-    database: 'ti ti-database',
-    cache: 'ti ti-bolt',
-    worker: 'ti ti-settings-automation',
-    queue: 'ti ti-stack-2',
+  const iconByType = {
+    service: Server,
+    static: Globe,
+    database: Database,
+    cache: Zap,
+    worker: Settings2,
+    queue: Layers,
   }
 
   const accentByType = {
@@ -1068,7 +1109,7 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
   }
 
   return (
-    <div className='mt-8 mb-6 flex h-[calc(100vh-13rem)] min-h-[420px] gap-4'>
+    <div className='mt-6 flex h-[calc(100vh-19rem)] min-h-[440px] gap-4'>
       <div
         ref={surfaceRef}
         className='relative flex-1 cursor-grab select-none overflow-auto rounded-xl border border-border/70 bg-background active:cursor-grabbing'
@@ -1218,6 +1259,7 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
             const pos = nodePositions[node.id]
             if (!pos) return null
             const isSelected = selectedNode === node.id
+            const NodeIcon = iconByType[node.type] || Server
 
             return (
               <button
@@ -1231,7 +1273,7 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
                 }}
               >
                 <div className='flex items-center gap-2'>
-                  <i className={`${iconClassByType[node.type]} text-sm text-text-muted`} />
+                  <NodeIcon className='h-4 w-4 shrink-0 text-text-muted' />
                   <p className='truncate text-sm font-medium text-text-primary'>{node.label}</p>
                 </div>
                 <div className='mt-3'>
@@ -1270,7 +1312,7 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
       <div className='flex w-80 flex-col overflow-hidden rounded-xl border border-border bg-surface border-l border-l-border'>
         <div className='flex min-h-0 flex-1 flex-col'>
           <div className='flex items-center gap-2 border-b border-border px-4 py-3'>
-            <i className='ti ti-sparkles text-sm text-accent' />
+            <Sparkles className='h-4 w-4 text-accent' />
             <p className='text-sm font-semibold text-text-primary'>Canvas agent</p>
             <button
               type='button'
@@ -1344,9 +1386,10 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
                 type='button'
                 onClick={handleSend}
                 disabled={agentLoading}
-                className='grid h-9 w-9 place-items-center rounded-md border border-border bg-background text-text-primary transition hover:border-accent hover:text-accent disabled:opacity-50'
+                className='grid h-9 w-9 shrink-0 place-items-center rounded-md border border-border bg-background text-text-primary transition hover:border-accent hover:text-accent disabled:opacity-50'
+                aria-label='Send message'
               >
-                <i className='ti ti-send text-sm' />
+                <Send className='h-4 w-4' />
               </button>
             </div>
           </div>
@@ -1412,13 +1455,13 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
 
   if (phase === 'aws_connect') {
     return (
-      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-        <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6 text-center'>
+      <WizardPanel>
+        <WizardCard width='lg' className='text-center'>
           <div className='mx-auto grid h-12 w-12 place-items-center rounded-full border border-border bg-background'>
-            <i className='ti ti-cloud text-lg text-accent' />
+            <Cloud className='h-5 w-5 text-accent' />
           </div>
-          <h3 className='mt-4 text-2xl font-semibold tracking-tight'>Connect your AWS account</h3>
-          <p className='mt-2 text-sm text-text-muted'>
+          <h3 className='mt-4 text-xl font-semibold tracking-tight'>Connect your AWS account</h3>
+          <p className='mx-auto mt-2 max-w-md text-sm text-text-muted'>
             Crylo never stores your credentials. It uses a temporary IAM role that you can revoke at any time.
           </p>
           <div className='mx-auto mt-5 max-w-md space-y-2 text-left'>
@@ -1428,7 +1471,7 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
               'Same pattern used by Terraform Cloud and Pulumi',
             ].map((item) => (
               <div key={item} className='flex items-center gap-2 text-sm text-text-muted'>
-                <i className='ti ti-check text-green-400' />
+                <Check className='h-4 w-4 shrink-0 text-success' />
                 <span>{item}</span>
               </div>
             ))}
@@ -1436,7 +1479,8 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
 
           <div className='mt-6'>
             <Button variant='primary' onClick={handleRoleConnect} disabled={isWaitingRole || roleConnected}>
-              Open AWS CloudFormation console →
+              Open AWS CloudFormation console
+              <ArrowRight className='h-4 w-4' />
             </Button>
           </div>
           {isWaitingRole ? (
@@ -1447,27 +1491,34 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
           ) : null}
           {roleConnected ? (
             // TODO: returned from POST /api/projects/{id}/aws-connection/
-            <p className='mt-3 text-sm text-green-300'>✓ IAM role connected — </p>
+            <p className='mt-3 flex items-center justify-center gap-1.5 text-sm text-success'>
+              <Check className='h-4 w-4' strokeWidth={3} />
+              IAM role connected
+            </p>
           ) : null}
           {roleConnected ? (
             <Button variant='secondary' className='mt-4' onClick={() => setPhase('env_vars')}>
-              Continue →
+              Continue
+              <ArrowRight className='h-4 w-4' />
             </Button>
           ) : null}
-        </div>
-      </div>
+        </WizardCard>
+      </WizardPanel>
     )
   }
 
   if (phase === 'env_vars') {
     return (
-      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-        <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6'>
-          <h3 className='text-lg font-semibold'>Values required from you</h3>
+      <WizardPanel>
+        <WizardCard width='lg'>
+          <div>
+            <h3 className='text-lg font-semibold'>Values required from you</h3>
+            <p className='mt-1 text-sm text-text-muted'>These secrets are needed to run your app. Fill in each one to continue.</p>
+          </div>
           <div className='mt-4 space-y-4'>
             {userSecretVars.map((field) => (
               <div key={field.key_name}>
-                <div className='mb-1 flex items-center justify-between'>
+                <div className='mb-1 flex items-center justify-between gap-3'>
                   <p className='text-sm font-semibold text-text-primary'>{field.key_name}</p>
                   {field.context_block ? <p className='text-xs text-text-muted'>{field.context_block}</p> : null}
                 </div>
@@ -1476,14 +1527,15 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
                     type={showSecrets[field.key_name] ? 'text' : 'password'}
                     value={secretValues[field.key_name] || ''}
                     onChange={(event) => setSecretValues((prev) => ({ ...prev, [field.key_name]: event.target.value }))}
-                    className='w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+                    className='w-full rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary transition-[border-color,box-shadow] duration-150 hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
                   />
                   <Button
                     variant='ghost'
                     size='sm'
                     onClick={() => setShowSecrets((prev) => ({ ...prev, [field.key_name]: !prev[field.key_name] }))}
+                    aria-label={showSecrets[field.key_name] ? 'Hide value' : 'Show value'}
                   >
-                    {showSecrets[field.key_name] ? 'Hide' : 'Show'}
+                    {showSecrets[field.key_name] ? <EyeOff className='h-4 w-4' /> : <Eye className='h-4 w-4' />}
                   </Button>
                 </div>
               </div>
@@ -1491,15 +1543,16 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
           </div>
 
           <h3 className='mt-7 text-lg font-semibold'>Auto-generated by Crylo</h3>
+          <p className='mt-1 text-sm text-text-muted'>Crylo creates and manages these for you — no action needed.</p>
           <div className='mt-3 space-y-2'>
             {generatedVars.map((field) => (
-              <div key={field.key_name} className='flex items-center justify-between rounded-md border border-border bg-background px-3 py-2'>
+              <div key={field.key_name} className='flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2'>
                 <div>
                   <p className='text-sm font-semibold text-text-primary'>{field.key_name}</p>
                   {field.production_default ? <p className='text-xs text-text-muted'>{field.production_default}</p> : null}
                 </div>
                 <div className='flex items-center gap-2'>
-                  <i className='ti ti-lock text-xs text-text-muted' />
+                  <Lock className='h-3.5 w-3.5 text-text-muted' />
                   <span className='rounded-full border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-300'>Auto-generated</span>
                 </div>
               </div>
@@ -1508,11 +1561,12 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
 
           <button
             type='button'
-            className='mt-4 text-xs text-text-muted hover:text-text-primary'
+            className='mt-4 inline-flex items-center gap-1 text-xs text-text-muted transition-colors hover:text-text-primary disabled:opacity-40'
             disabled={extraVars.length >= 3}
             onClick={() => setExtraVars((prev) => [...prev, { key: '', value: '' }])}
           >
-            + Add variable
+            <Plus className='h-3.5 w-3.5' />
+            Add variable
           </button>
           <div className='mt-2 space-y-2'>
             {extraVars.map((row, index) => (
@@ -1526,7 +1580,7 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
                     next[index] = { ...next[index], key: event.target.value }
                     setExtraVars(next)
                   }}
-                  className='rounded-md border border-border bg-background px-3 py-2 text-sm'
+                  className='rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
                 />
                 <input
                   type='password'
@@ -1537,28 +1591,30 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
                     next[index] = { ...next[index], value: event.target.value }
                     setExtraVars(next)
                   }}
-                  className='rounded-md border border-border bg-background px-3 py-2 text-sm'
+                  className='rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
                 />
               </div>
             ))}
           </div>
 
-          <p className='mt-4 text-xs text-text-muted'>
+          <p className='mt-4 flex items-start gap-1.5 text-xs text-text-muted'>
+            <ShieldCheck className='mt-0.5 h-3.5 w-3.5 shrink-0 text-success' />
             Secret values are written directly to AWS Secrets Manager in your account. Crylo never stores them.
           </p>
 
           <Button variant='primary' className='mt-5' disabled={!allSecretsFilled} onClick={() => setPhase('review')}>
-            Save & continue →
+            Save & continue
+            <ArrowRight className='h-4 w-4' />
           </Button>
-        </div>
-      </div>
+        </WizardCard>
+      </WizardPanel>
     )
   }
 
   if (phase === 'review') {
     return (
-      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-        <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6'>
+      <WizardPanel>
+        <WizardCard width='lg'>
           <h3 className='text-lg font-semibold'>What Clyro will create</h3>
           {/* TODO: derive review summary from canvas_version + intent_record via API */}
 
@@ -1568,7 +1624,7 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
               className='text-sm font-medium text-accent hover:underline'
               onClick={() => setShowTemplate((prev) => !prev)}
             >
-              {showTemplate ? 'Hide CloudFormation template ∨' : 'View CloudFormation template ›'}
+              {showTemplate ? 'Hide CloudFormation template' : 'View CloudFormation template'}
             </button>
             {showTemplate ? (
               <pre className='mt-3 max-h-48 overflow-y-auto rounded-md border border-border bg-background p-3 text-xs text-text-muted'>
@@ -1577,26 +1633,33 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
             ) : null}
           </div>
 
-          <p className='mt-6 text-sm text-amber-300'>
-            ⚠ This will create AWS resources in your account. You will be charged by AWS for these resources.
+          <p className='mt-6 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300'>
+            <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
+            This will create AWS resources in your account. You will be charged by AWS for these resources.
           </p>
           <div className='mt-4 flex items-center gap-4'>
-            <button type='button' className='text-sm text-text-muted hover:text-text-primary' onClick={() => setPhase('env_vars')}>
-              ← Edit architecture
+            <button
+              type='button'
+              className='inline-flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-text-primary'
+              onClick={() => setPhase('env_vars')}
+            >
+              <ArrowLeft className='h-4 w-4' />
+              Edit architecture
             </button>
             <Button variant='primary' onClick={() => setPhase('provisioning')}>
-              Provision →
+              Provision
+              <ArrowRight className='h-4 w-4' />
             </Button>
           </div>
-        </div>
-      </div>
+        </WizardCard>
+      </WizardPanel>
     )
   }
 
   if (phase === 'provisioning') {
     return (
-      <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-        <div className='mx-auto max-w-2xl rounded-lg border border-border/70 bg-surface p-6'>
+      <WizardPanel>
+        <WizardCard width='lg'>
           <h3 className='text-lg font-semibold'>Provisioning infrastructure</h3>
           <div className='mt-4 space-y-3'>
             {provisioningLog.map((entry) => {
@@ -1607,13 +1670,13 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
               return (
                 <div key={entry.sequence} className='flex items-start gap-3'>
                   {isDone ? (
-                    <div className='mt-0.5 grid h-4 w-4 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-[10px] text-green-300'>
-                      ✓
-                    </div>
+                    <span className='mt-0.5 grid h-5 w-5 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-green-300'>
+                      <Check className='h-3 w-3' strokeWidth={3} />
+                    </span>
                   ) : isActive ? (
-                    <div className='mt-0.5 h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+                    <span className='mt-0.5 h-5 w-5 rounded-full border-2 border-accent border-t-transparent animate-spin' />
                   ) : (
-                    <div className='mt-0.5 h-4 w-4 rounded-full border border-border bg-background' />
+                    <span className='mt-0.5 h-5 w-5 rounded-full border border-border bg-background' />
                   )}
                   <div>
                     <p className={`text-sm ${textClass}`}>{entry.plain_message}</p>
@@ -1622,19 +1685,19 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
               )
             })}
           </div>
-        </div>
-      </div>
+        </WizardCard>
+      </WizardPanel>
     )
   }
 
   // success phase
   return (
-    <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-      <div className='mx-auto max-w-2xl rounded-lg border border-green-500/25 bg-surface p-6'>
+    <WizardPanel>
+      <WizardCard width='lg' className='border-green-500/25'>
         <div className='flex items-center justify-center'>
-          <i className='ti ti-circle-check text-[48px] text-green-400' />
+          <CheckCircle2 className='h-12 w-12 text-green-400' />
         </div>
-        <h3 className='mt-4 text-center text-2xl font-semibold tracking-tight'>Your infrastructure is live</h3>
+        <h3 className='mt-4 text-center text-xl font-semibold tracking-tight'>Your infrastructure is live</h3>
 
         {/* TODO: fetch from GET /api/deployments/{id}/outputs/ */}
         <div className='mt-6 space-y-2'>
@@ -1643,17 +1706,17 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
             ['Backend API', '—'],
             ['CloudFront URL', '—'],
           ].map(([label, value]) => (
-            <div key={label} className='flex items-center justify-between rounded-md border border-border bg-background px-3 py-2'>
+            <div key={label} className='flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2'>
               <div>
                 <p className='text-xs text-text-muted'>{label}</p>
                 <p className='text-sm font-medium text-text-primary'>{value}</p>
               </div>
               <button
                 type='button'
-                className='flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-text-muted hover:text-text-primary'
+                className='flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-text-muted transition-colors hover:border-accent/60 hover:text-text-primary'
                 onClick={() => handleCopy(label, value)}
               >
-                <i className='ti ti-copy text-xs' />
+                <Copy className='h-3 w-3' />
                 {copiedKey === label ? 'Copied!' : 'Copy'}
               </button>
             </div>
@@ -1663,9 +1726,16 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
         <div className='mt-6'>
           <h4 className='text-sm font-semibold'>Next steps</h4>
           <div className='mt-2 space-y-2 text-sm text-text-muted'>
-            <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Point your domain DNS to the CloudFront URL above</span></div>
-            <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Set up your CI/CD pipeline to push to ECR on merge to main</span></div>
-            <div className='flex items-start gap-2'><i className='ti ti-arrow-right mt-0.5' /><span>Your architecture is saved and visible in the canvas</span></div>
+            {[
+              'Point your domain DNS to the CloudFront URL above',
+              'Set up your CI/CD pipeline to push to ECR on merge to main',
+              'Your architecture is saved and visible in the canvas',
+            ].map((tip) => (
+              <div key={tip} className='flex items-start gap-2'>
+                <ArrowRight className='mt-0.5 h-4 w-4 shrink-0 text-text-muted' />
+                <span>{tip}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -1677,10 +1747,11 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
             onAdvanceToStepFive()
           }}
         >
-          Go to dashboard →
+          Go to dashboard
+          <ArrowRight className='h-4 w-4' />
         </Button>
-      </div>
-    </div>
+      </WizardCard>
+    </WizardPanel>
   )
 }
 
@@ -1690,31 +1761,37 @@ function StepFivePanel() {
   const [stackStatus, setStackStatus] = useState(null) // TODO: fetch from GET /api/deployments/{id}/stack-status/
 
   const statusIcon = (status) => {
-    if (status === 'healthy') return ['ti ti-circle-check', 'text-green-400', 'Healthy']
-    if (status === 'degraded') return ['ti ti-alert-triangle', 'text-amber-300', 'Degraded']
-    return ['ti ti-circle-x', 'text-red-400', 'Unhealthy']
+    if (status === 'healthy') return [CheckCircle2, 'text-green-400', 'Healthy']
+    if (status === 'degraded') return [AlertTriangle, 'text-amber-300', 'Degraded']
+    return [XCircle, 'text-red-400', 'Unhealthy']
   }
 
   return (
-    <div className='mt-8 flex-1 overflow-auto rounded-xl border border-border/70 bg-background/40 p-6'>
+    <div className='mt-6 flex-1 overflow-auto rounded-xl border border-white/[0.07] bg-background/40 p-6'>
       <div className='mx-auto w-full max-w-5xl space-y-6'>
         <div>
           <h3 className='text-lg font-semibold'>Health overview</h3>
-          <div className='mt-3 grid gap-3 md:grid-cols-3'>
-            {healthItems.map(({ name, status, detail }) => {
-              const [icon, color, label] = statusIcon(status)
-              return (
-                <div key={name} className='rounded-lg border border-border bg-surface p-3'>
-                  <p className='text-sm font-semibold text-text-primary'>{name}</p>
-                  <div className={`mt-2 flex items-center gap-1 text-sm ${color}`}>
-                    <i className={icon} />
-                    <span>{label}</span>
+          {healthItems.length === 0 ? (
+            <p className='mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-center text-sm text-text-muted'>
+              Waiting for the first health check to report…
+            </p>
+          ) : (
+            <div className='mt-3 grid gap-3 md:grid-cols-3'>
+              {healthItems.map(({ name, status, detail }) => {
+                const [Icon, color, label] = statusIcon(status)
+                return (
+                  <div key={name} className='rounded-lg border border-border bg-surface p-3'>
+                    <p className='text-sm font-semibold text-text-primary'>{name}</p>
+                    <div className={`mt-2 flex items-center gap-1 text-sm ${color}`}>
+                      <Icon className='h-4 w-4' />
+                      <span>{label}</span>
+                    </div>
+                    <p className='mt-1 text-xs text-text-muted'>{detail}</p>
                   </div>
-                  <p className='mt-1 text-xs text-text-muted'>{detail}</p>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         <div>
@@ -1759,17 +1836,24 @@ function StepFivePanel() {
             ) : null}
           </div>
           <div className='mt-3 space-y-2'>
-            {alerts.map((alert) => (
-              <div key={alert.id} className='rounded-lg border border-amber-500/30 border-l-4 border-l-amber-400 bg-surface p-3'>
-                <div className='flex items-start gap-2'>
-                  <i className='ti ti-alert-triangle text-amber-300 mt-0.5' />
-                  <div>
-                    <p className='text-sm font-medium text-text-primary'>{alert.plain_message}</p>
-                    <p className='mt-1 text-xs text-text-muted'>{alert.fired_at}</p>
+            {alerts.length === 0 ? (
+              <p className='flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-3 text-sm text-text-muted'>
+                <CheckCircle2 className='h-4 w-4 text-success' />
+                No active alerts — everything looks healthy.
+              </p>
+            ) : (
+              alerts.map((alert) => (
+                <div key={alert.id} className='rounded-lg border border-amber-500/30 border-l-4 border-l-amber-400 bg-surface p-3'>
+                  <div className='flex items-start gap-2'>
+                    <AlertTriangle className='mt-0.5 h-4 w-4 text-amber-300' />
+                    <div>
+                      <p className='text-sm font-medium text-text-primary'>{alert.plain_message}</p>
+                      <p className='mt-1 text-xs text-text-muted'>{alert.fired_at}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
@@ -1898,32 +1982,62 @@ export default function ProjectWizard() {
   if (isNew && !projectId) {
     return (
       <div className='flex min-h-[calc(100vh-121px)] items-center justify-center'>
-        <div className='w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-lg shadow-black/30 ring-1 ring-white/[0.06]'>
-          <h1 className='text-2xl font-semibold tracking-tight'>New Project</h1>
-          <p className='mt-2 text-sm font-normal text-text-muted'>
-            Give your project a name to get started.
-          </p>
-          <form onSubmit={handleCreateProject} className='mt-6 space-y-4'>
-            <div>
-              <label className='block text-sm font-medium text-text-primary'>Project name</label>
+        <div className='w-full max-w-xl'>
+          <div className='overflow-hidden rounded-2xl border border-white/[0.08] bg-surface shadow-[0_24px_80px_rgba(0,0,0,0.45)]'>
+            <div className='border-b border-white/[0.06] bg-gradient-to-b from-accent/[0.08] to-transparent px-8 pt-8 pb-7'>
+              <div className='grid h-12 w-12 place-items-center rounded-xl border border-accent/30 bg-accent/10 text-accent'>
+                <Rocket className='h-6 w-6' />
+              </div>
+              <h1 className='mt-5 text-2xl font-semibold tracking-tight'>Name your project</h1>
+              <p className='mt-2 max-w-md text-sm text-text-muted'>
+                We&apos;ll connect your repo, detect your stack, and generate cloud infrastructure tailored to it — in five guided steps.
+              </p>
+            </div>
+
+            <form onSubmit={handleCreateProject} className='px-8 py-7'>
+              <label htmlFor='project-name' className='block text-sm font-medium text-text-primary'>
+                Project name
+              </label>
               <input
-                className='mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-text-primary caret-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent'
+                id='project-name'
+                className='mt-1.5 w-full rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary caret-accent transition-[border-color,box-shadow] duration-150 hover:border-white/[0.15] focus-visible:border-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20'
                 placeholder='My awesome app'
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 autoFocus
               />
-            </div>
-            {createError && <p className='text-sm text-red-400'>{createError}</p>}
-            <Button
-              variant='primary'
-              className='w-full'
-              type='submit'
-              disabled={!projectName.trim() || creatingProject}
-            >
-              {creatingProject ? 'Creating...' : 'Create Project'}
-            </Button>
-          </form>
+              {createError ? (
+                <p className='mt-2 flex items-center gap-1.5 text-sm text-danger'>
+                  <AlertTriangle className='h-3.5 w-3.5' />
+                  {createError}
+                </p>
+              ) : null}
+              <Button
+                variant='primary'
+                className='mt-5 w-full'
+                size='lg'
+                type='submit'
+                disabled={!projectName.trim() || creatingProject}
+              >
+                {creatingProject ? 'Creating…' : 'Create project'}
+                {!creatingProject ? <ArrowRight className='h-4 w-4' /> : null}
+              </Button>
+            </form>
+          </div>
+
+          <div className='mt-5 px-2'>
+            <p className='text-[11px] font-semibold uppercase tracking-widest text-text-muted'>What happens next</p>
+            <ol className='mt-3 grid gap-2 sm:grid-cols-2'>
+              {stepConfig.map((item) => (
+                <li key={item.number} className='flex items-center gap-2.5 text-sm text-text-muted'>
+                  <span className='grid h-5 w-5 shrink-0 place-items-center rounded-full border border-border bg-background text-[11px] font-semibold text-text-muted'>
+                    {item.number}
+                  </span>
+                  <span className='truncate'>{item.title}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
         </div>
       </div>
     )
@@ -1996,44 +2110,44 @@ export default function ProjectWizard() {
         : 'Continue'
 
   const fullWidth = step === 3 || step === 5
+  const totalSteps = stepConfig.length
 
   return (
-    <div className='relative min-h-[calc(100vh-121px)]'>
-      <h1 className='text-2xl font-semibold tracking-tight'>Project Wizard</h1>
+    <div className='flex min-h-[calc(100vh-121px)] overflow-hidden rounded-2xl border border-white/[0.07] bg-surface/20'>
+      {/* Left rail — vertical step guide (desktop) */}
+      <aside className='hidden w-[296px] shrink-0 flex-col justify-between border-r border-white/[0.06] bg-surface/40 px-7 py-8 lg:flex'>
+        <div>
+          <p className='mb-7 text-[11px] font-semibold uppercase tracking-widest text-text-muted'>
+            Step {step} of {totalSteps}
+          </p>
+          <StepProgress steps={stepConfig} current={step} completed={completedSteps} />
+        </div>
+        <p className='flex items-center gap-1.5 text-xs text-text-muted'>
+          <ShieldCheck className='h-3.5 w-3.5 text-success' />
+          Nothing is provisioned until you confirm.
+        </p>
+      </aside>
 
-      <div className='fixed inset-x-0 top-[73px] z-20 border-b border-white/[0.06] bg-surface/80 backdrop-blur-md'>
-        <div className='mx-auto w-full max-w-6xl px-6 py-4'>
-          <div className='flex items-start justify-center gap-6 md:gap-10'>
-            {stepConfig.map((item) => {
-              const isCompleted = completedSteps.has(item.number)
-              const isActive = step === item.number
-              const circleClass = isCompleted
-                ? 'border-accent bg-accent text-background'
-                : isActive
-                  ? 'border-accent bg-surface shadow-[0_0_0_4px_rgba(249,115,22,0.15)]'
-                  : 'border-border bg-background text-text-muted'
-              const labelClass = isActive ? 'font-medium text-text-primary' : 'font-normal text-text-muted'
-
-              return (
-                <div key={item.number} className='flex flex-col items-center gap-2'>
-                  <div className={`grid h-11 w-11 place-items-center rounded-full border text-sm transition-all duration-300 ${circleClass}`}>
-                    {item.number}
-                  </div>
-                  <p className={`text-center text-xs ${labelClass}`}>{item.title}</p>
-                </div>
-              )
-            })}
+      {/* Main column */}
+      <div className='flex min-w-0 flex-1 flex-col'>
+        {/* Mobile progress (rail is hidden below lg) */}
+        <div className='border-b border-white/[0.06] px-5 py-4 lg:hidden'>
+          <p className='text-xs font-medium text-text-muted'>
+            Step {step} of {totalSteps} · <span className='text-text-primary'>{currentStepData.title}</span>
+          </p>
+          <div className='mt-2 h-1 overflow-hidden rounded-full bg-background'>
+            <div
+              className='h-full rounded-full bg-accent transition-all duration-500'
+              style={{ width: `${(step / totalSteps) * 100}%` }}
+            />
           </div>
         </div>
-      </div>
 
-      <div className='pb-24 pt-36'>
-        <section className={fullWidth ? 'flex min-h-[calc(100vh-270px)] flex-col' : 'mx-auto flex min-h-[calc(100vh-270px)] w-full max-w-[640px] flex-col'}>
-          <div className='w-fit rounded-full border border-border px-3 py-1 text-xs font-normal text-text-muted'>
-            Step {step} of 5
-          </div>
-          <h2 className='mt-4 text-4xl font-semibold tracking-tight'>{currentStepData.title}</h2>
-          <p className='mt-3 text-sm font-normal text-text-muted'>{currentStepData.subtitle}</p>
+        <div className={`flex min-h-0 flex-1 flex-col ${fullWidth ? 'p-4 sm:p-6' : 'overflow-y-auto px-6 py-8 sm:px-10 sm:py-10'}`}>
+          <header className={fullWidth ? 'shrink-0' : ''}>
+            <h2 className='text-2xl font-semibold tracking-tight sm:text-3xl'>{currentStepData.title}</h2>
+            <p className='mt-2 max-w-2xl text-sm text-text-muted'>{currentStepData.subtitle}</p>
+          </header>
 
           {step === 1 ? (
             <StepOnePanel
@@ -2078,22 +2192,14 @@ export default function ProjectWizard() {
           ) : null}
 
           {step === 5 ? <StepFivePanel /> : null}
+        </div>
 
-          {step !== 1 && step !== 2 && step !== 3 && step !== 4 && step !== 5 ? (
-            <div className='mt-8 flex-1 rounded-xl border border-dashed border-border bg-background/50 p-6'>
-              <div className='grid h-full min-h-[260px] place-items-center rounded-lg border border-border/70 bg-surface'>
-                <p className='text-sm font-normal text-text-muted'>Step {step} content — coming soon</p>
-              </div>
-            </div>
-          ) : null}
-        </section>
-      </div>
-
-      <div className='fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.06] bg-surface/80 backdrop-blur-md'>
-        <div className='mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4'>
+        {/* Footer nav — in-flow, no blur */}
+        <div className='flex shrink-0 items-center justify-between border-t border-white/[0.06] bg-surface/40 px-6 py-4 sm:px-10'>
           <div>
             {step > 1 ? (
               <Button variant='ghost' onClick={handleBack}>
+                <ArrowLeft className='h-4 w-4' />
                 Back
               </Button>
             ) : null}
@@ -2105,6 +2211,7 @@ export default function ProjectWizard() {
               disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
             >
               {continueLabel}
+              <ArrowRight className='h-4 w-4' />
             </Button>
           ) : null}
         </div>
