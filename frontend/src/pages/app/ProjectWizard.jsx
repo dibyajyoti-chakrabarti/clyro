@@ -1415,32 +1415,95 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
   )
 }
 
-function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
+function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) {
   const [phase, setPhase] = useState('aws_connect')
-  const [isWaitingRole, setIsWaitingRole] = useState(false)
+
+  // aws_connect phase state
+  const [cfnConsoleUrl, setCfnConsoleUrl] = useState(null)
+  const [urlLoading, setUrlLoading] = useState(false)
+  const [stackOpened, setStackOpened] = useState(false)
+  const [arnInput, setArnInput] = useState('')
+  const [verifying, setVerifying] = useState(false)
+  const [verifyError, setVerifyError] = useState(null)
   const [roleConnected, setRoleConnected] = useState(false)
-  const [userSecretVars, setUserSecretVars] = useState([]) // TODO: fetch from GET /api/projects/{id}/env-vars/?classification=user_secret
-  const [generatedVars, setGeneratedVars] = useState([])   // TODO: fetch from GET /api/projects/{id}/env-vars/?classification=generated
+
+  // env_vars phase state
+  const [envVarsLoading, setEnvVarsLoading] = useState(false)
+  const [userSecretVars, setUserSecretVars] = useState([])
+  const [generatedVars, setGeneratedVars] = useState([])
   const [secretValues, setSecretValues] = useState({})
   const [showSecrets, setShowSecrets] = useState({})
   const [extraVars, setExtraVars] = useState([])
+  const [savingEnvVars, setSavingEnvVars] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+
+  // shared
   const [showTemplate, setShowTemplate] = useState(false)
-  const [provisioningLog, setProvisioningLog] = useState([]) // TODO: poll GET /api/deployments/{id}/log/
-  const [cfTemplate, setCfTemplate] = useState('') // TODO: fetch from GET /api/deployments/{id}/template/
+  const [provisioningLog, setProvisioningLog] = useState([])
   const [copiedKey, setCopiedKey] = useState('')
 
   useEffect(() => {
     setStep4CanContinue(phase === 'success')
   }, [phase, setStep4CanContinue])
 
+  // Fetch CloudFormation console URL on mount
+  useEffect(() => {
+    if (!projectId) return
+    setUrlLoading(true)
+    api.initAwsConnection(projectId)
+      .then((data) => setCfnConsoleUrl(data.cfn_console_url))
+      .catch(() => {})
+      .finally(() => setUrlLoading(false))
+  }, [projectId])
+
+  // Fetch env vars when entering env_vars phase
+  useEffect(() => {
+    if (phase !== 'env_vars' || !projectId) return
+    setEnvVarsLoading(true)
+    api.getEnvVars(projectId)
+      .then((data) => {
+        setUserSecretVars(data.user_secret || [])
+        setGeneratedVars(data.generated || [])
+      })
+      .catch(() => {})
+      .finally(() => setEnvVarsLoading(false))
+  }, [phase, projectId])
+
   const allSecretsFilled = userSecretVars.length === 0 || userSecretVars.every(
     (field) => (secretValues[field.key_name] || '').trim() !== ''
   )
 
-  const handleRoleConnect = () => {
-    setIsWaitingRole(true)
-    setRoleConnected(false)
-    // TODO: call POST /api/projects/{id}/aws-connection/verify/
+  const handleOpenStack = () => {
+    if (cfnConsoleUrl) {
+      window.open(cfnConsoleUrl, '_blank', 'noopener,noreferrer')
+      setStackOpened(true)
+    }
+  }
+
+  const handleVerify = async () => {
+    setVerifying(true)
+    setVerifyError(null)
+    try {
+      await api.verifyAwsConnection(projectId, { role_arn: arnInput.trim(), region: 'us-east-1' })
+      setRoleConnected(true)
+    } catch (err) {
+      setVerifyError(err.data?.error || 'Verification failed — check the role ARN and try again.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const handleSaveEnvVars = async () => {
+    setSavingEnvVars(true)
+    setSaveError(null)
+    try {
+      await api.saveEnvVars(projectId, { values: secretValues, extra_vars: extraVars })
+      setPhase('review')
+    } catch (err) {
+      setSaveError(err.data?.error || 'Failed to save secrets — please try again.')
+    } finally {
+      setSavingEnvVars(false)
+    }
   }
 
   const handleCopy = async (key, value) => {
@@ -1478,20 +1541,52 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
           </div>
 
           <div className='mt-6'>
-            <Button variant='primary' onClick={handleRoleConnect} disabled={isWaitingRole || roleConnected}>
-              Open AWS CloudFormation console
-              <ArrowRight className='h-4 w-4' />
+            <Button variant='primary' onClick={handleOpenStack} disabled={urlLoading || !cfnConsoleUrl || roleConnected}>
+              {urlLoading ? (
+                <>
+                  <span className='h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin' />
+                  Preparing…
+                </>
+              ) : (
+                <>
+                  Open AWS CloudFormation console
+                  <ArrowRight className='h-4 w-4' />
+                </>
+              )}
             </Button>
           </div>
-          {isWaitingRole ? (
-            <div className='mt-3 flex items-center justify-center gap-2 text-xs text-text-muted'>
-              <div className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
-              <span>Waiting for role creation...</span>
+
+          {stackOpened && !roleConnected ? (
+            <div className='mx-auto mt-6 w-full max-w-md text-left'>
+              <p className='mb-2 text-sm text-text-muted'>
+                After the stack finishes (≈30s), copy the <strong className='text-text-primary'>RoleArn</strong> from the Outputs tab and paste it here:
+              </p>
+              <div className='flex gap-2'>
+                <input
+                  type='text'
+                  placeholder='arn:aws:iam::123456789012:role/clyro-provisioning-…'
+                  value={arnInput}
+                  onChange={(e) => setArnInput(e.target.value)}
+                  className='w-full rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary transition-[border-color,box-shadow] duration-150 hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
+                />
+                <Button
+                  variant='secondary'
+                  disabled={!arnInput.trim() || verifying}
+                  onClick={handleVerify}
+                >
+                  {verifying ? (
+                    <span className='h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin' />
+                  ) : 'Verify'}
+                </Button>
+              </div>
+              {verifyError ? (
+                <p className='mt-2 text-xs text-red-400'>{verifyError}</p>
+              ) : null}
             </div>
           ) : null}
+
           {roleConnected ? (
-            // TODO: returned from POST /api/projects/{id}/aws-connection/
-            <p className='mt-3 flex items-center justify-center gap-1.5 text-sm text-success'>
+            <p className='mt-4 flex items-center justify-center gap-1.5 text-sm text-success'>
               <Check className='h-4 w-4' strokeWidth={3} />
               IAM role connected
             </p>
@@ -1511,101 +1606,134 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
     return (
       <WizardPanel>
         <WizardCard width='lg'>
-          <div>
-            <h3 className='text-lg font-semibold'>Values required from you</h3>
-            <p className='mt-1 text-sm text-text-muted'>These secrets are needed to run your app. Fill in each one to continue.</p>
-          </div>
-          <div className='mt-4 space-y-4'>
-            {userSecretVars.map((field) => (
-              <div key={field.key_name}>
-                <div className='mb-1 flex items-center justify-between gap-3'>
-                  <p className='text-sm font-semibold text-text-primary'>{field.key_name}</p>
-                  {field.context_block ? <p className='text-xs text-text-muted'>{field.context_block}</p> : null}
-                </div>
-                <div className='flex gap-2'>
-                  <input
-                    type={showSecrets[field.key_name] ? 'text' : 'password'}
-                    value={secretValues[field.key_name] || ''}
-                    onChange={(event) => setSecretValues((prev) => ({ ...prev, [field.key_name]: event.target.value }))}
-                    className='w-full rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary transition-[border-color,box-shadow] duration-150 hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
-                  />
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    onClick={() => setShowSecrets((prev) => ({ ...prev, [field.key_name]: !prev[field.key_name] }))}
-                    aria-label={showSecrets[field.key_name] ? 'Hide value' : 'Show value'}
-                  >
-                    {showSecrets[field.key_name] ? <EyeOff className='h-4 w-4' /> : <Eye className='h-4 w-4' />}
-                  </Button>
-                </div>
+          {envVarsLoading ? (
+            <div className='flex items-center justify-center py-12 gap-2 text-sm text-text-muted'>
+              <span className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+              Loading environment variables…
+            </div>
+          ) : (
+            <>
+              <div>
+                <h3 className='text-lg font-semibold'>Values required from you</h3>
+                <p className='mt-1 text-sm text-text-muted'>These secrets are needed to run your app. Fill in each one to continue.</p>
               </div>
-            ))}
-          </div>
-
-          <h3 className='mt-7 text-lg font-semibold'>Auto-generated by Crylo</h3>
-          <p className='mt-1 text-sm text-text-muted'>Crylo creates and manages these for you — no action needed.</p>
-          <div className='mt-3 space-y-2'>
-            {generatedVars.map((field) => (
-              <div key={field.key_name} className='flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2'>
-                <div>
-                  <p className='text-sm font-semibold text-text-primary'>{field.key_name}</p>
-                  {field.production_default ? <p className='text-xs text-text-muted'>{field.production_default}</p> : null}
-                </div>
-                <div className='flex items-center gap-2'>
-                  <Lock className='h-3.5 w-3.5 text-text-muted' />
-                  <span className='rounded-full border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-300'>Auto-generated</span>
-                </div>
+              <div className='mt-4 space-y-4'>
+                {userSecretVars.length === 0 ? (
+                  <p className='text-sm text-text-muted italic'>No required secrets detected.</p>
+                ) : userSecretVars.map((field) => (
+                  <div key={field.key_name}>
+                    <div className='mb-1 flex items-center justify-between gap-3'>
+                      <p className='text-sm font-semibold text-text-primary'>{field.key_name}</p>
+                      {field.context_block ? <p className='text-xs text-text-muted'>{field.context_block}</p> : null}
+                    </div>
+                    <div className='flex gap-2'>
+                      <input
+                        type={showSecrets[field.key_name] ? 'text' : 'password'}
+                        value={secretValues[field.key_name] || ''}
+                        onChange={(event) => setSecretValues((prev) => ({ ...prev, [field.key_name]: event.target.value }))}
+                        className='w-full rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary transition-[border-color,box-shadow] duration-150 hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
+                      />
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        onClick={() => setShowSecrets((prev) => ({ ...prev, [field.key_name]: !prev[field.key_name] }))}
+                        aria-label={showSecrets[field.key_name] ? 'Hide value' : 'Show value'}
+                      >
+                        {showSecrets[field.key_name] ? <EyeOff className='h-4 w-4' /> : <Eye className='h-4 w-4' />}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <button
-            type='button'
-            className='mt-4 inline-flex items-center gap-1 text-xs text-text-muted transition-colors hover:text-text-primary disabled:opacity-40'
-            disabled={extraVars.length >= 3}
-            onClick={() => setExtraVars((prev) => [...prev, { key: '', value: '' }])}
-          >
-            <Plus className='h-3.5 w-3.5' />
-            Add variable
-          </button>
-          <div className='mt-2 space-y-2'>
-            {extraVars.map((row, index) => (
-              <div key={index} className='grid grid-cols-2 gap-2'>
-                <input
-                  type='text'
-                  placeholder='KEY'
-                  value={row.key}
-                  onChange={(event) => {
-                    const next = [...extraVars]
-                    next[index] = { ...next[index], key: event.target.value }
-                    setExtraVars(next)
-                  }}
-                  className='rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
-                />
-                <input
-                  type='password'
-                  placeholder='VALUE'
-                  value={row.value}
-                  onChange={(event) => {
-                    const next = [...extraVars]
-                    next[index] = { ...next[index], value: event.target.value }
-                    setExtraVars(next)
-                  }}
-                  className='rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
-                />
+              {generatedVars.length > 0 ? (
+                <>
+                  <h3 className='mt-7 text-lg font-semibold'>Auto-generated by Crylo</h3>
+                  <p className='mt-1 text-sm text-text-muted'>Crylo creates and manages these for you — no action needed.</p>
+                  <div className='mt-3 space-y-2'>
+                    {generatedVars.map((field) => (
+                      <div key={field.key_name} className='flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2'>
+                        <div>
+                          <p className='text-sm font-semibold text-text-primary'>{field.key_name}</p>
+                          {field.production_default ? <p className='text-xs text-text-muted'>{field.production_default}</p> : null}
+                        </div>
+                        <div className='flex items-center gap-2'>
+                          <Lock className='h-3.5 w-3.5 text-text-muted' />
+                          <span className='rounded-full border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-300'>Auto-generated</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+
+              <button
+                type='button'
+                className='mt-4 inline-flex items-center gap-1 text-xs text-text-muted transition-colors hover:text-text-primary disabled:opacity-40'
+                disabled={extraVars.length >= 3}
+                onClick={() => setExtraVars((prev) => [...prev, { key: '', value: '' }])}
+              >
+                <Plus className='h-3.5 w-3.5' />
+                Add variable
+              </button>
+              <div className='mt-2 space-y-2'>
+                {extraVars.map((row, index) => (
+                  <div key={index} className='grid grid-cols-2 gap-2'>
+                    <input
+                      type='text'
+                      placeholder='KEY'
+                      value={row.key}
+                      onChange={(event) => {
+                        const next = [...extraVars]
+                        next[index] = { ...next[index], key: event.target.value }
+                        setExtraVars(next)
+                      }}
+                      className='rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
+                    />
+                    <input
+                      type='password'
+                      placeholder='VALUE'
+                      value={row.value}
+                      onChange={(event) => {
+                        const next = [...extraVars]
+                        next[index] = { ...next[index], value: event.target.value }
+                        setExtraVars(next)
+                      }}
+                      className='rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          <p className='mt-4 flex items-start gap-1.5 text-xs text-text-muted'>
-            <ShieldCheck className='mt-0.5 h-3.5 w-3.5 shrink-0 text-success' />
-            Secret values are written directly to AWS Secrets Manager in your account. Crylo never stores them.
-          </p>
+              <p className='mt-4 flex items-start gap-1.5 text-xs text-text-muted'>
+                <ShieldCheck className='mt-0.5 h-3.5 w-3.5 shrink-0 text-success' />
+                Secret values are written directly to AWS Secrets Manager in your account. Crylo never stores them.
+              </p>
 
-          <Button variant='primary' className='mt-5' disabled={!allSecretsFilled} onClick={() => setPhase('review')}>
-            Save & continue
-            <ArrowRight className='h-4 w-4' />
-          </Button>
+              {saveError ? (
+                <p className='mt-3 text-xs text-red-400'>{saveError}</p>
+              ) : null}
+
+              <Button
+                variant='primary'
+                className='mt-5'
+                disabled={!allSecretsFilled || savingEnvVars}
+                onClick={handleSaveEnvVars}
+              >
+                {savingEnvVars ? (
+                  <>
+                    <span className='h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin' />
+                    Saving…
+                  </>
+                ) : (
+                  <>
+                    Save & continue
+                    <ArrowRight className='h-4 w-4' />
+                  </>
+                )}
+              </Button>
+            </>
+          )}
         </WizardCard>
       </WizardPanel>
     )
@@ -1616,7 +1744,6 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
       <WizardPanel>
         <WizardCard width='lg'>
           <h3 className='text-lg font-semibold'>What Clyro will create</h3>
-          {/* TODO: derive review summary from canvas_version + intent_record via API */}
 
           <div className='mt-6'>
             <button
@@ -1626,11 +1753,6 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
             >
               {showTemplate ? 'Hide CloudFormation template' : 'View CloudFormation template'}
             </button>
-            {showTemplate ? (
-              <pre className='mt-3 max-h-48 overflow-y-auto rounded-md border border-border bg-background p-3 text-xs text-text-muted'>
-                {cfTemplate}
-              </pre>
-            ) : null}
           </div>
 
           <p className='mt-6 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300'>
@@ -1699,7 +1821,6 @@ function StepFourPanel({ setStep4CanContinue, onAdvanceToStepFive }) {
         </div>
         <h3 className='mt-4 text-center text-xl font-semibold tracking-tight'>Your infrastructure is live</h3>
 
-        {/* TODO: fetch from GET /api/deployments/{id}/outputs/ */}
         <div className='mt-6 space-y-2'>
           {[
             ['Frontend URL', '—'],
@@ -2179,6 +2300,7 @@ export default function ProjectWizard() {
 
           {step === 4 ? (
             <StepFourPanel
+              projectId={projectId}
               setStep4CanContinue={setStep4CanContinue}
               onAdvanceToStepFive={() => {
                 setCompletedSteps((prev) => {
