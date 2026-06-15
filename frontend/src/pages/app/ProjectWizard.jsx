@@ -12,6 +12,7 @@ import {
   Database,
   Eye,
   EyeOff,
+  FileCode2,
   Globe,
   Layers,
   Lock,
@@ -22,6 +23,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Wand2,
   XCircle,
   Zap,
 } from 'lucide-react'
@@ -29,6 +31,7 @@ import Button from '../../components/ui/Button'
 import Select from '../../components/ui/Select'
 import { WizardCard, WizardPanel } from '../../components/wizard/WizardPanel'
 import StepProgress from '../../components/wizard/StepProgress'
+import CfnEditor from '../../components/wizard/CfnEditor'
 import githubMark from '../../assets/logos/github-fill.svg'
 import { api } from '../../api'
 
@@ -1437,6 +1440,17 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [savingEnvVars, setSavingEnvVars] = useState(false)
   const [saveError, setSaveError] = useState(null)
 
+  // iac phase state
+  const [iacTemplate, setIacTemplate] = useState('')
+  const [iacValidation, setIacValidation] = useState(null)
+  const [iacGenerating, setIacGenerating] = useState(false)
+  const [iacRefining, setIacRefining] = useState(false)
+  const [iacValidating, setIacValidating] = useState(false)
+  const [iacError, setIacError] = useState(null)
+  const [iacReady, setIacReady] = useState(false)
+  const [refineInput, setRefineInput] = useState('')
+  const [refineHistory, setRefineHistory] = useState([])
+
   // shared
   const [showTemplate, setShowTemplate] = useState(false)
   const [provisioningLog, setProvisioningLog] = useState([])
@@ -1498,11 +1512,63 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     setSaveError(null)
     try {
       await api.saveEnvVars(projectId, { values: secretValues, extra_vars: extraVars })
-      setPhase('review')
+      setPhase('iac')
     } catch (err) {
       setSaveError(err.data?.error || 'Failed to save secrets — please try again.')
     } finally {
       setSavingEnvVars(false)
+    }
+  }
+
+  // Generate the CloudFormation template the first time the iac phase is entered.
+  useEffect(() => {
+    if (phase !== 'iac' || !projectId || iacTemplate || iacGenerating) return
+    setIacGenerating(true)
+    setIacError(null)
+    api.generateIac(projectId)
+      .then((data) => {
+        setIacTemplate(data.template || '')
+        setIacValidation(data.validation || null)
+        setIacReady(data.status === 'iac_ready')
+        if (data.message) {
+          setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message }])
+        }
+      })
+      .catch((err) => setIacError(err.data?.error || 'Failed to generate the template.'))
+      .finally(() => setIacGenerating(false))
+  }, [phase, projectId, iacTemplate, iacGenerating])
+
+  const handleRefine = async () => {
+    const instruction = refineInput.trim()
+    if (!instruction || iacRefining) return
+    setIacRefining(true)
+    setIacError(null)
+    setRefineHistory((prev) => [...prev, { role: 'user', text: instruction }])
+    setRefineInput('')
+    try {
+      const data = await api.refineIac(projectId, { instruction, history: refineHistory })
+      setIacTemplate(data.template || '')
+      setIacValidation(data.validation || null)
+      setIacReady(data.status === 'iac_ready')
+      setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || 'Updated the template.' }])
+    } catch (err) {
+      setIacError(err.data?.error || 'Failed to refine the template.')
+    } finally {
+      setIacRefining(false)
+    }
+  }
+
+  const handleValidate = async () => {
+    setIacValidating(true)
+    setIacError(null)
+    try {
+      const data = await api.validateIac(projectId, { template: iacTemplate })
+      setIacValidation(data.validation || null)
+      setIacReady(data.status === 'iac_ready')
+    } catch (err) {
+      setIacError(err.data?.error || 'Validation failed — please try again.')
+    } finally {
+      setIacValidating(false)
     }
   }
 
@@ -1750,6 +1816,132 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     )
   }
 
+  if (phase === 'iac') {
+    const errors = iacValidation?.errors ?? 0
+    const warnings = iacValidation?.warnings ?? 0
+    const isValid = iacValidation?.is_valid
+    const inputClass = 'w-full rounded-lg border border-white/[0.09] bg-surface px-3 py-2 text-sm text-text-primary transition-[border-color,box-shadow] duration-150 hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20 disabled:opacity-50'
+    return (
+      <WizardPanel>
+        <WizardCard width='full'>
+          <div>
+            <h3 className='flex items-center gap-2 text-lg font-semibold'>
+              <FileCode2 className='h-5 w-5 text-accent' />
+              Review your infrastructure
+            </h3>
+            <p className='mt-1 text-sm text-text-muted'>
+              Clyro generated this CloudFormation template from your architecture. Edit it directly or ask for changes, then validate before provisioning.
+            </p>
+          </div>
+
+          {iacGenerating && !iacTemplate ? (
+            <div className='flex items-center justify-center gap-2 py-24 text-sm text-text-muted'>
+              <span className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+              Generating your CloudFormation template…
+            </div>
+          ) : (
+            <div className='mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]'>
+              <div className='flex flex-col'>
+                <div className='h-[480px] overflow-hidden rounded-lg border border-white/[0.09]'>
+                  <CfnEditor
+                    value={iacTemplate}
+                    onChange={(v) => { setIacTemplate(v); setIacReady(false) }}
+                    markers={iacValidation?.diagnostics || []}
+                    readOnly={iacRefining}
+                  />
+                </div>
+                <div className='mt-3 flex items-center justify-between gap-3'>
+                  <div className='flex items-center gap-3 text-sm'>
+                    {iacValidation == null ? (
+                      <span className='text-text-muted'>Not validated yet</span>
+                    ) : isValid ? (
+                      <span className='flex items-center gap-1.5 text-success'>
+                        <Check className='h-4 w-4' strokeWidth={3} />
+                        Valid{warnings ? ` · ${warnings} warning${warnings > 1 ? 's' : ''}` : ''}
+                      </span>
+                    ) : (
+                      <span className='flex items-center gap-1.5 text-red-400'>
+                        <AlertTriangle className='h-4 w-4' />
+                        {errors} error{errors > 1 ? 's' : ''}{warnings ? ` · ${warnings} warning${warnings > 1 ? 's' : ''}` : ''}
+                      </span>
+                    )}
+                  </div>
+                  <Button variant='secondary' size='sm' onClick={handleValidate} disabled={iacValidating || iacRefining || !iacTemplate}>
+                    {iacValidating ? (
+                      <span className='h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin' />
+                    ) : 'Validate'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className='flex flex-col rounded-lg border border-white/[0.09] bg-background'>
+                <div className='border-b border-white/[0.07] px-3 py-2'>
+                  <p className='flex items-center gap-1.5 text-sm font-semibold'>
+                    <Wand2 className='h-4 w-4 text-accent' />
+                    Ask Clyro to change it
+                  </p>
+                </div>
+                <div className='flex-1 space-y-3 overflow-y-auto px-3 py-3' style={{ maxHeight: '396px' }}>
+                  {refineHistory.length === 0 ? (
+                    <p className='text-xs text-text-muted'>
+                      e.g. “make the database multi-AZ”, “increase the backend to 2 tasks”, “add an alarm for SQS backlog”.
+                    </p>
+                  ) : refineHistory.map((m, i) => (
+                    <div key={i} className={m.role === 'user' ? 'text-right' : ''}>
+                      <span className={`inline-block rounded-lg px-3 py-2 text-xs ${m.role === 'user' ? 'bg-accent/15 text-text-primary' : 'bg-white/[0.04] text-text-muted'}`}>
+                        {m.text}
+                      </span>
+                    </div>
+                  ))}
+                  {iacRefining ? (
+                    <div className='flex items-center gap-2 text-xs text-text-muted'>
+                      <span className='h-3 w-3 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+                      Updating the template…
+                    </div>
+                  ) : null}
+                </div>
+                <div className='border-t border-white/[0.07] p-2'>
+                  <div className='flex gap-2'>
+                    <input
+                      type='text'
+                      value={refineInput}
+                      onChange={(e) => setRefineInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleRefine() }}
+                      placeholder='Describe a change…'
+                      disabled={iacRefining}
+                      className={inputClass}
+                    />
+                    <Button variant='secondary' size='sm' onClick={handleRefine} disabled={iacRefining || !refineInput.trim()}>
+                      <Send className='h-4 w-4' />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {iacError ? <p className='mt-3 text-xs text-red-400'>{iacError}</p> : null}
+
+          <div className='mt-5 flex items-center gap-4'>
+            <button
+              type='button'
+              className='inline-flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-text-primary'
+              onClick={() => setPhase('env_vars')}
+            >
+              <ArrowLeft className='h-4 w-4' />
+              Back
+            </button>
+            <Button variant='primary' disabled={!iacReady} onClick={() => setPhase('review')}>
+              Continue
+              <ArrowRight className='h-4 w-4' />
+            </Button>
+            {!iacReady ? <span className='text-xs text-text-muted'>Validate the template to continue.</span> : null}
+          </div>
+        </WizardCard>
+      </WizardPanel>
+    )
+  }
+
   if (phase === 'review') {
     return (
       <WizardPanel>
@@ -1774,10 +1966,10 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
             <button
               type='button'
               className='inline-flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-text-primary'
-              onClick={() => setPhase('env_vars')}
+              onClick={() => setPhase('iac')}
             >
               <ArrowLeft className='h-4 w-4' />
-              Edit architecture
+              Edit template
             </button>
             <Button variant='primary' onClick={() => setPhase('provisioning')}>
               Provision
