@@ -10,6 +10,7 @@ from core.models import AWSAccountConnection, EnvVarKey, Project
 from app.auth import CognitoAuthentication
 from .aws_client import assume_role, get_account_id, write_secret
 from .cfn_bootstrap import generate_cfn_console_url
+from . import iac
 
 _AUTH = [CognitoAuthentication]
 _PERMS = [IsAuthenticated]
@@ -206,3 +207,70 @@ def env_vars_save(request, pk):
         )
 
     return Response({'saved': True, 'secret_arns': saved_arns})
+
+
+# ── Step 4 — IaC generation / refinement / validation ─────────────────────────
+
+def _get_project_or_404(request, pk):
+    try:
+        return Project.objects.get(pk=pk, user=request.user), None
+    except Project.DoesNotExist:
+        return None, Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def iac_current(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(iac.get_current(project))
+    except iac.IacError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def iac_generate(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(iac.generate(project))
+    except iac.IacError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def iac_refine(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    instruction = (request.data.get('instruction') or '').strip()
+    if not instruction:
+        return Response({'error': 'instruction is required'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        return Response(iac.refine(project, instruction, request.data.get('history') or []))
+    except iac.IacError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def iac_validate(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    template = request.data.get('template')
+    if template is None:
+        return Response({'error': 'template is required'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        return Response(iac.validate(project, template))
+    except iac.IacError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
