@@ -25,6 +25,15 @@
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
       "protocol": "HTTP"
+    },
+    {
+      "name": "IacArchitect",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/IacArchitect/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP"
     }
   ],
   "memories": [
