@@ -28,6 +28,10 @@ from .provisioning.views import (
     aws_connection_verify,
     env_vars_list,
     env_vars_save,
+    iac_current,
+    iac_generate,
+    iac_refine,
+    iac_validate,
 )
 
 urlpatterns = [
@@ -51,6 +55,10 @@ urlpatterns = [
     path('projects/<uuid:pk>/aws-connection/verify/', aws_connection_verify),
     path('projects/<uuid:pk>/env-vars/', env_vars_list),
     path('projects/<uuid:pk>/env-vars/save/', env_vars_save),
+    path('projects/<uuid:pk>/iac/', iac_current),
+    path('projects/<uuid:pk>/iac/generate/', iac_generate),
+    path('projects/<uuid:pk>/iac/refine/', iac_refine),
+    path('projects/<uuid:pk>/iac/validate/', iac_validate),
     path('github/installations/', github_installations),
     path('github/repos/', github_repos),
     path('github/branches/', github_branches),
