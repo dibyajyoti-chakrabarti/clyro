@@ -11,7 +11,7 @@ import StepThree from './ProjectWizard/step3/StepThree'
 import StepFour from './ProjectWizard/step4/StepFour'
 import StepFive from './ProjectWizard/step5/StepFive'
 import { stepConfig } from './ProjectWizard/constants/stepConfig'
-import { STATUS_STEP, getCompletedSteps } from './ProjectWizard/constants/wizardStatuses'
+import { STATUS_STEP } from './ProjectWizard/constants/wizardStatuses'
 
 export default function ProjectWizard() {
   const { id } = useParams()
@@ -22,7 +22,6 @@ export default function ProjectWizard() {
   const [loading, setLoading] = useState(!isNew)
 
   const [step, setStep] = useState(1)
-  const [completedSteps, setCompletedSteps] = useState(() => new Set())
   const [projectName, setProjectName] = useState('')
   const [projectData, setProjectData] = useState({
     repo: null,
@@ -65,7 +64,6 @@ export default function ProjectWizard() {
         })
         setProjectName(project.name || '')
         setStep(STATUS_STEP[project.status] ?? 1)
-        setCompletedSteps(getCompletedSteps(project.status))
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -132,12 +130,6 @@ export default function ProjectWizard() {
       return
     }
 
-    setCompletedSteps((prev) => {
-      const next = new Set(prev)
-      next.add(step)
-      return next
-    })
-
     setStep((prev) => Math.min(5, prev + 1))
   }
 
@@ -150,6 +142,7 @@ export default function ProjectWizard() {
         : 'Continue'
 
   const totalSteps = stepConfig.length
+  const completedSteps = new Set(stepConfig.filter(({ number }) => number < step).map(({ number }) => number))
 
   const footer = (
     <div className='flex shrink-0 items-center justify-between border-t border-white/[0.06] bg-surface/40 px-6 py-4 sm:px-10'>
@@ -218,11 +211,6 @@ export default function ProjectWizard() {
         <StepFour
           setStep4CanContinue={setStep4CanContinue}
           onAdvanceToStepFive={() => {
-            setCompletedSteps((prev) => {
-              const next = new Set(prev)
-              next.add(4)
-              return next
-            })
             setStep(5)
           }}
         />

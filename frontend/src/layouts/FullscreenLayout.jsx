@@ -7,7 +7,7 @@ export default function FullscreenLayout() {
   if (isCreateProjectRoute) {
     return (
       <div className='min-h-screen bg-background text-text-primary'>
-        <main className='min-h-screen w-screen overflow-hidden'>
+        <main className='min-h-screen w-screen'>
           <Outlet />
         </main>
       </div>
@@ -16,7 +16,7 @@ export default function FullscreenLayout() {
 
   return (
     <div className='min-h-screen bg-background text-text-primary'>
-      <main className='h-screen w-screen overflow-hidden'>
+      <main className='w-screen'>
         <Outlet />
       </main>
     </div>
