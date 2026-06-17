@@ -23,6 +23,7 @@ export default function ProjectWizard() {
 
   const [step, setStep] = useState(1)
   const [completedSteps, setCompletedSteps] = useState(() => new Set())
+  const [projectName, setProjectName] = useState('')
   const [projectData, setProjectData] = useState({
     repo: null,
     intent: {},
@@ -62,6 +63,7 @@ export default function ProjectWizard() {
           canvas: null,
           provision: null,
         })
+        setProjectName(project.name || '')
         setStep(STATUS_STEP[project.status] ?? 1)
         setCompletedSteps(getCompletedSteps(project.status))
       })
@@ -180,6 +182,7 @@ export default function ProjectWizard() {
       statusMap={STATUS_STEP}
       totalSteps={totalSteps}
       currentStepData={currentStepData}
+      projectName={projectName}
       fullWidth={step === 3 || step === 5}
       footer={footer}
     >
