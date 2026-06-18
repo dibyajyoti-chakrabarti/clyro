@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
-  "name": "CryloCanvas",
+  "name": "CryloAgents",
   "version": 1,
   "managedBy": "CDK",
   "tags": {
     "agentcore:created-by": "agentcore-cli",
-    "agentcore:project-name": "CryloCanvas"
+    "agentcore:project-name": "CryloAgents"
   },
   "runtimes": [
     {
