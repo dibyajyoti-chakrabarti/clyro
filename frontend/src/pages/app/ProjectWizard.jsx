@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Box, Cloud, Folder, NotebookText, Rocket } from 'lucide-react'
 import Button from '../../components/ui/Button'
+import WizardNavbar from '../../components/wizard/WizardNavbar'
 import { api } from '../../api'
 import CreateProject from './CreateProject'
-import StepShell from './ProjectWizard/components/StepShell'
+import StepProgress from './ProjectWizard/components/StepProgress'
 import StepOne from './ProjectWizard/step1/StepOne'
 import StepTwo from './ProjectWizard/step2/StepTwo'
 import StepThree from './ProjectWizard/step3/StepThree'
@@ -143,6 +144,16 @@ export default function ProjectWizard() {
 
   const totalSteps = stepConfig.length
   const completedSteps = new Set(stepConfig.filter(({ number }) => number < step).map(({ number }) => number))
+  const mobileProgress =
+    totalSteps > 1 ? `${Math.max(0, ((step - 1) / (totalSteps - 1)) * 100)}%` : step > 0 ? '100%' : '0%'
+
+  const stepIcons = {
+    1: Folder,
+    2: NotebookText,
+    3: Box,
+    4: Cloud,
+    5: Rocket,
+  }
 
   const footer = (
     <div className='flex shrink-0 items-center justify-between border-t border-white/[0.06] bg-surface/40 px-6 py-4 sm:px-10'>
@@ -168,55 +179,110 @@ export default function ProjectWizard() {
   )
 
   return (
-    <StepShell
-      currentStep={step}
-      stepConfig={stepConfig}
-      completedSteps={completedSteps}
-      statusMap={STATUS_STEP}
-      totalSteps={totalSteps}
-      currentStepData={currentStepData}
-      projectName={projectName}
-      fullWidth={step === 3 || step === 5}
-      footer={footer}
-    >
-      {step === 1 ? (
-        <StepOne
-          projectId={projectId}
-          projectData={projectData}
-          setProjectData={setProjectData}
-          setStep1CanContinue={setStep1CanContinue}
-        />
-      ) : null}
+    <div className='min-h-screen w-full bg-[#040404] p-4 text-white'>
+      <WizardNavbar projectName={projectName} />
 
-      {step === 2 ? (
-        <StepTwo
-          projectId={projectId}
-          projectData={projectData}
-          setProjectData={setProjectData}
-          setStep2CanContinue={setStep2CanContinue}
-        />
-      ) : null}
+      <main className='mt-4 flex min-h-[calc(100vh-104px)] w-full gap-5'>
+        <div className='hidden lg:block'>
+          <StepProgress currentStep={step} stepConfig={stepConfig} completedSteps={completedSteps} statusMap={STATUS_STEP} />
+        </div>
 
-      {step === 3 ? (
-        <StepThree
-          projectId={projectId}
-          step3InputPrefill={step3InputPrefill}
-          setStep3InputPrefill={setStep3InputPrefill}
-          step3ShowBanner={step3ShowBanner}
-          onDismissStep3Banner={() => setStep3ShowBanner(false)}
-        />
-      ) : null}
+        <div className='flex min-w-0 flex-1 flex-col'>
+          <div className='mx-auto mb-4 w-full max-w-[1680px] lg:hidden'>
+            <div className='rounded-[24px] border border-white/[0.08] bg-[rgba(10,15,25,0.55)] px-6 py-[14px] backdrop-blur-[20px]'>
+              <div className='relative flex items-start justify-between gap-2 overflow-x-auto pb-1'>
+                <span className='pointer-events-none absolute left-6 right-6 top-4 h-[2px] bg-[rgba(255,255,255,0.12)]' />
+                <span
+                  className='pointer-events-none absolute left-6 top-4 h-[2px] bg-[#E8B84B] transition-[width] duration-[300ms] ease-in-out'
+                  style={{ width: mobileProgress }}
+                />
+                {stepConfig.map((item) => {
+                  const isCompleted = completedSteps.has(item.number)
+                  const isActive = step === item.number
 
-      {step === 4 ? (
-        <StepFour
-          setStep4CanContinue={setStep4CanContinue}
-          onAdvanceToStepFive={() => {
-            setStep(5)
-          }}
-        />
-      ) : null}
+                  return (
+                    <div key={item.number} className='relative z-10 min-w-[48px] flex-1 basis-0 text-center'>
+                      <div
+                        className={`mx-auto grid h-9 w-9 place-items-center rounded-full border transition-all duration-[250ms] ${
+                          isActive
+                            ? 'border-[#E8B84B] bg-[#E8B84B] text-[#111111]'
+                            : isCompleted
+                              ? 'border-[#E8B84B] bg-[#E8B84B] text-[#111111]'
+                              : 'border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.03)] text-white/80'
+                        }`}
+                      >
+                        {(() => {
+                          const Icon = stepIcons[item.number]
+                          return <Icon className='h-4 w-4' />
+                        })()}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
 
-      {step === 5 ? <StepFive /> : null}
-    </StepShell>
+          <section className='flex min-h-0 flex-1 flex-col rounded-[30px] border border-[rgba(232,184,75,0.20)] bg-[linear-gradient(180deg,#0F0F10,#090909)] p-12 shadow-[0_30px_80px_rgba(0,0,0,0.45)]'>
+            <div className='flex flex-1 flex-col justify-between'>
+              <div className='text-center'>
+                <p className='text-[11px] font-semibold uppercase tracking-[0.24em] text-[#E8B84B]'>
+                  STEP {step} OF {totalSteps}
+                </p>
+                <h1 className='mt-6 text-[clamp(42px,5.5vw,64px)] font-extrabold leading-[0.96] tracking-[-0.04em] text-white'>
+                  {currentStepData.title}
+                </h1>
+                <p className='mx-auto mt-6 max-w-[700px] text-[clamp(18px,1.8vw,22px)] leading-[1.6] text-white/72'>
+                  {currentStepData.subtitle}
+                </p>
+              </div>
+
+              <div className='mt-10 flex min-h-0 flex-1 flex-col'>
+                {step === 1 ? (
+                  <StepOne
+                    projectId={projectId}
+                    projectData={projectData}
+                    setProjectData={setProjectData}
+                    setStep1CanContinue={setStep1CanContinue}
+                  />
+                ) : null}
+
+                {step === 2 ? (
+                  <StepTwo
+                    projectId={projectId}
+                    projectData={projectData}
+                    setProjectData={setProjectData}
+                    setStep2CanContinue={setStep2CanContinue}
+                  />
+                ) : null}
+
+                {step === 3 ? (
+                  <StepThree
+                    projectId={projectId}
+                    step3InputPrefill={step3InputPrefill}
+                    setStep3InputPrefill={setStep3InputPrefill}
+                    step3ShowBanner={step3ShowBanner}
+                    onDismissStep3Banner={() => setStep3ShowBanner(false)}
+                  />
+                ) : null}
+
+                {step === 4 ? (
+                  <StepFour
+                    setStep4CanContinue={setStep4CanContinue}
+                    onAdvanceToStepFive={() => {
+                      setStep(5)
+                    }}
+                  />
+                ) : null}
+
+                {step === 5 ? <StepFive /> : null}
+              </div>
+
+              {footer}
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
   )
 }
