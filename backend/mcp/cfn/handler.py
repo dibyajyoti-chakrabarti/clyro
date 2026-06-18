@@ -8,14 +8,16 @@ arguments as the event payload and the fully-qualified tool name as
 bundled FastMCP instance, and return a JSON-serializable result that the
 gateway wraps back into MCP tool content.
 
-We expose only the read-only ``validate_cloudformation_template`` tool (cfn-lint
-syntax/schema/property validation, fully offline). For Step 3 the Reasoning
-agent uses it to confirm a proposed architecture node maps to a real AWS
-resource type with valid properties; in Step 4 the same tool validates
-generated CloudFormation templates before deploy. The package's other tools
-(compliance/cfn-guard, deployment troubleshooting, CDK/doc search) are
-deliberately NOT exposed here — nothing this target can do mutates AWS
-infrastructure.
+``ALLOWED_TOOLS`` is the union of read-only CloudFormation tools this Lambda will
+accept — none of them mutate AWS infrastructure (cfn-lint, cfn-guard, doc search,
+and a validation-instructions lookup). *Which* of these a given agent can actually
+call is scoped per-gateway by the target's ``toolSchemaFile``, not here:
+- the Step 3 ``cfn`` target on ``CryloCanvasGw`` advertises only
+  ``validate_cloudformation_template`` (``tools.json``), so the Reasoning agent can
+  confirm a node maps to a real resource type and nothing more;
+- the Step 4 ``cfn`` target on the dedicated ``CryloIacGw`` advertises the full set
+  (``tools.iac.json``), so only the IacArchitect agent gets compliance/doc tools.
+The CDK-specific tools and deployment troubleshooting remain unexposed.
 """
 
 import asyncio
@@ -23,8 +25,15 @@ import json
 
 from awslabs.aws_iac_mcp_server.server import mcp
 
-# Step-3 curated subset for this target (read-only; see tools.json).
-ALLOWED_TOOLS = {"validate_cloudformation_template"}
+# Union of read-only CFN tools this Lambda accepts; per-gateway tools.json files
+# scope what each agent actually sees (see module docstring). cfn-guard requires
+# the Lambda's Python 3.12 runtime (it segfaults on 3.14).
+ALLOWED_TOOLS = {
+    "validate_cloudformation_template",
+    "check_cloudformation_template_compliance",
+    "search_cloudformation_documentation",
+    "get_cloudformation_pre_deploy_validation_instructions",
+}
 
 
 def _extract_tool_name(context):
