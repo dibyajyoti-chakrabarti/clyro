@@ -59,10 +59,22 @@ AUTHORING RULES (from the build spec):
   ElastiCache evictions, SQS oldest-message age). Keep them reasonable; do not invent
   resources the spec doesn't imply.
 
+TOOLS (use them — don't rely on memory alone):
+- search_cloudformation_documentation — look up exact resource types / property
+  names / valid values when unsure, BEFORE writing them.
+- validate_cloudformation_template (cfn-lint) — syntax / schema / property checks.
+- check_cloudformation_template_compliance (cfn-guard) — security & compliance
+  (encryption at rest, no public access, logging, least privilege, etc.).
+- get_cloudformation_pre_deploy_validation_instructions — the checklist CloudFormation
+  itself applies at change-set time; consult it so the template won't trip validation.
+
 VALIDATION (required before you answer):
-- Call validate_cloudformation_template with your template_content. If it reports
-  errors, FIX them and validate again. Repeat until there are no errors (at most a few
-  rounds). Use the AWS docs tools if you are unsure of a property name or type.
+1. Call validate_cloudformation_template; fix every error, then re-validate.
+2. Call check_cloudformation_template_compliance and remediate the security/compliance
+   violations (don't emit a valid-but-insecure template).
+3. Re-run both until there are no errors and findings are resolved (or consciously
+   left, e.g. an optional feature the spec doesn't need). At most a few rounds. Use
+   search_cloudformation_documentation whenever a fix needs an exact property name/type.
 
 OUTPUT — return EXACTLY this format, nothing before or after:
 ===TEMPLATE===
