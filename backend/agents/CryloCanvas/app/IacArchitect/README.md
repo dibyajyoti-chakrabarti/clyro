@@ -9,9 +9,12 @@ runs in two modes, selected by the invocation payload:
   the Django backend assembles (`backend/app/provisioning/build_spec.py`).
 - `refine` — apply one natural-language instruction to the current template.
 
-In both modes it validates with `validate_cloudformation_template` (the `cfn`
-gateway target) and self-corrects before returning. It receives only the distilled
-build spec — never raw repo content — and holds no AWS write authority itself.
+In both modes it grounds and checks its work with the full CloudFormation authoring
+toolset (cfn-lint validate, cfn-guard compliance, CFN doc search, pre-deploy
+instructions) and self-corrects before returning. Those tools live on a dedicated
+gateway (`CryloIacGw`) so they are scoped to this agent only — the Step 3 Reasoning
+gateway exposes just `validate_cloudformation_template`. It receives only the
+distilled build spec — never raw repo content — and holds no AWS write authority.
 
 ## Invocation payload
 
@@ -27,7 +30,7 @@ returned template (cfn-lint in-process) as the authoritative validation.
 ## Layout
 
 `main.py` is the `@app.entrypoint`. `model/load.py` instantiates the Bedrock model;
-`mcp_client/client.py` connects to the CryloCanvas gateway for the CFN + docs tools.
+`mcp_client/client.py` connects to the `CryloIacGw` gateway for the CFN + docs tools.
 
 # Developing locally
 
@@ -36,5 +39,7 @@ returned template (cfn-lint in-process) as the authoritative validation.
 
 # Deployment
 
-`agentcore deploy` deploys the runtime. Bind the `CryloCanvasGw` gateway so the
-MCP URL is injected, then set `IAC_RUNTIME_ARN` in `backend/.env.local`.
+`agentcore deploy` deploys the runtime and the `CryloIacGw` gateway. Bind that
+gateway to this runtime so its MCP URL (`AGENTCORE_GATEWAY_CRYLOIACGW_URL`) is
+injected, then set `IAC_RUNTIME_ARN` in `backend/.env.local`. The `crylo-mcp-cfn`
+Lambda must be redeployed too (its `ALLOWED_TOOLS` now permits the full toolset).
