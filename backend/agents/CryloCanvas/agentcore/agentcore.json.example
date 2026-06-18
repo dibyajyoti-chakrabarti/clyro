@@ -79,6 +79,39 @@
       "authorizerType": "NONE",
       "enableSemanticSearch": true,
       "exceptionLevel": "NONE"
+    },
+    {
+      "name": "CryloIacGw",
+      "description": "Step 4 gateway — full CloudFormation authoring toolset, IacArchitect only",
+      "targets": [
+        {
+          "name": "cfn",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-cfn",
+            "toolSchemaFile": "../../mcp/cfn/tools.iac.json"
+          }
+        },
+        {
+          "name": "docs",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-docs",
+            "toolSchemaFile": "../../mcp/docs/tools.json"
+          }
+        },
+        {
+          "name": "pricing",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-pricing",
+            "toolSchemaFile": "../../mcp/pricing/tools.json"
+          }
+        }
+      ],
+      "authorizerType": "NONE",
+      "enableSemanticSearch": true,
+      "exceptionLevel": "NONE"
     }
   ],
   "policyEngines": [],
