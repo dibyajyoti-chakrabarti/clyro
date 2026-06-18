@@ -102,8 +102,6 @@ export default function ProjectWizard() {
     return true
   }
 
-  const currentStepData = stepConfig[step - 1]
-
   const handleBack = () => {
     setStep((prev) => Math.max(1, prev - 1))
   }
@@ -155,40 +153,17 @@ export default function ProjectWizard() {
     5: Rocket,
   }
 
-  const footer = (
-    <div className='flex shrink-0 items-center justify-between border-t border-white/[0.06] bg-surface/40 px-6 py-4 sm:px-10'>
-      <div>
-        {step > 1 ? (
-          <Button variant='ghost' onClick={handleBack}>
-            <ArrowLeft className='h-4 w-4' />
-            Back
-          </Button>
-        ) : null}
-      </div>
-      {step !== 4 ? (
-        <Button
-          variant='primary'
-          onClick={handleContinue}
-          disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
-        >
-          {continueLabel}
-          <ArrowRight className='h-4 w-4' />
-        </Button>
-      ) : null}
-    </div>
-  )
-
   return (
-    <div className='min-h-screen w-full bg-[#040404] p-4 text-white'>
+    <div className='box-border min-h-screen w-full max-w-full overflow-x-hidden bg-[#040404] p-[8px] text-white sm:p-[12px] lg:p-[16px] 2xl:p-[20px]'>
       <WizardNavbar projectName={projectName} />
 
-      <main className='mt-4 flex min-h-[calc(100vh-104px)] w-full gap-5'>
-        <div className='hidden lg:block'>
+      <main className='mt-1 flex min-h-[calc(100vh-86px)] w-full max-w-full items-stretch gap-[4px] overflow-x-hidden box-border sm:gap-[6px]'>
+        <div className='hidden self-stretch lg:block'>
           <StepProgress currentStep={step} stepConfig={stepConfig} completedSteps={completedSteps} statusMap={STATUS_STEP} />
         </div>
 
-        <div className='flex min-w-0 flex-1 flex-col'>
-          <div className='mx-auto mb-4 w-full max-w-[1680px] lg:hidden'>
+        <div className='flex min-h-0 min-w-0 flex-1 flex-col box-border'>
+          <div className='mx-auto mb-[6px] w-full max-w-[1680px] lg:hidden'>
             <div className='rounded-[24px] border border-white/[0.08] bg-[rgba(10,15,25,0.55)] px-6 py-[14px] backdrop-blur-[20px]'>
               <div className='relative flex items-start justify-between gap-2 overflow-x-auto pb-1'>
                 <span className='pointer-events-none absolute left-6 right-6 top-4 h-[2px] bg-[rgba(255,255,255,0.12)]' />
@@ -223,21 +198,14 @@ export default function ProjectWizard() {
             </div>
           </div>
 
-          <section className='flex min-h-0 flex-1 flex-col rounded-[30px] border border-[rgba(232,184,75,0.20)] bg-[linear-gradient(180deg,#0F0F10,#090909)] p-12 shadow-[0_30px_80px_rgba(0,0,0,0.45)]'>
-            <div className='flex flex-1 flex-col justify-between'>
-              <div className='text-center'>
-                <p className='text-[11px] font-semibold uppercase tracking-[0.24em] text-[#E8B84B]'>
-                  STEP {step} OF {totalSteps}
-                </p>
-                <h1 className='mt-6 text-[clamp(42px,5.5vw,64px)] font-extrabold leading-[0.96] tracking-[-0.04em] text-white'>
-                  {currentStepData.title}
-                </h1>
-                <p className='mx-auto mt-6 max-w-[700px] text-[clamp(18px,1.8vw,22px)] leading-[1.6] text-white/72'>
-                  {currentStepData.subtitle}
-                </p>
-              </div>
-
-              <div className='mt-10 flex min-h-0 flex-1 flex-col'>
+          <section
+            className='box-border flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-[rgba(232,184,75,0.18)] px-[64px] pb-[32px] pt-[72px] shadow-[0_30px_80px_rgba(0,0,0,0.45)]'
+            style={{
+              backgroundImage:
+                'radial-gradient(circle at 100% 0%, rgba(232,184,75,0.08), transparent 28%), radial-gradient(circle at 50% 0%, rgba(255,255,255,0.025), transparent 24%), linear-gradient(180deg,#0d0d0d,#070707)',
+            }}
+          >
+            <div className='flex min-h-0 flex-1 flex-col items-center box-border'>
                 {step === 1 ? (
                   <StepOne
                     projectId={projectId}
@@ -276,9 +244,28 @@ export default function ProjectWizard() {
                 ) : null}
 
                 {step === 5 ? <StepFive /> : null}
-              </div>
+            </div>
 
-              {footer}
+            <div className='mt-auto flex w-full items-end justify-between pt-8'>
+              <div>
+                {step > 1 ? (
+                  <Button variant='ghost' onClick={handleBack}>
+                    <ArrowLeft className='h-4 w-4' />
+                    Back
+                  </Button>
+                ) : null}
+              </div>
+              {step !== 4 ? (
+                <Button
+                  variant='primary'
+                  onClick={handleContinue}
+                  disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
+                  className='mb-[20px] mr-[24px] h-[64px] w-[200px] rounded-[18px]'
+                >
+                  {continueLabel}
+                  <ArrowRight className='h-4 w-4' />
+                </Button>
+              ) : null}
             </div>
           </section>
         </div>

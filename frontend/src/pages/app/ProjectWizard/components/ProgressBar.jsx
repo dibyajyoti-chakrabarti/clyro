@@ -13,7 +13,7 @@ export default function ProgressBar({ currentStep, stepConfig, completedSteps, s
   }
 
   return (
-    <aside className='hidden w-[312px] shrink-0 flex-col rounded-[28px] border-2 border-[rgba(232,184,75,0.28)] bg-[linear-gradient(180deg,#090909_0%,#050505_100%)] px-[28px] py-[28px] text-white lg:flex xl:w-[320px]'>
+    <aside className='hidden h-full w-[312px] shrink-0 flex-col rounded-[28px] border-2 border-[rgba(232,184,75,0.28)] bg-[linear-gradient(180deg,#090909_0%,#050505_100%)] px-[28px] py-[28px] text-white lg:flex xl:w-[320px]'>
       <style>{`
         @keyframes wizardPulse {
           0% { transform: scale(1); opacity: 1; }
