@@ -16,9 +16,9 @@ export default function ChatSidebar({
   ChatBubble,
 }) {
   return (
-    <div className='flex flex-[1.1] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-surface border-l border-l-border'>
+    <div className='flex flex-[1.1] min-w-0 flex-col overflow-hidden rounded-[24px] border-2 border-[rgba(255,196,0,0.35)] bg-surface shadow-[0_0_0_1px_rgba(255,196,0,0.08),0_0_18px_rgba(255,196,0,0.06)]'>
       <div className='flex min-h-0 flex-1 flex-col'>
-        <div className='flex items-center gap-2 border-b border-border px-4 py-3'>
+        <div className='flex items-center gap-2 border-b border-[rgba(255,196,0,0.14)] px-4 py-3'>
           <Sparkles className='h-4 w-4 text-accent' />
           <p className='text-sm font-semibold text-text-primary'>Canvas agent</p>
           <button
@@ -45,7 +45,7 @@ export default function ChatSidebar({
         </div>
 
         {pendingOp ? (
-          <div className='border-t border-border bg-background/40 px-4 py-3'>
+          <div className='border-t border-[rgba(255,196,0,0.14)] bg-background/40 px-4 py-3'>
             <div className='flex items-center gap-2'>
               <Button variant='primary' size='sm' onClick={confirmProposal} disabled={agentLoading}>
                 Apply change
@@ -57,7 +57,7 @@ export default function ChatSidebar({
           </div>
         ) : null}
 
-        <div className='border-t border-border p-3'>
+        <div className='border-t border-[rgba(255,196,0,0.14)] p-3'>
           <div className='flex items-center gap-2'>
             <input
               ref={chatInputRef}

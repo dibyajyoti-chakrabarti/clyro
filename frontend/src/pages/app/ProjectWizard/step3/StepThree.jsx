@@ -78,7 +78,7 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
   }
 
   return (
-    <div className='mt-6 flex h-[calc(100vh-19rem)] min-h-[440px] gap-4'>
+    <div className='mt-6 flex h-[calc(100vh-19rem)] min-h-[440px] gap-[6px]'>
       <CanvasSurface
         surfaceRef={surfaceRef}
         startPan={startPan}

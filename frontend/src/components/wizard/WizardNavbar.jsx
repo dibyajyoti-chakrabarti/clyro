@@ -9,8 +9,8 @@ export default function WizardNavbar({ projectName, showBackButton = true }) {
   const goToDashboard = () => navigate('/app/dashboard')
 
   return (
-    <header className='w-full px-4 pt-5 sm:px-6'>
-      <div className='flex h-[72px] w-full items-center justify-between rounded-[24px] border border-white/[0.08] bg-[rgba(10,15,25,0.55)] px-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-[20px] transition-all duration-[200ms] sm:px-6'>
+    <header className='w-full'>
+      <div className='flex h-[72px] w-full items-center justify-between rounded-[24px] border border-[rgba(255,196,0,0.35)] bg-[rgba(10,15,25,0.55)] px-4 shadow-[0_10px_40px_rgba(0,0,0,0.35),0_0_0_1px_rgba(255,196,0,0.08),0_0_18px_rgba(255,196,0,0.06)] backdrop-blur-[20px] transition-all duration-[200ms] sm:px-6'>
         <button
           type='button'
           onClick={goToDashboard}
@@ -29,7 +29,7 @@ export default function WizardNavbar({ projectName, showBackButton = true }) {
           <button
             type='button'
             onClick={goToDashboard}
-            className='flex h-[42px] shrink-0 items-center gap-2 rounded-[14px] border border-white/[0.08] bg-[rgba(255,255,255,0.04)] px-[18px] text-sm font-medium text-white transition-all duration-[250ms] hover:-translate-y-0.5 hover:border-[rgba(232,184,75,0.45)] hover:bg-[rgba(232,184,75,0.08)]'
+            className='flex h-[42px] shrink-0 items-center gap-2 rounded-[14px] border border-[rgba(255,196,0,0.35)] bg-[rgba(255,255,255,0.04)] px-[18px] text-sm font-medium text-white transition-all duration-[250ms] hover:-translate-y-0.5 hover:bg-[rgba(232,184,75,0.08)]'
           >
             <ArrowLeft className='h-4 w-4' />
             <span className='hidden md:inline'>Back to Dashboard</span>

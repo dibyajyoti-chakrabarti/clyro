@@ -22,7 +22,7 @@ export default function CanvasSurface({
   return (
     <div
       ref={surfaceRef}
-      className='relative flex-[1.9] min-w-0 cursor-grab select-none overflow-auto rounded-xl border border-border/70 bg-background active:cursor-grabbing'
+      className='relative flex-[1.9] min-w-0 cursor-grab select-none overflow-auto rounded-[24px] border-2 border-[rgba(255,196,0,0.35)] bg-background active:cursor-grabbing shadow-[0_0_0_1px_rgba(255,196,0,0.08),0_0_18px_rgba(255,196,0,0.06)]'
       onMouseDown={startPan}
       onMouseMove={movePan}
       onMouseUp={endPan}
