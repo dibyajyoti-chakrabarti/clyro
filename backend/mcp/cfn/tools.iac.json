@@ -1,0 +1,97 @@
+[
+  {
+    "name": "validate_cloudformation_template",
+    "description": "Validate CloudFormation template syntax, schema, and resource properties using cfn-lint.\n\nThis tool performs syntax and schema validation for CloudFormation templates. It validates:\n- JSON/YAML syntax correctness and structure\n- AWS resource type validity and property schemas\n- Resource property values against AWS service specifications\n- Template format compliance with CloudFormation standards\n- Cross-resource reference validation\n\nUse this tool to:\n- Validate AI-generated CloudFormation templates before deployment\n- Catch syntax errors, invalid properties, and schema violations early\n- Get specific fix suggestions with line numbers for each error\n- Ensure template compatibility with CloudFormation deployment engine\n- Validate both JSON and YAML template formats\n- Receive exact CloudFormation code fixes for all validation issues\n\nReturns validation results including:\n- valid (Boolean indicating if template passes validation)\n- error_count, warning_count, info_count\n- issues (List of validation issues with line numbers and paths)\n\nOUTPUT FORMATTING REQUIREMENTS:\n- Start with: \"Your template has X errors, Y warnings, Z info messages\"\n- Group issues by resource or section (e.g., all S3Bucket errors together)\n- Prioritize: Errors first, then warnings, then info\n- For similar errors on multiple resources, show pattern once with affected resources listed\n- Show line numbers and property paths for easy location\n- Use inline YAML/JSON comments to show corrections\n- Focus on what needs to change, not entire resource definitions\n\nMANDATORY REMEDIATION REQUIREMENTS:\n- Provide specific CloudFormation template code fixes\n- Show exact corrected YAML/JSON for each error with line numbers\n- Use inline comments to explain each fix\n- For property name errors, show before/after side-by-side",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "template_content": {
+          "type": "string",
+          "description": "CloudFormation template as YAML or JSON string"
+        },
+        "regions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS regions to validate against"
+        },
+        "ignore_checks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rule IDs to ignore (e.g., W2001, E3012)"
+        }
+      },
+      "required": [
+        "template_content"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "check_cloudformation_template_compliance",
+    "description": "Validate CloudFormation template against security and compliance rules using cfn-guard.\n\nThis tool performs compliance validation for CloudFormation templates. It validates:\n- Security best practices and controls\n- AWS Control Tower proactive controls\n- Organizational policy requirements\n- Resource configuration compliance\n\nUse this tool to:\n- Validate templates against security and compliance rules\n- Catch policy violations before deployment\n- Get remediation guidance for each violation\n- Ensure templates meet organizational standards\n- Receive specific CloudFormation template fixes for each violation\n\nReturns validation results including:\n- is_compliant (Boolean indicating if template passes all rules)\n- violation_count (Number of compliance violations)\n- violations (List of violations categorized by severity)\n\nNOTE: Some rules check multiple sub-properties, so the violation count may appear high.\nEach missing or misconfigured sub-property is counted as a separate violation.\n\nOUTPUT FORMATTING REQUIREMENTS:\n- Start with: \"Your template has X violations\"\n- Group related violations (e.g., all PublicAccessBlock settings together)\n- Prioritize by severity: critical security issues first, then optional features\n- For repeated sub-properties, show once: \"Settings (A, B, C, D) must all be true\"\n- Add context for optional features (ObjectLock, Replication may not be needed)\n- Show only the properties that need to be added/changed, not entire resources\n- Use inline YAML comments to explain why each property is needed\n- Avoid redundant \"Key Changes\" sections - the code should be self-explanatory\n\nMANDATORY REMEDIATION REQUIREMENTS:\n- Provide specific CloudFormation template code fixes\n- Show exact YAML/JSON properties to add or modify\n- Use inline comments to explain each fix\n- Focus on what changed, not the entire resource definition",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "template_content": {
+          "type": "string",
+          "description": "CloudFormation template as YAML or JSON string"
+        },
+        "rules_file_path": {
+          "default": "default_guard_rules.guard",
+          "type": "string",
+          "description": "Path to guard rules file (default: default_guard_rules.guard)"
+        }
+      },
+      "required": [
+        "template_content"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "search_cloudformation_documentation",
+    "description": "Searches AWS CloudFormation documentation knowledge bases and returns relevant excerpts.\n\n## Usage\n\nThis tool searches AWS CloudFormation documentation to find information about resource types, properties, syntax, and implementation patterns for CloudFormation templates.\n\n## When to Use\n\n- Write CloudFormation templates or modify resources\n- Find specific information about CloudFormation resource types and properties\n- Get implementation guidance from official documentation\n- Look up syntax and examples for CloudFormation patterns\n- Research best practices and architectural guidelines\n- Find answers to specific technical questions about CloudFormation\n- Validate infrastructure templates against security best practices\n\n## Search Tips\n\n- Use specific resource types: \"AWS::Lambda::Function\", \"AWS::S3::Bucket\"\n- Search for properties: \"S3 bucket encryption\", \"Lambda environment variables\"\n- Include service names: \"DynamoDB table properties\", \"API Gateway configuration\"\n- Use boolean operators: \"CloudFormation AND parameters\", \"template OR stack\"\n- Search for specific features: \"cross-stack references\", \"nested stacks\"\n- Include security terms: \"IAM policies\", \"encryption at rest\"\n\n## Result Interpretation\n\nReturns JSON with:\n- knowledge_response: Details of the response\n  - results: Array with single result containing:\n    - rank: Search relevance ranking (1 = most relevant, higher is less relevant)\n    - title: Document title or filename\n    - url: Source URL of the document\n    - context: Full or paginated document content\n- next_step_guidance: If present, suggested next actions to take for answering user query\n\n\nUse rank to prioritize results. Check error field first - if not null, the search failed.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "Search query for CloudFormation documentation. Examples: \"AWS::Lambda::Function\", \"S3 bucket encryption\", \"DynamoDB table properties\""
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_cloudformation_pre_deploy_validation_instructions",
+    "description": "Get instructions for CloudFormation pre-deployment validation.\n\nReturns structured JSON guidance for using CloudFormation's pre-deployment validation feature\nthat catches deployment errors before resource provisioning begins.\n\nWhen you create a change set, CloudFormation automatically validates your template against\nthree common failure causes:\n1. Invalid property syntax\n2. Resource name conflicts with existing resources in your account\n3. S3 bucket emptiness constraint on delete operations\n\nIf validation fails, the change set status shows 'FAILED' with detailed validation failure\ninformation. You can view details for each failure, including the property path, to pinpoint\nexactly where issues occur in your template.\n\nThe tool returns JSON with:\n- Overview of validation feature and workflow phases\n- Detailed descriptions of 3 validation types with failure modes (FAIL blocks execution, WARN allows with warnings)\n- Complete AWS CLI commands for creating change sets and checking validation results via describe-events API\n- Key field descriptions (EventType, ValidationName, ValidationStatus, ValidationPath, ValidationFailureMode)\n- Example commands and remediation guidance\n- Considerations and limitations\n\nNote: Validated change sets can still fail during execution due to resource-specific runtime\nerrors (resource limits, service constraints, permissions). Pre-deployment validation reduces\nlikelihood of common failures but doesn't guarantee deployment success.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    }
+  }
+]
