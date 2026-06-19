@@ -14,12 +14,13 @@ import StepFive from './ProjectWizard/step5/StepFive'
 import { stepConfig } from './ProjectWizard/constants/stepConfig'
 import { STATUS_STEP } from './ProjectWizard/constants/wizardStatuses'
 
+
 export default function ProjectWizard() {
   const { id } = useParams()
   const navigate = useNavigate()
 
   const isNew = id === 'new'
-  const [projectId, setProjectId] = useState(isNew ? null : id)
+  const [projectId] = useState(isNew ? null : id)
   const [loading, setLoading] = useState(!isNew)
 
   const [step, setStep] = useState(1)

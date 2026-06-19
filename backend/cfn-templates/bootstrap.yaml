@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Clyro bootstrap — creates a cross-account IAM role that allows Clyro to
+  provision infrastructure in your AWS account. You can delete this role at any
+  time to immediately revoke Clyro's access.
+
+Parameters:
+  ClyroAccountId:
+    Type: String
+    Description: The Clyro AWS account ID that will assume this role
+  ExternalId:
+    Type: String
+    Description: Unique identifier for this Clyro project connection (do not change)
+
+Resources:
+  ClyroProvisioningRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'clyro-provisioning-${ExternalId}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${ClyroAccountId}:root'
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Policies:
+        - PolicyName: ClyroIamProvisioning
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:ListRoles
+                  - iam:PassRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                Resource: '*'
+      Tags:
+        - Key: ManagedBy
+          Value: Clyro
+        - Key: ExternalId
+          Value: !Ref ExternalId
+
+Outputs:
+  RoleArn:
+    Description: Paste this ARN into Clyro to complete the connection
+    Value: !GetAtt ClyroProvisioningRole.Arn
+  ExternalId:
+    Description: The external ID for this connection (for your records)
+    Value: !Ref ExternalId

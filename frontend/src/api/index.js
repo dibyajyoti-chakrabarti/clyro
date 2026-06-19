@@ -53,6 +53,12 @@ export const api = {
     request('POST', `/api/projects/${id}/canvas/versions/${version}/revert/`),
   finalizeCanvas: (id) => request('POST', `/api/projects/${id}/canvas/finalize/`),
 
+  // Step 4 — AWS connection & env vars
+  initAwsConnection: (id) => request('POST', `/api/projects/${id}/aws-connection/`),
+  verifyAwsConnection: (id, payload) => request('POST', `/api/projects/${id}/aws-connection/verify/`, payload),
+  getEnvVars: (id) => request('GET', `/api/projects/${id}/env-vars/`),
+  saveEnvVars: (id, payload) => request('POST', `/api/projects/${id}/env-vars/save/`, payload),
+
   // GitHub
   storeInstallation: (installation_id) =>
     request('POST', '/api/github/installations/', { installation_id }),
