@@ -19,7 +19,7 @@ AGENTS=(Reasoning)
 [[ -d "$SRC" ]] || { echo "error: $SRC not found" >&2; exit 1; }
 
 for agent in "${AGENTS[@]}"; do
-  agent_dir="$SCRIPT_DIR/CryloAgents/app/$agent"
+  agent_dir="$SCRIPT_DIR/CryloCanvas/app/$agent"
   if [[ ! -d "$agent_dir" ]]; then
     echo "skip $agent — $agent_dir does not exist yet (run 'agentcore add agent $agent' first)"
     continue
@@ -32,5 +32,5 @@ for agent in "${AGENTS[@]}"; do
   rm -rf "$dest/tests" "$dest/README.md"
   find "$dest" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null || true
   find "$dest" -type f -name '*.pyc' -delete 2>/dev/null || true
-  echo "vendored canvas_core -> agents/CryloAgents/app/$agent/canvas_core"
+  echo "vendored canvas_core -> agents/CryloCanvas/app/$agent/canvas_core"
 done
