@@ -1,61 +1,38 @@
 {
   "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
-  "name": "CryloAgents",
+  "name": "CryloIac",
   "version": 1,
   "managedBy": "CDK",
   "tags": {
     "agentcore:created-by": "agentcore-cli",
-    "agentcore:project-name": "CryloAgents"
+    "agentcore:project-name": "CryloIac"
   },
   "runtimes": [
     {
-      "name": "Reasoning",
+      "name": "IacArchitect",
       "build": "CodeZip",
       "entrypoint": "main.py",
-      "codeLocation": "app/Reasoning/",
-      "runtimeVersion": "PYTHON_3_14",
-      "networkMode": "PUBLIC",
-      "protocol": "HTTP"
-    },
-    {
-      "name": "RepoRecon",
-      "build": "CodeZip",
-      "entrypoint": "main.py",
-      "codeLocation": "app/RepoRecon/",
+      "codeLocation": "app/IacArchitect/",
       "runtimeVersion": "PYTHON_3_14",
       "networkMode": "PUBLIC",
       "protocol": "HTTP"
     }
   ],
-  "memories": [
-    {
-      "name": "CryloCanvasMem",
-      "eventExpiryDuration": 30,
-      "strategies": []
-    }
-  ],
+  "memories": [],
   "credentials": [],
   "evaluators": [],
   "onlineEvalConfigs": [],
   "agentCoreGateways": [
     {
-      "name": "CryloCanvasGw",
-      "description": "Gateway for CryloCanvasGw",
+      "name": "CryloIacGw",
+      "description": "Full CloudFormation authoring toolset for the IaC agent",
       "targets": [
-        {
-          "name": "pricing",
-          "targetType": "lambdaFunctionArn",
-          "lambdaFunctionArn": {
-            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-pricing",
-            "toolSchemaFile": "../../mcp/pricing/tools.json"
-          }
-        },
         {
           "name": "cfn",
           "targetType": "lambdaFunctionArn",
           "lambdaFunctionArn": {
             "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-cfn",
-            "toolSchemaFile": "../../mcp/cfn/tools.json"
+            "toolSchemaFile": "../../mcp/cfn/tools.iac.json"
           }
         },
         {
@@ -64,6 +41,14 @@
           "lambdaFunctionArn": {
             "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-docs",
             "toolSchemaFile": "../../mcp/docs/tools.json"
+          }
+        },
+        {
+          "name": "pricing",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-pricing",
+            "toolSchemaFile": "../../mcp/pricing/tools.json"
           }
         }
       ],
