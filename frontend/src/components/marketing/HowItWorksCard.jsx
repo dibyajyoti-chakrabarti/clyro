@@ -1,3 +1,61 @@
+const CARD_THEMES = {
+  "01": {
+    background:
+      "linear-gradient(135deg, #FCF2D2 0%, #F3D67D 55%, #D7A640 100%)",
+    border: "1px solid rgba(0,0,0,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.18), 0 6px 16px rgba(0,0,0,0.10)",
+    headingColor: "#101418",
+    highlightColor: "#000000",
+    stepBg: "#101418",
+    stepColor: "#F7B500",
+    stepShadow: "0 0 20px rgba(0,0,0,0.15)",
+  },
+  "02": {
+    background:
+      "linear-gradient(135deg, #F6D87C 0%, #D8A73B 55%, #A87518 100%)",
+    border: "1px solid rgba(0,0,0,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.18), 0 6px 16px rgba(0,0,0,0.10)",
+    headingColor: "#101418",
+    highlightColor: "#000000",
+    stepBg: "#101418",
+    stepColor: "#F7B500",
+    stepShadow: "0 0 20px rgba(0,0,0,0.15)",
+  },
+  "03": {
+    background:
+      "linear-gradient(135deg, #6A5222 0%, #4B3718 40%, #1D1813 100%)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.28), 0 6px 16px rgba(0,0,0,0.16)",
+    headingColor: "#FFFFFF",
+    highlightColor: "#F7B500",
+    stepBg: "#F7B500",
+    stepColor: "#FFFFFF",
+    stepShadow: "0 0 20px rgba(247,181,0,0.22)",
+  },
+  "04": {
+    background:
+      "linear-gradient(135deg, #0A1322 0%, #132238 55%, #2D1C07 100%)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.32), 0 6px 16px rgba(0,0,0,0.18)",
+    headingColor: "#FFFFFF",
+    highlightColor: "#F7B500",
+    stepBg: "#F7B500",
+    stepColor: "#FFFFFF",
+    stepShadow: "0 0 20px rgba(247,181,0,0.22)",
+  },
+  "05": {
+    background:
+      "linear-gradient(135deg, #04070D 0%, #0B1728 55%, #2B1A06 100%)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.36), 0 6px 16px rgba(0,0,0,0.20)",
+    headingColor: "#FFFFFF",
+    highlightColor: "#F7B500",
+    stepBg: "#F7B500",
+    stepColor: "#FFFFFF",
+    stepShadow: "0 0 20px rgba(247,181,0,0.22)",
+  },
+};
+
 export default function HowItWorksCard({
   step,
   headingTop,
@@ -10,60 +68,7 @@ export default function HowItWorksCard({
   const resolvedHeadingTop = headingTop ?? title ?? "";
   const resolvedHeadingHighlight = headingHighlight ?? highlight ?? "";
 
-  const themes = {
-    yellow: {
-      background:
-        "linear-gradient(135deg, #050B16 0%, #0E1D36 55%, #2A1B08 100%)",
-      accentColor: "#F4C430",
-      glowColor: "rgba(244,196,48,0.22)",
-      borderColor: "rgba(244,196,48,0.18)",
-      stepBg: "linear-gradient(135deg, #F4C430, #C88800)",
-      stepShadow: "0 0 36px rgba(244,196,48,0.30)",
-    },
-    orange: {
-      background: "linear-gradient(135deg, #150B0B 0%, #43201B 100%)",
-      accentColor: "#E08A1E",
-      glowColor: "rgba(224,138,30,0.25)",
-      borderColor: "rgba(224,138,30,0.18)",
-      stepBg: "linear-gradient(135deg, #E08A1E, #A85800)",
-      stepShadow: "0 0 36px rgba(224,138,30,0.30)",
-    },
-    blue: {
-      background: "linear-gradient(135deg, #081512 0%, #184034 100%)",
-      accentColor: "#43B581",
-      glowColor: "rgba(67,181,129,0.25)",
-      borderColor: "rgba(67,181,129,0.18)",
-      stepBg: "linear-gradient(135deg, #43B581, #1E7A52)",
-      stepShadow: "0 0 36px rgba(67,181,129,0.30)",
-    },
-    green: {
-      background: "linear-gradient(135deg, #0B1024 0%, #2A3475 100%)",
-      accentColor: "#5DA9FF",
-      glowColor: "rgba(93,169,255,0.25)",
-      borderColor: "rgba(93,169,255,0.18)",
-      stepBg: "linear-gradient(135deg, #5DA9FF, #2060C8)",
-      stepShadow: "0 0 36px rgba(93,169,255,0.30)",
-    },
-    violet: {
-      background:
-        "linear-gradient(135deg, #030712 0%, #0F172A 45%, #134E4A 100%)",
-      accentColor: "#4FD1C5",
-      glowColor: "rgba(79,209,197,0.22)",
-      borderColor: "rgba(79,209,197,0.18)",
-      stepBg: "linear-gradient(135deg, #4FD1C5, #0E7C75)",
-      stepShadow: "0 0 36px rgba(79,209,197,0.30)",
-    },
-  };
-
-  const stepThemeMap = {
-    "01": themes.yellow,
-    "02": themes.orange,
-    "03": themes.blue,
-    "04": themes.green,
-    "05": themes.violet,
-  };
-
-  const theme = stepThemeMap[step] ?? themes[accent] ?? themes.yellow;
+  const theme = CARD_THEMES[step] ?? CARD_THEMES["05"];
 
   const fullHeading =
     `${resolvedHeadingTop} ${resolvedHeadingHighlight}`.trim();
@@ -75,27 +80,16 @@ export default function HowItWorksCard({
       style={{
         padding: "24px",
         background: theme.background,
-        border: `1px solid ${theme.borderColor}`,
-        boxShadow: `0 20px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 ${theme.glowColor}`,
+        border: theme.border,
+        boxShadow: theme.boxShadow,
       }}
     >
-      {/* Radial glow behind illustration */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `radial-gradient(ellipse 70% 55% at 50% 80%, ${theme.glowColor}, transparent 70%)`,
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
-
       {/* Step badge */}
       <div
-        className="absolute right-[20px] top-[20px] z-[20] flex h-[56px] w-[56px] items-center justify-center rounded-full text-[28px] font-extrabold text-white md:right-[28px] md:top-[28px] md:h-[72px] md:w-[72px] md:text-[36px] lg:right-[32px] lg:top-[32px] lg:h-[96px] lg:w-[96px] lg:text-[48px]"
+        className="absolute right-[20px] top-[20px] z-[20] flex h-[56px] w-[56px] items-center justify-center rounded-full text-[28px] font-extrabold md:right-[28px] md:top-[28px] md:h-[72px] md:w-[72px] md:text-[36px] lg:right-[32px] lg:top-[32px] lg:h-[96px] lg:w-[96px] lg:text-[48px]"
         style={{
           background: theme.stepBg,
+          color: theme.stepColor,
           boxShadow: theme.stepShadow,
         }}
       >
@@ -105,12 +99,13 @@ export default function HowItWorksCard({
       {/* Heading */}
       <div className="z-[10] flex-shrink-0 pr-24 pt-7 lg:pr-32">
         <h3
-          className="font-extrabold uppercase leading-[1.05] tracking-[-0.02em] text-white"
+          className="font-extrabold uppercase leading-[1.05] tracking-[-0.02em]"
           style={{
             fontSize: "clamp(28px, 3.2vw, 56px)",
             wordSpacing: "0.12em",
             whiteSpace: "normal",
             overflowWrap: "break-word",
+            color: theme.headingColor,
           }}
         >
           {words.map((word, index) => {
@@ -124,7 +119,7 @@ export default function HowItWorksCard({
                 }}
               >
                 {isHighlighted ? (
-                  <span style={{ color: theme.accentColor }}>{word}</span>
+                  <span style={{ color: theme.highlightColor }}>{word}</span>
                 ) : (
                   word
                 )}

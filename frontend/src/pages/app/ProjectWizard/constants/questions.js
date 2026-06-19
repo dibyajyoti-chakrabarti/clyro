@@ -1,0 +1,95 @@
+export function getQuestions(hasPostgres, hasWorker) {
+  return [
+    {
+      id: 'description',
+      moment: 1,
+      momentLabel: 'About your app',
+      question: 'Describe your app in one sentence.',
+      type: 'free',
+      options: [],
+    },
+    {
+      id: 'scale',
+      moment: 1,
+      momentLabel: 'About your app',
+      question: 'How many users do you expect at launch?',
+      type: 'choice',
+      options: [
+        { value: 'solo', label: 'Just me or a small internal team' },
+        { value: 'small', label: 'Small user base â€” under 1,000 users' },
+        { value: 'medium', label: 'Public product â€” expecting real traffic' },
+        { value: 'large', label: 'High scale â€” expecting significant load' },
+      ],
+    },
+    {
+      id: 'criticality',
+      moment: 1,
+      momentLabel: 'About your app',
+      question: 'How critical is uptime for this deployment?',
+      type: 'choice',
+      options: [
+        { value: 'low', label: 'Downtime is acceptable â€” dev, staging, or side project' },
+        { value: 'medium', label: 'Downtime is bad but not catastrophic â€” early stage product' },
+        { value: 'high', label: 'It needs to stay up â€” this is a production business' },
+      ],
+    },
+    {
+      id: 'database_choice',
+      moment: 2,
+      momentLabel: 'Infrastructure',
+      question: 'Which database setup do you want?',
+      type: 'choice',
+      condition: () => hasPostgres,
+      options: [
+        { value: 'rds_postgres', label: 'RDS PostgreSQL â€” reliable, well-understood, lower cost', recommended: true },
+        { value: 'aurora_postgres', label: 'Aurora PostgreSQL â€” higher performance, more scalable', note: 'Higher cost (~2.5Ã—)' },
+      ],
+    },
+    {
+      id: 'worker_compute_choice',
+      moment: 2,
+      momentLabel: 'Infrastructure',
+      question: 'Your background workers were detected. Where should they run?',
+      type: 'choice',
+      condition: () => hasWorker,
+      options: [
+        { value: 'ecs_fargate', label: 'ECS Fargate â€” fully managed, no servers to configure', recommended: true },
+        { value: 'ecs_ec2', label: 'ECS on EC2 â€” more control, cheaper at scale' },
+        { value: 'ec2', label: 'EC2 â€” manage the server yourself' },
+      ],
+    },
+    {
+      id: 'environment',
+      moment: 2,
+      momentLabel: 'Infrastructure',
+      question: 'What environment is this deployment for?',
+      type: 'choice',
+      options: [
+        { value: 'production', label: 'Production' },
+        { value: 'staging', label: 'Staging' },
+        { value: 'development', label: 'Development' },
+      ],
+    },
+    {
+      id: 'domain_has',
+      moment: 3,
+      momentLabel: 'Domain',
+      question: 'Do you have a domain name for this app?',
+      type: 'choice',
+      options: [
+        { value: 'yes', label: 'Yes â€” I have a domain to point to this' },
+        { value: 'no', label: 'Not yet â€” give me the AWS-generated URL for now' },
+        { value: 'internal', label: 'No public domain needed â€” internal use only' },
+      ],
+    },
+    {
+      id: 'domain_name',
+      moment: 3,
+      momentLabel: 'Domain',
+      question: "What's the domain? (e.g. app.myproduct.com)",
+      type: 'free',
+      options: [],
+      condition: (answers) => answers.domain_has === 'yes',
+    },
+  ]
+}

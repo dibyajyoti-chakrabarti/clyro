@@ -11,6 +11,7 @@ export default function Select({
   options,
   placeholder,
   className = '',
+  selectClassName = '',
   children,
   ...props
 }) {
@@ -26,7 +27,7 @@ export default function Select({
       <div className='relative'>
         <select
           id={selectId}
-          className={`w-full appearance-none rounded-lg border bg-surface px-3.5 py-2.5 pr-10 text-sm font-normal text-text-primary transition-[border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50 ${error ? 'border-danger/60' : 'border-white/[0.09] hover:border-white/[0.15]'}`}
+          className={`w-full appearance-none rounded-lg border bg-surface px-3.5 py-2.5 pr-10 text-sm font-normal text-text-primary transition-[border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-50 ${error ? 'border-danger/60' : 'border-white/[0.09] hover:border-white/[0.15]'} ${selectClassName}`.trim()}
           {...props}
         >
           {placeholder !== undefined ? (

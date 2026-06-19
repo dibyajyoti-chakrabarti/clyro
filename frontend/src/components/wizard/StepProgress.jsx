@@ -1,60 +1,73 @@
-import { Check } from 'lucide-react'
+import { Box, Cloud, Folder, NotebookText, Rocket } from 'lucide-react'
 
-// Vertical step rail for the Project Wizard (desktop sidebar).
-//
-//  - A continuous track runs through the step markers; the portion behind
-//    completed steps is filled with accent, so progress reads at a glance
-//    (visibility of system status).
-//  - Completed steps show a check; the active step gets an accent ring and
-//    reveals its subtitle (progressive disclosure — only the step you're on
-//    explains itself, keeping the rail uncluttered).
-//  - Upcoming steps are muted, so "what remains" is always visible
-//    (recognition over recall).
 export default function StepProgress({ steps, current, completed }) {
+  const stepIcons = {
+    1: Folder,
+    2: NotebookText,
+    3: Box,
+    4: Cloud,
+    5: Rocket,
+  }
+
+  const completedCount = steps.filter((step) => completed.has(step.number)).length
+
   return (
     <nav aria-label='Wizard progress'>
+      <style>{`
+        @keyframes stepProgressBlink {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.08); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
+
       <ol className='relative'>
+        <span className='pointer-events-none absolute left-[24px] top-0 bottom-0 w-[2px] -translate-x-1/2 bg-[rgba(255,255,255,0.15)]' />
+        <span
+          className='pointer-events-none absolute left-[24px] top-0 w-[2px] -translate-x-1/2 bg-[#E8B84B] transition-[height] duration-[400ms] ease-in-out'
+          style={{ height: `${steps.length ? (completedCount / steps.length) * 100 : 0}%` }}
+        />
+
         {steps.map((item, index) => {
           const isCompleted = completed.has(item.number)
           const isActive = current === item.number
           const isLast = index === steps.length - 1
-          // The segment below a marker is "filled" once this step is done.
-          const segmentFilled = isCompleted
-
-          const marker = isCompleted
-            ? 'border-accent bg-accent text-background'
-            : isActive
-              ? 'border-accent bg-surface text-text-primary shadow-[0_0_0_4px_rgba(249,115,22,0.15)]'
-              : 'border-border bg-background text-text-muted'
+          const Icon = stepIcons[item.number]
 
           return (
-            <li key={item.number} className='relative flex gap-4 pb-7 last:pb-0' aria-current={isActive ? 'step' : undefined}>
-              {!isLast ? (
-                <span className='absolute left-4 top-8 h-[calc(100%-2rem)] w-px -translate-x-1/2 bg-border'>
-                  <span
-                    className={`block w-full rounded-full bg-accent transition-all duration-500 ${segmentFilled ? 'h-full' : 'h-0'}`}
-                  />
-                </span>
-              ) : null}
-
+            <li
+              key={item.number}
+              className={`relative flex gap-4 ${isLast ? 'pb-0' : 'pb-7'}`}
+              aria-current={isActive ? 'step' : undefined}
+            >
               <span
-                className={`relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm font-semibold transition-all duration-300 ${marker}`}
+                className={`relative z-10 grid h-[48px] w-[48px] shrink-0 place-items-center rounded-full border-[1.5px] transition-all duration-[250ms] ${
+                  isCompleted
+                    ? 'border-[#E8B84B] bg-[#E8B84B] text-[#111111]'
+                    : isActive
+                      ? 'border-[#E8B84B] bg-[#E8B84B] text-[#111111] shadow-[0_0_25px_rgba(232,184,75,0.35)] animate-[stepProgressBlink_1.6s_ease-in-out_infinite]'
+                      : 'border-[rgba(255,255,255,0.15)] bg-[rgba(255,255,255,0.03)] text-white/80'
+                }`}
               >
-                {isCompleted ? <Check className='h-4 w-4' strokeWidth={3} /> : item.number}
+                <Icon className={`h-5 w-5 ${isCompleted || isActive ? 'text-black' : 'text-white/80'}`} />
               </span>
 
               <div className='min-w-0 pt-1.5'>
                 <p
-                  className={`text-sm leading-tight transition-colors ${
-                    isActive ? 'font-semibold text-text-primary' : isCompleted ? 'font-medium text-text-primary' : 'font-medium text-text-muted'
+                  className={`text-[18px] font-medium leading-[1.2] transition-colors ${
+                    isActive || isCompleted ? 'text-white' : 'text-[rgba(255,255,255,0.85)]'
                   }`}
                 >
                   {item.title}
                 </p>
                 {isActive ? (
-                  <p className='mt-1 text-[11px] font-medium uppercase tracking-wide text-accent'>In progress</p>
+                  <p className='mt-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[#E8B84B]'>
+                    In progress
+                  </p>
                 ) : isCompleted ? (
-                  <p className='mt-1 text-[11px] font-medium text-text-muted'>Done</p>
+                  <p className='mt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[#E8B84B]'>
+                    Done
+                  </p>
                 ) : null}
               </div>
             </li>
