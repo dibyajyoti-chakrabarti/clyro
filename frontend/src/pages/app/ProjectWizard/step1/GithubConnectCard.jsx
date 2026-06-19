@@ -1,7 +1,7 @@
 import { ShieldCheck, ChevronRight } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
-import githubMark from '../../../../assets/logos/github-fill.svg'
 import PremiumStepHeading from './PremiumStepHeading'
+import GitHubLogo from '../../../../components/common/GitHubLogo'
 
 function GithubMark({ size = 'lg' }) {
   const outer = size === 'sm' ? 'h-10 w-10' : 'h-[96px] w-[96px]'
@@ -10,7 +10,7 @@ function GithubMark({ size = 'lg' }) {
   return (
     <div className={`grid place-items-center rounded-full ${outer}`}>
       <div className={`grid place-items-center rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.08)] shadow-[0_0_22px_rgba(255,255,255,0.04)] ${inner}`}>
-        <img src={githubMark} alt='GitHub' className={img} />
+        <GitHubLogo className={img} />
       </div>
     </div>
   )
@@ -25,7 +25,7 @@ function GithubConnectCard({ existingInstallations, handleInstall, handleUseExis
       </p>
 
       <div className='mx-auto mt-[32px] flex h-[88px] w-[88px] items-center justify-center rounded-full border border-[rgba(232,184,75,0.18)] bg-[rgba(255,255,255,0.06)] shadow-[0_0_28px_rgba(232,184,75,0.12)]'>
-        <img src={githubMark} alt='GitHub' className='h-[52px] w-[52px]' />
+        <GitHubLogo className='h-[52px] w-[52px]' />
       </div>
 
       <Button
