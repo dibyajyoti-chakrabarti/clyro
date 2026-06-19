@@ -1,6 +1,7 @@
 import { GitBranch, ShieldCheck } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
 import Select from '../../../../components/ui/Select'
+import PremiumStepHeading from './PremiumStepHeading'
 
 function RepositorySelector({
   loadingRepos,
@@ -32,9 +33,7 @@ function RepositorySelector({
           STEP 1 OF 5
         </p>
 
-        <h2 className='mt-5 text-[clamp(44px,5.3vw,64px)] font-bold leading-[1.05] tracking-[-0.04em] text-white'>
-          Connect your repository
-        </h2>
+        <PremiumStepHeading prefix='Connect your' highlight='repository' className='text-[clamp(44px,5.3vw,64px)]' />
 
         <p className='mx-auto mt-5 max-w-[650px] text-[22px] leading-[1.7] text-white/75'>
           Crylo scans your code to detect your stack, dependencies, and environment variables.

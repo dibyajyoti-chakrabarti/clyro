@@ -1,5 +1,6 @@
 import { Check, LoaderCircle } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
+import PremiumStepHeading from './PremiumStepHeading'
 
 function ScanProgress({ scanMessages, scanStep, onContinue, canContinue = false }) {
   const total = Math.max(scanMessages.length - 1, 1)
@@ -19,9 +20,7 @@ function ScanProgress({ scanMessages, scanStep, onContinue, canContinue = false 
           STEP 1 OF 5
         </p>
 
-        <h2 className='mt-5 text-[clamp(44px,5.8vw,64px)] font-bold leading-[1.05] tracking-[-0.04em] text-white'>
-          Connecting your repository
-        </h2>
+        <PremiumStepHeading prefix='Connecting your' highlight='repository' />
 
         <p className='mx-auto mt-5 max-w-[700px] text-[22px] leading-[1.7] text-white/75'>
           Crylo is scanning your codebase to understand your stack, dependencies, and environment variables.

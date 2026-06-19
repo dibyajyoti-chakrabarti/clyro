@@ -1,6 +1,7 @@
 import { ShieldCheck, ChevronRight } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
 import githubMark from '../../../../assets/logos/github-fill.svg'
+import PremiumStepHeading from './PremiumStepHeading'
 
 function GithubMark({ size = 'lg' }) {
   const outer = size === 'sm' ? 'h-10 w-10' : 'h-[96px] w-[96px]'
@@ -18,9 +19,7 @@ function GithubMark({ size = 'lg' }) {
 function GithubConnectCard({ existingInstallations, handleInstall, handleUseExisting }) {
   return (
     <div className='w-full text-center box-border'>
-      <h3 className='mx-auto max-w-[900px] text-[clamp(42px,5vw,72px)] font-extrabold tracking-[-0.04em] text-[#F5F5F5]'>
-        Connect your GitHub account
-      </h3>
+      <PremiumStepHeading prefix='Connect your' highlight='GitHub account' className='mx-auto max-w-[900px] text-[clamp(42px,5vw,72px)] font-extrabold text-[#F5F5F5]' />
       <p className='mx-auto mt-[20px] max-w-[720px] text-[clamp(18px,1.6vw,22px)] leading-[1.8] text-white/78'>
         Clyro uses a GitHub App to securely access your repository. You choose exactly which repositories to grant access to.
       </p>
