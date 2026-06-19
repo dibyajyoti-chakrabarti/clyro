@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AlertTriangle, ArrowRight, FolderPlus } from "lucide-react";
 import { api } from "../../api";
 import backgroundImage from "../../assets/create_page_back.webp";
-import clyroLogo from "../../assets/logos/clyro_logo.png";
+import clyroLogo from "../../assets/logos/Clyro_logo.png";
 
 export default function CreateProject() {
   const navigate = useNavigate();
