@@ -3,18 +3,32 @@ import Button from '../../../../components/ui/Button'
 import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPanel'
 
 function EnvVarsPanel({
+  envVarsLoading,
   userSecretVars,
   generatedVars,
   secretValues,
   showSecrets,
   extraVars,
   allSecretsFilled,
+  savingEnvVars,
+  saveError,
   onSecretValueChange,
   onToggleSecretVisibility,
   onAddVariable,
   onExtraVariableChange,
   onContinue,
 }) {
+  if (envVarsLoading) {
+    return (
+      <WizardPanel>
+        <div className='flex items-center justify-center py-12 gap-2 text-sm text-text-muted'>
+          <span className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+          Loading environment variables…
+        </div>
+      </WizardPanel>
+    )
+  }
+
   return (
     <WizardPanel>
       <WizardCard width='lg'>
@@ -101,9 +115,22 @@ function EnvVarsPanel({
           Secret values are written directly to AWS Secrets Manager in your account. Crylo never stores them.
         </p>
 
-        <Button variant='primary' className='mt-5' disabled={!allSecretsFilled} onClick={onContinue}>
-          Save & continue
-          <ArrowRight className='h-4 w-4' />
+        {saveError ? (
+          <p className='mt-3 text-xs text-red-400'>{saveError}</p>
+        ) : null}
+
+        <Button variant='primary' className='mt-5' disabled={!allSecretsFilled || savingEnvVars} onClick={onContinue}>
+          {savingEnvVars ? (
+            <>
+              <span className='h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin' />
+              Saving…
+            </>
+          ) : (
+            <>
+              Save & continue
+              <ArrowRight className='h-4 w-4' />
+            </>
+          )}
         </Button>
       </WizardCard>
     </WizardPanel>
