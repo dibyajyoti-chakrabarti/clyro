@@ -20,7 +20,7 @@ export default function ProjectWizard() {
   const navigate = useNavigate()
 
   const isNew = id === 'new'
-  const [projectId] = useState(isNew ? null : id)
+  const projectId = isNew ? null : id
   const [loading, setLoading] = useState(!isNew)
 
   const [step, setStep] = useState(1)
@@ -40,7 +40,11 @@ export default function ProjectWizard() {
   const [step4CanContinue, setStep4CanContinue] = useState(false)
 
   useEffect(() => {
-    if (isNew || !id) return
+    if (isNew || !id) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
 
     api.getWizardState(id)
       .then(({ project, scan, intent }) => {
