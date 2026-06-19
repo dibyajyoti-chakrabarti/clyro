@@ -241,6 +241,7 @@ export default function ProjectWizard() {
 
                 {step === 4 ? (
                   <StepFour
+                    projectId={projectId}
                     setStep4CanContinue={setStep4CanContinue}
                     onAdvanceToStepFive={() => {
                       setStep(5)
