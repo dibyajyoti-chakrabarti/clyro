@@ -12,7 +12,7 @@ function StackPill({ children }) {
 
 function TimelineItem({ icon: Icon, title, description, index }) {
   return (
-    <div className='pb-[18px]' style={{ animation: `timelineIn 340ms ease-out ${120 + index * 90}ms both` }}>
+    <div className='py-[18px]' style={{ animation: `timelineIn 340ms ease-out ${120 + index * 90}ms both` }}>
       <div className='flex items-start gap-4'>
         <div className='grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.10)] text-[#81F2A9] shadow-[0_0_16px_rgba(34,197,94,0.12)]'>
           <Icon className='h-5 w-5' strokeWidth={2.6} />
@@ -30,15 +30,21 @@ function TimelineItem({ icon: Icon, title, description, index }) {
 function SummaryCard({ title, description, icon: Icon, index }) {
   return (
     <div
-      className='group flex h-[230px] flex-1 flex-col justify-between rounded-[22px] border border-[rgba(255,196,0,0.14)] bg-[rgba(12,12,12,0.65)] p-5 shadow-[0_18px_42px_rgba(0,0,0,0.22),0_0_24px_rgba(255,196,0,0.04)] transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(0,0,0,0.28),0_0_26px_rgba(255,196,0,0.08)]'
+      className='group flex h-[260px] min-w-[170px] flex-1 flex-col items-center justify-start overflow-hidden rounded-[22px] border border-[rgba(255,196,0,0.14)] bg-[rgba(12,12,12,0.65)] px-6 py-[28px] shadow-[0_18px_42px_rgba(0,0,0,0.22),0_0_24px_rgba(255,196,0,0.04)] transition-transform duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(0,0,0,0.28),0_0_26px_rgba(255,196,0,0.08)]'
       style={{ animation: `cardIn 340ms ease-out ${160 + index * 80}ms both` }}
     >
-      <div className='grid place-items-start gap-4'>
-        <div className='grid h-16 w-16 place-items-center rounded-full border border-[rgba(255,196,0,0.16)] bg-[rgba(255,196,0,0.08)] text-[#E8B84B] shadow-[0_0_16px_rgba(255,196,0,0.08)]'>
-          <Icon className='h-7 w-7' strokeWidth={2.4} />
+      <div className='flex h-full w-full flex-1 flex-col items-center justify-start'>
+        <div className='flex w-full justify-center'>
+          <div className='grid h-[72px] w-[72px] place-items-center rounded-full border border-[rgba(255,196,0,0.16)] bg-[rgba(255,196,0,0.08)] text-[#E8B84B] shadow-[0_0_16px_rgba(255,196,0,0.08)]'>
+            <Icon className='h-8 w-8' strokeWidth={2.4} />
+          </div>
         </div>
-        <p className='text-[20px] font-semibold tracking-[-0.01em] text-white'>{title}</p>
-        <p className='max-w-[240px] text-[15px] leading-[1.55] text-white/64'>{description}</p>
+        <p className='mt-[24px] max-w-[150px] text-center text-[20px] font-semibold leading-[1.15] tracking-[-0.01em] text-white whitespace-normal break-keep'>
+          {title}
+        </p>
+        <p className='mt-[18px] max-w-[140px] px-[12px] text-center text-[15px] leading-[1.55] text-white/64 whitespace-normal' style={{ overflowWrap: 'break-word' }}>
+          {description}
+        </p>
       </div>
     </div>
   )
@@ -76,9 +82,9 @@ export default function ScanResults({
         }
       `}</style>
 
-      <div className='grid h-full min-h-0 w-full grid-cols-1 gap-8 px-0 py-0 lg:grid-cols-[58%_42%] lg:gap-10 lg:items-start lg:p-[32px]'>
-        <div className='flex min-h-0 flex-col items-center justify-start text-center lg:items-stretch lg:justify-start lg:text-left'>
-          <div className='flex min-h-0 flex-1 flex-col items-center justify-center text-center gap-[18px]'>
+      <div className='grid h-full min-h-0 w-full grid-cols-1 gap-8 px-0 py-0 lg:grid-cols-[1.55fr_1fr] lg:items-stretch lg:gap-[40px] lg:p-[32px]'>
+        <div className='flex h-full min-h-0 flex-col items-center justify-start text-center lg:items-stretch lg:justify-center lg:text-left'>
+          <div className='flex min-h-0 flex-1 flex-col items-center justify-center gap-[14px] text-center lg:justify-center'>
             <p className='rounded-full border border-[rgba(255,196,0,0.16)] bg-[rgba(255,196,0,0.06)] px-[22px] py-[10px] text-[13px] font-bold uppercase tracking-[0.18em] text-[#E8B84B]'>
               Step 1 of 5
             </p>
@@ -98,7 +104,7 @@ export default function ScanResults({
               Your repository has been verified and scanned. An architecture draft has been generated and everything is ready for Step 2.
             </p>
 
-            <div className='w-full max-w-[860px] rounded-[28px] border border-[rgba(255,196,0,0.15)] bg-[rgba(8,8,8,0.82)] p-8 text-left shadow-none'>
+            <div className='w-full max-w-[860px] rounded-[28px] border border-[rgba(255,196,0,0.15)] bg-[rgba(8,8,8,0.82)] px-[28px] py-[24px] text-left shadow-none'>
               <div className='flex items-start justify-between gap-5'>
                 <div className='flex min-w-0 items-start gap-4'>
                   <div className='grid h-[72px] w-[72px] place-items-center rounded-[18px] border border-[rgba(255,196,0,0.16)] bg-[rgba(255,255,255,0.03)] shadow-[0_0_0_1px_rgba(255,255,255,0.02)_inset]'>
@@ -125,7 +131,7 @@ export default function ScanResults({
                 </div>
               </div>
 
-              <div className='mt-6 border-t border-white/[0.06] pt-5'>
+              <div className='mt-5 border-t border-white/[0.06] pt-5'>
                 <p className='text-[11px] font-semibold uppercase tracking-[0.24em] text-white/42'>Detected Stack</p>
                 <div className='mt-4 flex flex-wrap gap-[10px]'>
                   {stackSummary.map((item) => (
@@ -137,13 +143,13 @@ export default function ScanResults({
           </div>
         </div>
 
-        <div className='flex min-h-0 flex-col gap-[18px] text-left'>
+        <div className='flex h-full min-h-0 flex-col justify-start gap-[28px] text-left'>
           <div className='space-y-0'>
             <TimelineItem icon={GitBranch} title='Repository connected' description='Repository linked successfully' index={0} />
             <TimelineItem icon={Lock} title='Permissions verified' description='Secure OAuth completed' index={1} />
             <TimelineItem icon={PackageSearch} title='Configuration analyzed' description='Project structure scanned' index={2} />
             <div style={{ animation: 'timelineIn 340ms ease-out 390ms both' }}>
-              <div className='flex items-start gap-4 pb-[18px]'>
+              <div className='flex items-start gap-4 py-[18px]'>
                 <div className='grid h-11 w-11 shrink-0 place-items-center rounded-full border border-[rgba(34,197,94,0.28)] bg-[rgba(34,197,94,0.10)] text-[#81F2A9] shadow-[0_0_16px_rgba(34,197,94,0.12)]'>
                   <Layers3 className='h-5 w-5' strokeWidth={2.6} />
                 </div>
@@ -158,7 +164,7 @@ export default function ScanResults({
             </div>
           </div>
 
-          <div className='grid grid-cols-1 gap-[18px] xl:grid-cols-3'>
+          <div className='flex flex-col gap-[18px] xl:flex-row xl:items-stretch xl:gap-[20px]'>
             <SummaryCard title='Secure Access' description='Encrypted GitHub connection' icon={ShieldCheck} index={0} />
             <SummaryCard title='Draft Ready' description='Architecture generated' icon={Layers3} index={1} />
             <SummaryCard title='Next Step' description='Configure infrastructure' icon={ChevronRight} index={2} />
