@@ -46,8 +46,9 @@ resource "aws_iam_role_policy_attachment" "mcp_basic" {
 }
 
 resource "aws_iam_role_policy" "mcp_pricing_extra" {
-  name = "pricing-api-access"
-  role = aws_iam_role.mcp["mcp-pricing"].id
+  count = var.enabled ? 1 : 0
+  name  = "pricing-api-access"
+  role  = aws_iam_role.mcp["mcp-pricing"].id
 
   policy = jsonencode({
     Version = "2012-10-17"
