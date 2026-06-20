@@ -56,8 +56,7 @@ resource "aws_lambda_function" "pre_signup" {
 
   environment {
     variables = {
-      USER_POOL_ID = aws_cognito_user_pool.main.id
-      AWS_REGION   = var.aws_region
+      AWS_REGION = var.aws_region
     }
   }
 

@@ -10,9 +10,7 @@ Flow:
   1. User signs in with Google for the first time.
   2. Cognito fires PreSignUp_ExternalProvider before creating the federated user.
   3. We look up whether a native user with the same email already exists.
-  4. If found → raise an exception with a specially formatted message that tells
-     Cognito to link the identities instead of creating a new user.
-     Format: "LINK:<existing_username>"
+  4. If found → link identities and auto-confirm.
   5. If not found → return the event unchanged (Cognito creates the federated user
      normally and auto-verifies email).
 """
@@ -20,11 +18,21 @@ Flow:
 import boto3
 import os
 
-client = boto3.client("cognito-idp", region_name=os.environ.get("AWS_REGION", "ap-south-1"))
-USER_POOL_ID = os.environ["USER_POOL_ID"]
+_client = None
+
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = boto3.client("cognito-idp", region_name=os.environ.get("AWS_REGION", "ap-south-1"))
+    return _client
 
 
 def handler(event, context):
+    # Prefer env var; fall back to the userPoolId Cognito always provides in the event.
+    # Reading from the event breaks the Terraform circular dependency (pool ↔ Lambda env).
+    user_pool_id = os.environ.get("USER_POOL_ID") or event.get("userPoolId", "")
+
     trigger_source = event.get("triggerSource", "")
     email = (
         event.get("request", {})
@@ -42,7 +50,7 @@ def handler(event, context):
         return event
 
     # Look up existing native user by email.
-    existing = _find_native_user(email)
+    existing = _find_native_user(user_pool_id, email)
 
     if existing is None:
         # First time this email signs in via a social provider —
@@ -52,13 +60,12 @@ def handler(event, context):
         return event
 
     # A native user already exists with this email. Link the federated identity.
-    # Cognito expects the provider identity in the format "ProviderName_ProviderUserId".
     provider_name = event["userName"].split("_")[0]  # e.g. "Google"
-    provider_user_id = "_".join(event["userName"].split("_")[1:])  # rest of it
+    provider_user_id = "_".join(event["userName"].split("_")[1:])
 
     try:
-        client.admin_link_provider_for_user(
-            UserPoolId=USER_POOL_ID,
+        _get_client().admin_link_provider_for_user(
+            UserPoolId=user_pool_id,
             DestinationUser={
                 "ProviderName": "Cognito",
                 "ProviderAttributeValue": existing["Username"],
@@ -69,24 +76,23 @@ def handler(event, context):
                 "ProviderAttributeValue": provider_user_id,
             },
         )
-    except client.exceptions.AliasExistsException:
+    except _get_client().exceptions.AliasExistsException:
         # Already linked — safe to ignore.
         pass
     except Exception as e:
         # Log but don't block sign-in.
         print(f"[pre-signup] link failed for {email}: {e}")
 
-    # Auto-confirm so Cognito completes the flow cleanly.
     event["response"]["autoConfirmUser"] = True
     event["response"]["autoVerifyEmail"] = True
     return event
 
 
-def _find_native_user(email: str):
+def _find_native_user(user_pool_id: str, email: str):
     """Return the first native (non-federated) user with this email, or None."""
     try:
-        resp = client.list_users(
-            UserPoolId=USER_POOL_ID,
+        resp = _get_client().list_users(
+            UserPoolId=user_pool_id,
             Filter=f'email = "{email}"',
             Limit=10,
         )
@@ -95,8 +101,9 @@ def _find_native_user(email: str):
         return None
 
     for user in resp.get("Users", []):
+        username = user["Username"]
         # Skip federated users — they have a provider prefix in their username.
-        if not any(c == "_" and user["Username"].split("_")[0] in ("Google", "GitHub") for c in user["Username"]):
+        if not any(username.startswith(p + "_") for p in ("Google", "GitHub")):
             return user
 
     return None

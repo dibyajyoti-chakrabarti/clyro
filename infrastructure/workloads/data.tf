@@ -6,7 +6,8 @@ data "terraform_remote_state" "foundation" {
     bucket  = "clyro-terraform-state-prod"
     key     = "foundation/terraform.tfstate"
     region  = "ap-south-1"
-    profile = "clyro"
+    profile      = "clyro"
+    use_lockfile = true
   }
 }
 
