@@ -11,6 +11,7 @@ from app.auth import CognitoAuthentication
 from .aws_client import assume_role, get_account_id, write_secret
 from .cfn_bootstrap import generate_cfn_console_url
 from . import iac
+from . import deploy
 
 _AUTH = [CognitoAuthentication]
 _PERMS = [IsAuthenticated]
@@ -273,4 +274,32 @@ def iac_validate(request, pk):
     try:
         return Response(iac.validate(project, template))
     except iac.IacError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ── Step 4.5 — Provisioning (submit template + live feed) ──────────────────────
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_start(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(deploy.start(project))
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_status(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(deploy.poll(project))
+    except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

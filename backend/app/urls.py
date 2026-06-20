@@ -32,6 +32,8 @@ from .provisioning.views import (
     iac_generate,
     iac_refine,
     iac_validate,
+    deploy_start,
+    deploy_status,
 )
 
 urlpatterns = [
@@ -59,6 +61,8 @@ urlpatterns = [
     path('projects/<uuid:pk>/iac/generate/', iac_generate),
     path('projects/<uuid:pk>/iac/refine/', iac_refine),
     path('projects/<uuid:pk>/iac/validate/', iac_validate),
+    path('projects/<uuid:pk>/deploy/', deploy_start),
+    path('projects/<uuid:pk>/deploy/status/', deploy_status),
     path('github/installations/', github_installations),
     path('github/repos/', github_repos),
     path('github/branches/', github_branches),
