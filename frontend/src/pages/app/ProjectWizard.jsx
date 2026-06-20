@@ -1451,9 +1451,15 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [refineInput, setRefineInput] = useState('')
   const [refineHistory, setRefineHistory] = useState([])
 
+  // provisioning phase state
+  const [provisioningLog, setProvisioningLog] = useState([])
+  const [deployStatus, setDeployStatus] = useState(null)
+  const [deployError, setDeployError] = useState(null)
+  const [stackOutputs, setStackOutputs] = useState([])
+  const deployPollRef = useRef(null)
+
   // shared
   const [showTemplate, setShowTemplate] = useState(false)
-  const [provisioningLog, setProvisioningLog] = useState([])
   const [copiedKey, setCopiedKey] = useState('')
 
   useEffect(() => {
@@ -1581,6 +1587,56 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
       setCopiedKey('')
     }
   }
+
+  // ── Provisioning (Step 4.5): submit + poll the live CFN feed ──────────────
+  const stopDeployPoll = () => {
+    if (deployPollRef.current) {
+      clearInterval(deployPollRef.current)
+      deployPollRef.current = null
+    }
+  }
+
+  const pollDeployOnce = async () => {
+    try {
+      const data = await api.getDeployStatus(projectId)
+      setProvisioningLog(data.log || [])
+      setDeployStatus(data.status)
+      setStackOutputs(data.outputs || [])
+      if (data.error) setDeployError(data.error)
+      if (data.status === 'complete') {
+        stopDeployPoll()
+        setPhase('success')
+      } else if (data.status === 'failed' || data.status === 'rolled_back') {
+        stopDeployPoll()
+      }
+    } catch (err) {
+      setDeployError(err.data?.error || null)  // transient — keep polling
+    }
+  }
+
+  const startDeployPoll = () => {
+    stopDeployPoll()
+    pollDeployOnce()
+    deployPollRef.current = setInterval(pollDeployOnce, 4000)
+  }
+
+  const handleProvision = async () => {
+    setDeployError(null)
+    setProvisioningLog([])
+    setStackOutputs([])
+    setDeployStatus('submitting')
+    setPhase('provisioning')
+    try {
+      await api.startDeploy(projectId)
+      startDeployPoll()
+    } catch (err) {
+      setDeployError(err.data?.error || 'Failed to start provisioning.')
+      setDeployStatus('failed')
+    }
+  }
+
+  // Stop polling if the panel unmounts mid-deploy.
+  useEffect(() => () => stopDeployPoll(), [])
 
   if (phase === 'aws_connect') {
     return (
@@ -1971,7 +2027,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
               <ArrowLeft className='h-4 w-4' />
               Edit template
             </button>
-            <Button variant='primary' onClick={() => setPhase('provisioning')}>
+            <Button variant='primary' onClick={handleProvision}>
               Provision
               <ArrowRight className='h-4 w-4' />
             </Button>
@@ -1982,19 +2038,40 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   }
 
   if (phase === 'provisioning') {
+    const deployFailed = deployStatus === 'failed' || deployStatus === 'rolled_back'
     return (
       <WizardPanel>
         <WizardCard width='lg'>
-          <h3 className='text-lg font-semibold'>Provisioning infrastructure</h3>
+          <div className='flex items-center gap-2'>
+            {deployFailed ? (
+              <XCircle className='h-5 w-5 text-red-400' />
+            ) : (
+              <span className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+            )}
+            <h3 className='text-lg font-semibold'>
+              {deployFailed ? 'Provisioning failed' : 'Provisioning infrastructure'}
+            </h3>
+          </div>
+          {!deployFailed ? (
+            <p className='mt-1 text-sm text-text-muted'>This typically takes 8–12 minutes — you can keep this tab open.</p>
+          ) : null}
+
           <div className='mt-4 space-y-3'>
-            {provisioningLog.map((entry) => {
-              const isDone = entry.status === 'complete'
-              const isActive = entry.status === 'in_progress' || entry.status === 'running'
-              const textClass = isDone ? 'text-text-primary' : isActive ? 'text-accent' : 'text-text-muted'
+            {provisioningLog.length === 0 ? (
+              <p className='text-sm text-text-muted'>Submitting your template to AWS…</p>
+            ) : provisioningLog.map((entry) => {
+              const isDone = entry.status === 'done'
+              const isActive = entry.status === 'in_progress'
+              const isFailed = entry.status === 'failed'
+              const textClass = isFailed ? 'text-red-300' : isDone ? 'text-text-primary' : isActive ? 'text-accent' : 'text-text-muted'
 
               return (
                 <div key={entry.sequence} className='flex items-start gap-3'>
-                  {isDone ? (
+                  {isFailed ? (
+                    <span className='mt-0.5 grid h-5 w-5 place-items-center rounded-full border border-red-500/40 bg-red-500/15 text-red-300'>
+                      <XCircle className='h-3.5 w-3.5' />
+                    </span>
+                  ) : isDone ? (
                     <span className='mt-0.5 grid h-5 w-5 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-green-300'>
                       <Check className='h-3 w-3' strokeWidth={3} />
                     </span>
@@ -2003,13 +2080,36 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
                   ) : (
                     <span className='mt-0.5 h-5 w-5 rounded-full border border-border bg-background' />
                   )}
-                  <div>
-                    <p className={`text-sm ${textClass}`}>{entry.plain_message}</p>
-                  </div>
+                  <p className={`text-sm ${textClass}`}>{entry.plain_message}</p>
                 </div>
               )
             })}
           </div>
+
+          {deployFailed ? (
+            <div className='mt-5'>
+              {deployError ? (
+                <p className='flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300'>
+                  <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
+                  {deployError}
+                </p>
+              ) : null}
+              <div className='mt-4 flex items-center gap-4'>
+                <button
+                  type='button'
+                  className='inline-flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-text-primary'
+                  onClick={() => setPhase('review')}
+                >
+                  <ArrowLeft className='h-4 w-4' />
+                  Back
+                </button>
+                <Button variant='primary' onClick={handleProvision}>
+                  Retry
+                  <ArrowRight className='h-4 w-4' />
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </WizardCard>
       </WizardPanel>
     )
@@ -2025,23 +2125,21 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
         <h3 className='mt-4 text-center text-xl font-semibold tracking-tight'>Your infrastructure is live</h3>
 
         <div className='mt-6 space-y-2'>
-          {[
-            ['Frontend URL', '—'],
-            ['Backend API', '—'],
-            ['CloudFront URL', '—'],
-          ].map(([label, value]) => (
-            <div key={label} className='flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2'>
-              <div>
-                <p className='text-xs text-text-muted'>{label}</p>
-                <p className='text-sm font-medium text-text-primary'>{value}</p>
+          {stackOutputs.length === 0 ? (
+            <p className='text-center text-sm text-text-muted'>No stack outputs were returned.</p>
+          ) : stackOutputs.map((o) => (
+            <div key={o.key} className='flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2'>
+              <div className='min-w-0'>
+                <p className='text-xs text-text-muted'>{o.description || o.key}</p>
+                <p className='truncate text-sm font-medium text-text-primary'>{o.value}</p>
               </div>
               <button
                 type='button'
-                className='flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-text-muted transition-colors hover:border-accent/60 hover:text-text-primary'
-                onClick={() => handleCopy(label, value)}
+                className='flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-text-muted transition-colors hover:border-accent/60 hover:text-text-primary'
+                onClick={() => handleCopy(o.key, o.value)}
               >
                 <Copy className='h-3 w-3' />
-                {copiedKey === label ? 'Copied!' : 'Copy'}
+                {copiedKey === o.key ? 'Copied!' : 'Copy'}
               </button>
             </div>
           ))}
