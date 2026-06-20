@@ -100,7 +100,10 @@ export default function ScanResults({
               </span>
             </h2>
 
-            <p className='max-w-[600px] text-[20px] leading-[1.6] text-white/82'>
+            <p
+              className='mx-auto mt-[28px] w-full max-w-[720px] text-center text-[18px] font-normal leading-[1.55] tracking-[-0.01em] text-white/88 whitespace-normal'
+              style={{ overflowWrap: 'break-word', textWrap: 'balance' }}
+            >
               Your repository has been verified and scanned. An architecture draft has been generated and everything is ready for Step 2.
             </p>
 
