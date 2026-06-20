@@ -65,6 +65,10 @@ export const api = {
   refineIac: (id, payload) => request('POST', `/api/projects/${id}/iac/refine/`, payload),
   validateIac: (id, payload) => request('POST', `/api/projects/${id}/iac/validate/`, payload),
 
+  // Step 4.5 — provisioning (submit template + live feed)
+  startDeploy: (id) => request('POST', `/api/projects/${id}/deploy/`),
+  getDeployStatus: (id) => request('GET', `/api/projects/${id}/deploy/status/`),
+
   // GitHub
   storeInstallation: (installation_id) =>
     request('POST', '/api/github/installations/', { installation_id }),
