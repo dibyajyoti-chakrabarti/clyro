@@ -48,3 +48,8 @@ variable "private_data_cidrs" {
 variable "availability_zones" {
   default = ["ap-south-1a", "ap-south-1b"]
 }
+
+variable "deploy_mcp_lambdas" {
+  description = "Set to true once MCP Docker images have been pushed to ECR"
+  default     = false
+}

@@ -106,6 +106,7 @@ module "lambda_mcp" {
   environment = var.environment
   account_id  = var.account_id
   aws_region  = var.aws_region
+  enabled     = var.deploy_mcp_lambdas
 
   ecr_repo_urls = {
     "mcp-pricing" = module.ecr.repo_urls["mcp-pricing"]

@@ -1,7 +1,8 @@
 locals {
   prefix = "${var.project}-${var.environment}"
 
-  mcp_functions = {
+  # Only populate when enabled — keeps for_each empty when images aren't pushed yet
+  mcp_functions = var.enabled ? {
     "mcp-pricing" = {
       description  = "AWS Pricing API MCP tool"
       ecr_key      = "mcp-pricing"
@@ -17,7 +18,7 @@ locals {
       ecr_key      = "mcp-docs"
       extra_policy = false
     }
-  }
+  } : {}
 }
 
 # ── IAM roles ────────────────────────────────────────────────────────────────
