@@ -83,7 +83,6 @@ resource "aws_lambda_function" "mcp" {
   environment {
     variables = {
       FASTMCP_LOG_LEVEL = "WARNING"
-      AWS_REGION        = var.aws_region
     }
   }
 

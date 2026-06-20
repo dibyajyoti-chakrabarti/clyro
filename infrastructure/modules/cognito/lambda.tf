@@ -54,11 +54,7 @@ resource "aws_lambda_function" "pre_signup" {
   filename         = var.pre_signup_lambda_zip
   source_code_hash = filebase64sha256(var.pre_signup_lambda_zip)
 
-  environment {
-    variables = {
-      AWS_REGION = var.aws_region
-    }
-  }
+  # AWS_REGION is reserved by Lambda runtime — do not set it here
 
   depends_on = [
     aws_iam_role_policy_attachment.pre_signup_basic,

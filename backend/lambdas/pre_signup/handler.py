@@ -24,6 +24,7 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
+        # AWS_REGION is injected automatically by the Lambda runtime
         _client = boto3.client("cognito-idp", region_name=os.environ.get("AWS_REGION", "ap-south-1"))
     return _client
 
