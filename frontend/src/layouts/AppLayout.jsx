@@ -5,7 +5,7 @@ export default function AppLayout() {
   return (
     <div className='min-h-screen bg-background text-text-primary'>
       <div
-        className='grid min-h-screen w-full gap-4 p-4'
+        className='grid min-h-screen w-full gap-[4px] p-[4px]'
         style={{
           gridTemplateColumns: 'auto 1fr',
           transitionProperty: 'grid-template-columns',
