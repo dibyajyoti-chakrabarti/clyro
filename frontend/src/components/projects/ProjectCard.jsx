@@ -8,7 +8,7 @@ import {
 import { Link } from "react-router-dom";
 import Button from "../ui/Button";
 import ProjectStatusBadge from "./ProjectStatusBadge";
-import githubIcon from "../../assets/logos/github-fill.svg";
+import GitHubLogo from "../common/GitHubLogo";
 
 function formatDate(value) {
   if (!value) return "Recently updated";
@@ -46,7 +46,7 @@ export default function ProjectCard({ project }) {
     if (status === "repo_connected") {
       return (
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 shadow-[0_8px_24px_rgba(59,130,246,0.12)]">
-          <img src={githubIcon} alt="GitHub" className="h-5 w-5" />
+          <GitHubLogo className="h-5 w-5" />
         </div>
       );
     }

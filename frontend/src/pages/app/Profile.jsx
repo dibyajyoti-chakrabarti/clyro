@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { signOut } from 'aws-amplify/auth'
 import { BadgeCheck, Calendar, Crown, FolderOpen, Mail, ShieldCheck, TriangleAlert, User } from 'lucide-react'
-import githubLogoLite from '../../assets/logos/github-fill.svg'
 import githubLogoDark from "../../assets/logos/github_black.svg";
 import { api } from '../../api'
 import Button from '../../components/ui/Button'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import GitHubLogo from '../../components/common/GitHubLogo'
 
 const TIER_META = {
   free: {
@@ -272,7 +272,7 @@ export default function Profile() {
         <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
           <div className='flex min-w-0 items-center gap-4'>
             <div className='grid h-12 w-12 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.04]'>
-              <img src={githubLogoLite} alt='GitHub' className='h-6 w-6' />
+              <GitHubLogo className='h-6 w-6' />
             </div>
             <div className='min-w-0'>
               <p className='text-lg font-semibold text-text-primary'>

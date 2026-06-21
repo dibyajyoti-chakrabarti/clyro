@@ -1,6 +1,7 @@
 import { ShieldCheck, ChevronRight } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
-import githubMark from '../../../../assets/logos/github-fill.svg'
+import PremiumStepHeading from './PremiumStepHeading'
+import GitHubLogo from '../../../../components/common/GitHubLogo'
 
 function GithubMark({ size = 'lg' }) {
   const outer = size === 'sm' ? 'h-10 w-10' : 'h-[96px] w-[96px]'
@@ -9,7 +10,7 @@ function GithubMark({ size = 'lg' }) {
   return (
     <div className={`grid place-items-center rounded-full ${outer}`}>
       <div className={`grid place-items-center rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.08)] shadow-[0_0_22px_rgba(255,255,255,0.04)] ${inner}`}>
-        <img src={githubMark} alt='GitHub' className={img} />
+        <GitHubLogo className={img} />
       </div>
     </div>
   )
@@ -18,15 +19,13 @@ function GithubMark({ size = 'lg' }) {
 function GithubConnectCard({ existingInstallations, handleInstall, handleUseExisting }) {
   return (
     <div className='w-full text-center box-border'>
-      <h3 className='mx-auto max-w-[900px] text-[clamp(42px,5vw,72px)] font-extrabold tracking-[-0.04em] text-[#F5F5F5]'>
-        Connect your GitHub account
-      </h3>
+      <PremiumStepHeading prefix='Connect your' highlight='GitHub account' className='mx-auto max-w-[900px] text-[clamp(42px,5vw,72px)] font-extrabold text-[#F5F5F5]' />
       <p className='mx-auto mt-[20px] max-w-[720px] text-[clamp(18px,1.6vw,22px)] leading-[1.8] text-white/78'>
         Clyro uses a GitHub App to securely access your repository. You choose exactly which repositories to grant access to.
       </p>
 
       <div className='mx-auto mt-[32px] flex h-[88px] w-[88px] items-center justify-center rounded-full border border-[rgba(232,184,75,0.18)] bg-[rgba(255,255,255,0.06)] shadow-[0_0_28px_rgba(232,184,75,0.12)]'>
-        <img src={githubMark} alt='GitHub' className='h-[52px] w-[52px]' />
+        <GitHubLogo className='h-[52px] w-[52px]' />
       </div>
 
       <Button

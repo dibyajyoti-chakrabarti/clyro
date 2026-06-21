@@ -1,8 +1,8 @@
 import clyroLogo from "../../assets/logos/Clyro_logo.png";
-import githubLogo from "../../assets/logos/github-fill.svg";
 import twitterLogo from "../../assets/logos/twitter-fill.svg";
 import linkedinLogo from "../../assets/logos/linkedin-box-fill.svg";
 import discordLogo from "../../assets/logos/discord-fill.svg";
+import GitHubLogo from "../common/GitHubLogo";
 
 const navLinks = [
   "Product",
@@ -15,7 +15,7 @@ const navLinks = [
 ];
 
 const socialLinks = [
-  { label: "GitHub", icon: githubLogo },
+  { label: "GitHub", icon: GitHubLogo },
   { label: "Twitter", icon: twitterLogo },
   { label: "LinkedIn", icon: linkedinLogo },
   { label: "Discord", icon: discordLogo },
@@ -61,11 +61,15 @@ export default function Footer() {
                 aria-label={social.label}
                 className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
-                <img
-                  src={social.icon}
-                  alt={social.label}
-                  className="h-5 w-5 opacity-80 transition-opacity hover:opacity-100"
-                />
+                {typeof social.icon === "string" ? (
+                  <img
+                    src={social.icon}
+                    alt={social.label}
+                    className="h-5 w-5 opacity-80 transition-opacity hover:opacity-100"
+                  />
+                ) : (
+                  <social.icon className="h-5 w-5 opacity-80 transition-opacity hover:opacity-100" alt={social.label} />
+                )}
               </a>
             </li>
           ))}
