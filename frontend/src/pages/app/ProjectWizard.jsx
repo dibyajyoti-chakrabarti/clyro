@@ -37,6 +37,7 @@ export default function ProjectWizard() {
   const [step3Finalized, setStep3Finalized] = useState(false)
   const [step3ShowBanner, setStep3ShowBanner] = useState(false)
   const [step3InputPrefill, setStep3InputPrefill] = useState('')
+  const [step3Metrics, setStep3Metrics] = useState({ serviceCount: 0, estimatedMonthlyCost: 0 })
   const [step4CanContinue, setStep4CanContinue] = useState(false)
 
   useEffect(() => {
@@ -156,12 +157,12 @@ export default function ProjectWizard() {
 
   return (
     <div className='box-border min-h-screen w-full max-w-full overflow-x-hidden bg-[#040404] p-[8px] text-white sm:p-[12px] lg:p-[16px] 2xl:p-[20px]'>
-      <main className='flex min-h-[calc(100vh-16px)] w-full max-w-full items-stretch gap-[4px] overflow-x-hidden box-border sm:gap-[6px]'>
+	      <main className='flex min-h-[calc(100vh-16px)] w-full max-w-full items-stretch gap-8 overflow-x-hidden box-border sm:gap-8'>
         <div className='hidden self-stretch lg:block'>
           <StepProgress currentStep={step} stepConfig={stepConfig} completedSteps={completedSteps} statusMap={STATUS_STEP} />
         </div>
 
-        <div className='flex min-h-0 min-w-0 flex-1 flex-col gap-[6px] box-border'>
+	        <div className='flex min-h-0 min-w-0 flex-1 flex-col gap-8 box-border'>
           <div className='w-full lg:hidden'>
             <div className='rounded-[24px] border border-white/[0.08] bg-[rgba(10,15,25,0.55)] px-6 py-[14px] backdrop-blur-[20px]'>
               <div className='relative flex items-start justify-between gap-2 overflow-x-auto pb-1'>
@@ -200,13 +201,15 @@ export default function ProjectWizard() {
           <WizardNavbar projectName={projectName} />
 
           <section
-            className='box-border flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-[rgba(255,196,0,0.35)] px-[64px] pb-[32px] pt-[72px] shadow-[0_30px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,196,0,0.08),0_0_18px_rgba(255,196,0,0.06)]'
+            className={`box-border flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-[rgba(255,196,0,0.35)] shadow-[0_30px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,196,0,0.08),0_0_18px_rgba(255,196,0,0.06)] ${
+              step === 3 ? 'px-8 pb-8 pt-8 lg:px-8 lg:pb-8 lg:pt-8' : 'px-[64px] pb-[32px] pt-[72px]'
+            }`}
             style={{
               backgroundImage:
                 'radial-gradient(circle at 100% 0%, rgba(232,184,75,0.08), transparent 28%), radial-gradient(circle at 50% 0%, rgba(255,255,255,0.025), transparent 24%), linear-gradient(180deg,#0d0d0d,#070707)',
             }}
           >
-            <div className='flex min-h-0 flex-1 flex-col items-center box-border'>
+            <div className={`box-border flex min-h-0 flex-1 flex-col ${step === 3 ? 'items-stretch' : 'items-center'}`}>
                 {step === 1 ? (
                   <StepOne
                     projectId={projectId}
@@ -232,6 +235,7 @@ export default function ProjectWizard() {
                     setStep3InputPrefill={setStep3InputPrefill}
                     step3ShowBanner={step3ShowBanner}
                     onDismissStep3Banner={() => setStep3ShowBanner(false)}
+                    onMetricsChange={setStep3Metrics}
                   />
                 ) : null}
 
@@ -256,7 +260,33 @@ export default function ProjectWizard() {
                   </Button>
                 ) : null}
               </div>
-              {step !== 4 ? (
+              {step === 3 ? (
+                <div className='flex w-full items-center justify-between gap-8 rounded-[24px] border border-[rgba(255,196,0,0.18)] bg-[rgba(255,255,255,0.02)] px-6 py-3'>
+                  <div className='space-y-1'>
+                    <p className='text-xs uppercase tracking-[0.16em] text-text-muted'>Architecture Ready</p>
+                    <p className='text-sm font-medium text-text-primary'>Review the canvas before continuing</p>
+                  </div>
+                  <div className='flex items-center gap-8'>
+                    <div>
+                      <p className='text-xs uppercase tracking-[0.16em] text-text-muted'>Estimated Monthly Cost</p>
+                      <p className='mt-1 text-sm font-semibold text-text-primary'>${step3Metrics.estimatedMonthlyCost} / month</p>
+                    </div>
+                    <div>
+                      <p className='text-xs uppercase tracking-[0.16em] text-text-muted'>Service Count</p>
+                      <p className='mt-1 text-sm font-semibold text-text-primary'>{step3Metrics.serviceCount}</p>
+                    </div>
+                    <Button
+                      variant='primary'
+                      onClick={handleContinue}
+                      disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
+                      className='h-12 rounded-[18px] px-5 transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(255,196,0,0.18)]'
+                    >
+                      Finalize
+                      <ArrowRight className='h-4 w-4' />
+                    </Button>
+                  </div>
+                </div>
+              ) : step !== 4 ? (
                 <Button
                   variant='primary'
                   onClick={handleContinue}
