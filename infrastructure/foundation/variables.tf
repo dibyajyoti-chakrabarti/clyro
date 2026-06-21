@@ -53,3 +53,8 @@ variable "deploy_mcp_lambdas" {
   description = "Set to true once MCP Docker images have been pushed to ECR"
   default     = false
 }
+
+variable "github_repo" {
+  description = "GitHub repo in owner/name format — used to scope the OIDC role trust policy"
+  default     = "dibyajyoti-chakrabarti/clyro"
+}

@@ -1,0 +1,87 @@
+name: Deploy Backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Docker image tag (defaults to short SHA)
+        required: false
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REGISTRY: 321613317660.dkr.ecr.ap-south-1.amazonaws.com
+  ECR_REPOSITORY: clyro-backend
+  ECS_CLUSTER: clyro-prod-cluster
+  ECS_SERVICE: clyro-prod-backend-service
+
+jobs:
+  deploy:
+    name: Build, Push & Deploy to ECS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${{ github.sha }}"
+            TAG="${TAG:0:7}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Using image tag: $TAG"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push Docker image
+        working-directory: backend
+        env:
+          IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+          echo "✓ Pushed $IMAGE:$TAG"
+
+      - name: Force ECS service redeployment
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --force-new-deployment \
+            --output json \
+            --query 'service.{status: status, desiredCount: desiredCount}' \
+            | jq .
+
+      - name: Wait for ECS service to stabilise
+        run: |
+          echo "Waiting for service to reach steady state (up to 10 min)…"
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }}
+          echo "✓ ECS service stable"
+
+      - name: Verify running task image
+        run: |
+          aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].deployments[?status==`PRIMARY`].{image: taskDefinition, runningCount: runningCount}' \
+            --output json | jq .

@@ -1,0 +1,120 @@
+name: Workloads Control (Scale / RDS Stop-Start)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Action to perform
+        required: true
+        type: choice
+        options:
+          - scale-down      # ECS → 0 tasks (RDS stays running, cheapest option)
+          - scale-up        # ECS → 1 task
+          - rds-stop        # Stop RDS instance (saves ~$0.02/hr, takes ~5 min to start back)
+          - rds-start       # Start RDS instance
+          - full-shutdown   # scale-down + rds-stop
+          - full-startup    # rds-start (wait) + scale-up
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  ECS_CLUSTER: clyro-prod-cluster
+  ECS_SERVICE: clyro-prod-backend-service
+  RDS_INSTANCE: clyro-prod-rds
+
+jobs:
+  control:
+    name: ${{ github.event.inputs.action }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ── ECS scale-down ──────────────────────────────────────────────────────
+      - name: ECS scale-down (desired-count → 0)
+        if: ${{ contains(fromJSON('["scale-down","full-shutdown"]'), github.event.inputs.action) }}
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --desired-count 0 \
+            --output json \
+            --query 'service.{desiredCount: desiredCount, runningCount: runningCount}' | jq .
+          echo "✓ ECS desired count set to 0"
+
+      # ── RDS stop ────────────────────────────────────────────────────────────
+      - name: RDS stop
+        if: ${{ contains(fromJSON('["rds-stop","full-shutdown"]'), github.event.inputs.action) }}
+        run: |
+          STATUS=$(aws rds describe-db-instances \
+            --db-instance-identifier ${{ env.RDS_INSTANCE }} \
+            --query 'DBInstances[0].DBInstanceStatus' --output text)
+          echo "Current RDS status: $STATUS"
+          if [ "$STATUS" = "available" ]; then
+            aws rds stop-db-instance \
+              --db-instance-identifier ${{ env.RDS_INSTANCE }} \
+              --output json \
+              --query 'DBInstance.DBInstanceStatus' | jq .
+            echo "✓ RDS stop initiated (reaches 'stopped' in ~2–3 min)"
+          else
+            echo "RDS is not in 'available' state — skipping stop (status: $STATUS)"
+          fi
+
+      # ── RDS start ───────────────────────────────────────────────────────────
+      - name: RDS start
+        if: ${{ contains(fromJSON('["rds-start","full-startup"]'), github.event.inputs.action) }}
+        run: |
+          STATUS=$(aws rds describe-db-instances \
+            --db-instance-identifier ${{ env.RDS_INSTANCE }} \
+            --query 'DBInstances[0].DBInstanceStatus' --output text)
+          echo "Current RDS status: $STATUS"
+          if [ "$STATUS" = "stopped" ]; then
+            aws rds start-db-instance \
+              --db-instance-identifier ${{ env.RDS_INSTANCE }} \
+              --output json \
+              --query 'DBInstance.DBInstanceStatus' | jq .
+            echo "Waiting for RDS to become available…"
+            aws rds wait db-instance-available \
+              --db-instance-identifier ${{ env.RDS_INSTANCE }}
+            echo "✓ RDS available"
+          else
+            echo "RDS is not in 'stopped' state — skipping start (status: $STATUS)"
+          fi
+
+      # ── ECS scale-up ────────────────────────────────────────────────────────
+      - name: ECS scale-up (desired-count → 1)
+        if: ${{ contains(fromJSON('["scale-up","full-startup"]'), github.event.inputs.action) }}
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --desired-count 1 \
+            --output json \
+            --query 'service.{desiredCount: desiredCount, runningCount: runningCount}' | jq .
+          echo "Waiting for ECS service to stabilise…"
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }}
+          echo "✓ ECS service stable at 1 task"
+
+      # ── Summary ─────────────────────────────────────────────────────────────
+      - name: Status summary
+        run: |
+          echo "=== ECS ==="
+          aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --query 'services[0].{status: status, desired: desiredCount, running: runningCount, pending: pendingCount}' \
+            --output json | jq .
+          echo "=== RDS ==="
+          aws rds describe-db-instances \
+            --db-instance-identifier ${{ env.RDS_INSTANCE }} \
+            --query 'DBInstances[0].{status: DBInstanceStatus, class: DBInstanceClass}' \
+            --output json | jq .
