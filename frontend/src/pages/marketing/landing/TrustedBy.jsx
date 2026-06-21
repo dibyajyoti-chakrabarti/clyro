@@ -34,7 +34,15 @@ export default function TrustedBy() {
           {brands.map((brand, index) => (
             <li key={brand.name} className='contents sm:flex sm:items-center sm:gap-8 lg:gap-12'>
               <div className='flex items-center justify-center gap-3'>
-                <brand.logo className='h-8 w-auto opacity-80' alt={`${brand.name} logo`} />
+                {typeof brand.logo === 'string' ? (
+                  <img
+                    src={brand.logo}
+                    alt={`${brand.name} logo`}
+                    className='h-8 w-auto opacity-80'
+                  />
+                ) : (
+                  <brand.logo className='h-8 w-auto opacity-80' aria-label={`${brand.name} logo`} />
+                )}
                 <span className='text-xl font-medium text-black/85'>{brand.name}</span>
               </div>
               {index < brands.length - 1 ? (
