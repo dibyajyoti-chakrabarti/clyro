@@ -20,15 +20,29 @@ export default function CanvasSurface({
   NodePopup,
 }) {
   return (
-    <div
-      ref={surfaceRef}
-      className='relative flex-[1.9] min-w-0 cursor-grab select-none overflow-auto rounded-[24px] border-2 border-[rgba(255,196,0,0.35)] bg-background active:cursor-grabbing shadow-[0_0_0_1px_rgba(255,196,0,0.08),0_0_18px_rgba(255,196,0,0.06)]'
-      onMouseDown={startPan}
-      onMouseMove={movePan}
-      onMouseUp={endPan}
-      onMouseLeave={endPan}
-      onClick={() => setSelectedNode(null)}
-    >
+    <>
+      <div
+        ref={surfaceRef}
+        className='relative flex-[1.9] min-w-0 cursor-grab select-none overflow-auto rounded-[24px] border border-white/[0.08] bg-[rgba(10,10,10,0.35)] active:cursor-grabbing shadow-[0_0_0_1px_rgba(255,196,0,0.08),0_0_40px_rgba(255,193,7,0.08),inset_0_0_80px_rgba(0,0,0,0.35)] backdrop-blur-[16px] backdrop-saturate-150 transition-[opacity,transform,border-color,box-shadow] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)]'
+        style={{
+          WebkitBackdropFilter: 'blur(16px)',
+          backgroundImage: `
+            radial-gradient(circle at center, rgba(255,193,7,0.06), transparent 70%),
+            linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px),
+            linear-gradient(rgba(255,193,7,0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,193,7,0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '100% 100%, 16px 16px, 16px 16px, 64px 64px, 64px 64px',
+          backgroundPosition: 'center, center, center, center, center',
+          animation: 'canvasGlassIn 420ms cubic-bezier(.22,1,.36,1) both',
+        }}
+        onMouseDown={startPan}
+        onMouseMove={movePan}
+        onMouseUp={endPan}
+        onMouseLeave={endPan}
+        onClick={() => setSelectedNode(null)}
+      >
       {step3ShowBanner ? (
         <div className='sticky top-0 z-20 border-b border-green-500/20 bg-green-500/10 px-4 py-3'>
           <div className='flex items-center justify-between'>
@@ -53,8 +67,6 @@ export default function CanvasSurface({
           minWidth: `${surfaceBounds.width}px`,
           minHeight: `${surfaceBounds.height}px`,
           backgroundColor: 'transparent',
-          backgroundImage: 'radial-gradient(rgba(148, 163, 184, 0.15) 1px, transparent 1px)',
-          backgroundSize: '24px 24px',
         }}
       >
         <svg className='pointer-events-none absolute inset-0 h-full w-full'>
@@ -185,6 +197,19 @@ export default function CanvasSurface({
           />
         ) : null}
       </div>
-    </div>
+      </div>
+      <style>{`
+        @keyframes canvasGlassIn {
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+    </>
   )
 }

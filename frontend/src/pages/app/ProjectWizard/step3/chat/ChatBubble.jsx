@@ -4,10 +4,10 @@ export default function ChatBubble({ message }) {
   return (
     <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[92%] rounded-2xl px-3 py-2 text-sm ${
+        className={`max-w-[85%] rounded-[16px] px-4 py-3 text-sm leading-6 shadow-[0_10px_24px_rgba(0,0,0,0.10)] backdrop-blur-[12px] ${
           message.role === 'user'
-            ? 'bg-blue-500 text-white'
-            : 'bg-background text-text-primary'
+            ? 'border border-[rgba(255,193,7,0.15)] bg-[rgba(255,193,7,0.10)] text-[#F8F4E8]'
+            : 'border border-white/[0.05] bg-[rgba(255,255,255,0.03)] text-text-primary'
         }`}
       >
         {message.role === 'user' ? (
