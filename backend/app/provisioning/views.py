@@ -256,7 +256,11 @@ def iac_refine(request, pk):
     if not instruction:
         return Response({'error': 'instruction is required'}, status=status.HTTP_400_BAD_REQUEST)
     try:
-        return Response(iac.refine(project, instruction, request.data.get('history') or []))
+        return Response(iac.refine(
+            project, instruction,
+            history=request.data.get('history') or [],
+            template=request.data.get('template'),
+        ))
     except iac.IacError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 

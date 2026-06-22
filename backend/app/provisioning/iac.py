@@ -185,12 +185,21 @@ def generate(project: Project) -> dict[str, Any]:
             "status": deployment.status}
 
 
-def refine(project: Project, instruction: str, history: list | None = None) -> dict[str, Any]:
-    """Apply a natural-language edit to the current template via the agent."""
+def refine(project: Project, instruction: str, history: list | None = None,
+           template: str | None = None) -> dict[str, Any]:
+    """Refine the current template via the agent. The agent decides whether the
+    instruction is a *question* (answer it, leave the template untouched) or a
+    *change* (edit the template). ``template`` is the live editor content so the
+    agent works on what the user sees (manual edits included), not a stale copy."""
     deployment = ensure_deployment(project)
-    current = deployment.cloudformation_template or ""
+    current = (template if template is not None else deployment.cloudformation_template) or ""
     if not current:
         return generate(project)
+
+    # Persist the (possibly manually edited) current template before refining.
+    if template is not None and template != deployment.cloudformation_template:
+        deployment.cloudformation_template = template
+        deployment.save(update_fields=["cloudformation_template", "updated_at"])
 
     spec = _spec_for(deployment)
     resp = _invoke_iac({
@@ -200,16 +209,26 @@ def refine(project: Project, instruction: str, history: list | None = None) -> d
         "build_spec": spec,
         "history": history or [],
     }, project)
-    template = (resp or {}).get("template", "") or current
-    message = (resp or {}).get("message") or "Updated the template."
 
-    validation = lint_template(template, deployment.aws_connection.aws_region or "us-east-1")
-    deployment.cloudformation_template = template
+    region = deployment.aws_connection.aws_region or "us-east-1"
+
+    # Question → the agent answered without changing the template; leave it as-is.
+    if (resp or {}).get("outcome") == "answer":
+        message = (resp or {}).get("message") or ""
+        validation = lint_template(current, region) if current else None
+        return {"outcome": "answer", "message": message, "template": current,
+                "validation": validation, "status": deployment.status}
+
+    # Edit → persist the agent's updated template.
+    new_template = (resp or {}).get("template", "") or current
+    message = (resp or {}).get("message") or "Updated the template."
+    validation = lint_template(new_template, region)
+    deployment.cloudformation_template = new_template
     deployment.status = Deployment.Status.GENERATING_IAC
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
-    return {"template": template, "message": message, "validation": validation,
-            "status": deployment.status}
+    return {"outcome": "edit", "template": new_template, "message": message,
+            "validation": validation, "status": deployment.status}
 
 
 def validate(project: Project, template: str) -> dict[str, Any]:
