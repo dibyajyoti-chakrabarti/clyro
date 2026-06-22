@@ -13,10 +13,22 @@ import logging
 from typing import Any
 
 import boto3
+from botocore.config import Config
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 logger = logging.getLogger(__name__)
+
+# AgentCore runtime calls are long-running: the agent makes several LLM + tool
+# calls (e.g. IacArchitect authors a full CFN template, then loops validate +
+# cfn-guard), and the first invoke pays a cold start. boto3's default 60s read
+# timeout trips well before that, so give the streaming read a generous window
+# and disable retries (these calls aren't idempotent — a retry re-runs the agent).
+_RUNTIME_CONFIG = Config(
+    connect_timeout=10,
+    read_timeout=600,
+    retries={"max_attempts": 0},
+)
 
 
 def require_runtime_arn(name: str) -> str:
@@ -59,7 +71,7 @@ def invoke_runtime(arn: str, payload: dict, session_id: str) -> dict[str, Any]:
     ``session_id`` must be at least 33 characters for AgentCore — a project UUID
     (36 chars) satisfies this.
     """
-    client = boto3.client("bedrock-agentcore", region_name=settings.AWS_REGION)
+    client = boto3.client("bedrock-agentcore", region_name=settings.AWS_REGION, config=_RUNTIME_CONFIG)
     response = client.invoke_agent_runtime(
         agentRuntimeArn=arn,
         qualifier="DEFAULT",
