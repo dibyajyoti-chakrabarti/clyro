@@ -68,9 +68,11 @@ latency budget, so do NOT browse speculatively:
   re-confirm things you already know.
 - get_cloudformation_pre_deploy_validation_instructions — optional; rarely needed.
 
-VALIDATION — be decisive and converge FAST (at most 2 validation rounds total):
+VALIDATION — INITIAL GENERATION ONLY (mode=generate). Be thorough but converge FAST
+(at most 2 validation rounds total):
 1. Call validate_cloudformation_template once. Fix only ERRORS (E-rules). Warnings
-   (W) and info are ACCEPTABLE — do not fix them, do not loop on them.
+   (W) and info are ACCEPTABLE — do not fix them, do not loop on them. There must be
+   ZERO errors in the template you return.
 2. Call check_cloudformation_template_compliance once. Fix only clearly critical
    security issues (public exposure, unencrypted data at rest, wildcard IAM). Findings
    that conflict with the build spec (e.g. Multi-AZ off when the spec says single-AZ,
@@ -78,6 +80,13 @@ VALIDATION — be decisive and converge FAST (at most 2 validation rounds total)
 3. Re-validate at most ONCE after fixing. Do NOT exceed 2 rounds total. A template
    with warnings or non-critical findings is fine — RETURN it rather than looping.
    Prefer a valid, spec-aligned template over a "perfect" one.
+
+REFINE is LIGHT (mode=refine): for an EDIT, make the change and call
+validate_cloudformation_template ONCE to catch syntax errors from your edit — do NOT
+run cfn-guard/compliance and do NOT loop (the baseline was already vetted at
+generation). For a QUESTION, call NO tools unless the question is specifically about
+security compliance, in which case one check_cloudformation_template_compliance call
+is fine — then answer.
 
 OUTPUT — return EXACTLY one of the two formats below, nothing before or after.
 
@@ -188,12 +197,16 @@ def _build_user_message(payload: dict[str, Any]) -> str:
         return (
             f"{_format_history(payload.get('history') or [])}"
             "First decide what the instruction is:\n"
-            "- A QUESTION (asks you to explain, compare, or justify something — e.g. "
-            "'why is the DB single-AZ?', 'what does this SG do?'): ANSWER it and do NOT "
-            "change the template. Use the ===ANSWER=== format. Do not call validation tools.\n"
-            "- A CHANGE request (asks you to add/remove/modify something): edit the "
-            "template, changing ONLY what's asked and keeping everything else intact, then "
-            "validate. Use the ===TEMPLATE===/===MESSAGE=== format.\n\n"
+            "- A QUESTION (asks you to explain, compare, or justify — e.g. 'why is the "
+            "DB single-AZ?', 'what does this SG do?'): ANSWER it and do NOT change the "
+            "template. Use the ===ANSWER=== format. Call NO tools — UNLESS it's "
+            "specifically about security compliance, then one "
+            "check_cloudformation_template_compliance call is allowed before answering.\n"
+            "- A CHANGE request (add/remove/modify something): edit the template, "
+            "changing ONLY what's asked and keeping everything else intact, then call "
+            "validate_cloudformation_template ONCE (cfn-lint) to catch syntax errors from "
+            "your edit. Do NOT run cfn-guard/compliance and do NOT loop. Use the "
+            "===TEMPLATE===/===MESSAGE=== format.\n\n"
             f"Build spec (JSON):\n{json.dumps(spec)}\n\n"
             f"Current template (YAML):\n{payload.get('template', '')}\n\n"
             f"Instruction: {payload.get('instruction', '')}"
