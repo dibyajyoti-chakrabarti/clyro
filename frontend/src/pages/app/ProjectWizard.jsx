@@ -1450,6 +1450,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [iacReady, setIacReady] = useState(false)
   const [refineInput, setRefineInput] = useState('')
   const [refineHistory, setRefineHistory] = useState([])
+  const iacGenStartedRef = useRef(false)
 
   // provisioning phase state
   const [provisioningLog, setProvisioningLog] = useState([])
@@ -1526,23 +1527,36 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     }
   }
 
-  // Generate the CloudFormation template the first time the iac phase is entered.
-  useEffect(() => {
-    if (phase !== 'iac' || !projectId || iacTemplate || iacGenerating) return
+  const runGenerate = async () => {
     setIacGenerating(true)
     setIacError(null)
-    api.generateIac(projectId)
-      .then((data) => {
-        setIacTemplate(data.template || '')
-        setIacValidation(data.validation || null)
-        setIacReady(data.status === 'iac_ready')
-        if (data.message) {
-          setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message }])
-        }
-      })
-      .catch((err) => setIacError(err.data?.error || 'Failed to generate the template.'))
-      .finally(() => setIacGenerating(false))
-  }, [phase, projectId, iacTemplate, iacGenerating])
+    try {
+      const data = await api.generateIac(projectId)
+      setIacTemplate(data.template || '')
+      setIacValidation(data.validation || null)
+      setIacReady(data.status === 'iac_ready')
+      if (data.message) {
+        setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message }])
+      }
+    } catch (err) {
+      setIacError(err.data?.error || 'Failed to generate the template.')
+    } finally {
+      setIacGenerating(false)
+    }
+  }
+
+  // Generate the template once when the iac phase is entered. A ref guards against
+  // re-running (the effect deps change as generation toggles state); on failure the
+  // user retries explicitly rather than auto-looping and hammering the agent.
+  useEffect(() => {
+    if (phase !== 'iac') {
+      iacGenStartedRef.current = false
+      return
+    }
+    if (!projectId || iacTemplate || iacGenStartedRef.current) return
+    iacGenStartedRef.current = true
+    runGenerate()
+  }, [phase, projectId, iacTemplate])
 
   const handleRefine = async () => {
     const instruction = refineInput.trim()
@@ -1894,6 +1908,14 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
             <div className='flex items-center justify-center gap-2 py-24 text-sm text-text-muted'>
               <span className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
               Generating your CloudFormation template…
+            </div>
+          ) : (!iacTemplate && iacError) ? (
+            <div className='flex flex-col items-center justify-center gap-3 py-20 text-center'>
+              <AlertTriangle className='h-6 w-6 text-red-400' />
+              <p className='max-w-md text-sm text-red-300'>{iacError}</p>
+              <Button variant='secondary' onClick={runGenerate}>
+                Retry generation
+              </Button>
             </div>
           ) : (
             <div className='mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]'>
