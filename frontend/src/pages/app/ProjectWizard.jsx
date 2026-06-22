@@ -1566,11 +1566,18 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     setRefineHistory((prev) => [...prev, { role: 'user', text: instruction }])
     setRefineInput('')
     try {
-      const data = await api.refineIac(projectId, { instruction, history: refineHistory })
-      setIacTemplate(data.template || '')
-      setIacValidation(data.validation || null)
-      setIacReady(data.status === 'iac_ready')
-      setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || 'Updated the template.' }])
+      // Send the current editor content so the agent refines what the user sees
+      // (manual edits included), not a stale server copy.
+      const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate })
+      if (data.outcome === 'answer') {
+        // A question — the agent answered without touching the template.
+        setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || '' }])
+      } else {
+        setIacTemplate(data.template || '')
+        setIacValidation(data.validation || null)
+        setIacReady(data.status === 'iac_ready')
+        setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || 'Updated the template.' }])
+      }
     } catch (err) {
       setIacError(err.data?.error || 'Failed to refine the template.')
     } finally {
@@ -1920,7 +1927,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
           ) : (
             <div className='mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]'>
               <div className='flex flex-col'>
-                <div className='h-[480px] overflow-hidden rounded-lg border border-white/[0.09]'>
+                <div className='h-[680px] overflow-hidden rounded-lg border border-white/[0.09]'>
                   <CfnEditor
                     value={iacTemplate}
                     onChange={(v) => { setIacTemplate(v); setIacReady(false) }}
@@ -1959,7 +1966,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
                     Ask Clyro to change it
                   </p>
                 </div>
-                <div className='flex-1 space-y-3 overflow-y-auto px-3 py-3' style={{ maxHeight: '396px' }}>
+                <div className='flex-1 space-y-3 overflow-y-auto px-3 py-3' style={{ maxHeight: '596px' }}>
                   {refineHistory.length === 0 ? (
                     <p className='text-xs text-text-muted'>
                       e.g. “make the database multi-AZ”, “increase the backend to 2 tasks”, “add an alarm for SQS backlog”.
