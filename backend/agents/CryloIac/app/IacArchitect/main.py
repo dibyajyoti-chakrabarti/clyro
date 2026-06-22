@@ -79,13 +79,22 @@ VALIDATION — be decisive and converge FAST (at most 2 validation rounds total)
    with warnings or non-critical findings is fine — RETURN it rather than looping.
    Prefer a valid, spec-aligned template over a "perfect" one.
 
-OUTPUT — return EXACTLY this format, nothing before or after:
+OUTPUT — return EXACTLY one of the two formats below, nothing before or after.
+
+If you generated or CHANGED the template:
 ===TEMPLATE===
 <the full CloudFormation YAML>
 ===END TEMPLATE===
 ===MESSAGE===
-<one short paragraph: what you built, or for refine what you changed>
+<one short paragraph: what you built or changed>
 ===END MESSAGE===
+
+If the user only asked a QUESTION and no template change is needed (refine mode
+only — explain / compare / justify, e.g. "why is the DB single-AZ?"), answer it and
+leave the template untouched:
+===ANSWER===
+<your answer, concise and specific to this template + build spec>
+===END ANSWER===
 """
 
 
@@ -118,9 +127,16 @@ def _extract_section(text: str, name: str) -> str:
 
 
 def _parse_output(text: str) -> dict[str, str]:
-    """Parse the delimited model output into ``{template, message}``. Falls back to a
-    fenced code block, then to treating the whole reply as the template."""
+    """Parse the delimited model output. A refine question yields an ANSWER block
+    (``{outcome: "answer", message}``); a generate/change yields a TEMPLATE +
+    MESSAGE block (``{outcome: "edit", template, message}``). Falls back to a fenced
+    code block, then to treating the whole reply as the template."""
     text = text.strip()
+
+    answer = _extract_section(text, "ANSWER")
+    if answer and not _extract_section(text, "TEMPLATE"):
+        return {"outcome": "answer", "message": answer}
+
     template = _extract_section(text, "TEMPLATE")
     message = _extract_section(text, "MESSAGE")
     if not template:
@@ -128,7 +144,7 @@ def _parse_output(text: str) -> dict[str, str]:
         template = fence.group(1).strip() if fence else text
     if not message:
         message = "Template ready."
-    return {"template": template, "message": message}
+    return {"outcome": "edit", "template": template, "message": message}
 
 
 mcp_client = get_mcp_client()
@@ -171,13 +187,16 @@ def _build_user_message(payload: dict[str, Any]) -> str:
     if mode == "refine":
         return (
             f"{_format_history(payload.get('history') or [])}"
-            "Refine the current CloudFormation template per the instruction below. "
-            "Change only what the instruction asks; keep everything else intact, then "
-            "validate.\n\n"
+            "First decide what the instruction is:\n"
+            "- A QUESTION (asks you to explain, compare, or justify something — e.g. "
+            "'why is the DB single-AZ?', 'what does this SG do?'): ANSWER it and do NOT "
+            "change the template. Use the ===ANSWER=== format. Do not call validation tools.\n"
+            "- A CHANGE request (asks you to add/remove/modify something): edit the "
+            "template, changing ONLY what's asked and keeping everything else intact, then "
+            "validate. Use the ===TEMPLATE===/===MESSAGE=== format.\n\n"
             f"Build spec (JSON):\n{json.dumps(spec)}\n\n"
             f"Current template (YAML):\n{payload.get('template', '')}\n\n"
-            f"Instruction: {payload.get('instruction', '')}\n\n"
-            "Output the full updated template in the required format."
+            f"Instruction: {payload.get('instruction', '')}"
         )
     return (
         "Author a complete CloudFormation template from this build spec, then "
