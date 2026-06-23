@@ -25,7 +25,7 @@
   },
   {
     "name": "check_cloudformation_template_compliance",
-    "description": "Validate a CloudFormation template against security and compliance rules using cfn-guard (read-only). Returns is_compliant, violation_count, and per-violation remediation guidance. Use to catch insecure configs (public access, missing encryption, weak logging) before returning a template.",
+    "description": "Validate a CloudFormation template against security and compliance rules using cfn-guard (read-only). Returns is_compliant, violation_count, and per-violation remediation guidance. Use once on generation to catch insecure configs (public access, missing encryption, weak logging).",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -39,28 +39,6 @@
         }
       },
       "required": ["template_content"]
-    }
-  },
-  {
-    "name": "search_cloudformation_documentation",
-    "description": "Search official AWS CloudFormation documentation and return ranked excerpts (resource types, properties, syntax, examples). Use to confirm exact property names and types before authoring a resource.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "query": {
-          "type": "string",
-          "description": "Search query, e.g. 'AWS::RDS::DBInstance properties' or 'S3 bucket encryption'."
-        }
-      },
-      "required": ["query"]
-    }
-  },
-  {
-    "name": "get_cloudformation_pre_deploy_validation_instructions",
-    "description": "Return guidance for CloudFormation change-set pre-deployment validation (the checks CloudFormation applies before provisioning: invalid property syntax, name conflicts, S3 emptiness). Takes no arguments.",
-    "inputSchema": {
-      "type": "object",
-      "properties": {}
     }
   }
 ]

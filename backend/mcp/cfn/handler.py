@@ -31,8 +31,6 @@ from awslabs.aws_iac_mcp_server.server import mcp
 ALLOWED_TOOLS = {
     "validate_cloudformation_template",
     "check_cloudformation_template_compliance",
-    "search_cloudformation_documentation",
-    "get_cloudformation_pre_deploy_validation_instructions",
 }
 
 
