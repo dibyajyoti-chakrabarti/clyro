@@ -25,7 +25,7 @@
   "agentCoreGateways": [
     {
       "name": "CryloIacGw",
-      "description": "Full CloudFormation authoring toolset for the IaC agent",
+      "description": "CloudFormation validation + compliance for the IaC agent",
       "targets": [
         {
           "name": "cfn",
@@ -33,22 +33,6 @@
           "lambdaFunctionArn": {
             "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-cfn",
             "toolSchemaFile": "../../mcp/cfn/tools.iac.json"
-          }
-        },
-        {
-          "name": "docs",
-          "targetType": "lambdaFunctionArn",
-          "lambdaFunctionArn": {
-            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-docs",
-            "toolSchemaFile": "../../mcp/docs/tools.json"
-          }
-        },
-        {
-          "name": "pricing",
-          "targetType": "lambdaFunctionArn",
-          "lambdaFunctionArn": {
-            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-pricing",
-            "toolSchemaFile": "../../mcp/pricing/tools.json"
           }
         }
       ],
