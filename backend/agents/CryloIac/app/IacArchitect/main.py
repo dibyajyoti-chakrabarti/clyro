@@ -59,14 +59,13 @@ AUTHORING RULES (from the build spec):
   ElastiCache evictions, SQS oldest-message age). Keep them reasonable; do not invent
   resources the spec doesn't imply.
 
-TOOLS — use sparingly; rely on your own CloudFormation knowledge first. You are on a
-latency budget, so do NOT browse speculatively:
+TOOLS — exactly two, nothing else exists:
 - validate_cloudformation_template (cfn-lint) — syntax / schema / property checks.
 - check_cloudformation_template_compliance (cfn-guard) — security findings.
-- search_cloudformation_documentation — ONLY when you are genuinely unsure of a
-  resource's exact property name or type. Do NOT look up version numbers, browse, or
-  re-confirm things you already know.
-- get_cloudformation_pre_deploy_validation_instructions — optional; rarely needed.
+There is NO documentation-lookup tool. Rely on your own CloudFormation knowledge for
+property names, types, and values — you know these resources well. If you get one
+wrong, validate_cloudformation_template reports it (usually with the valid options) and
+you fix it. Do not stall waiting to "look something up"; author confidently, then validate.
 
 VALIDATION — INITIAL GENERATION ONLY (mode=generate). Be thorough but converge FAST
 (at most 2 validation rounds total):
