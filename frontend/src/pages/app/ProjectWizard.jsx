@@ -1420,6 +1420,7 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
 
 function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) {
   const [phase, setPhase] = useState('aws_connect')
+  const [hydrating, setHydrating] = useState(true)
 
   // aws_connect phase state
   const [cfnConsoleUrl, setCfnConsoleUrl] = useState(null)
@@ -1467,15 +1468,56 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     setStep4CanContinue(phase === 'success')
   }, [phase, setStep4CanContinue])
 
-  // Fetch CloudFormation console URL on mount
+  // Hydrate the Step-4 phase + template from the backend on mount so a refresh
+  // resumes where the user left off: it must not re-prompt the role stack, and
+  // must not regenerate (and thereby lose) an already-authored template. getIac
+  // 400s until AWS is connected, so a successful response implies a connection;
+  // a non-empty template means generation already happened.
   useEffect(() => {
     if (!projectId) return
+    let cancelled = false
+    const hydrate = async () => {
+      try {
+        const data = await api.getIac(projectId)
+        if (cancelled) return
+        setRoleConnected(true)
+        if (data.template) {
+          setIacTemplate(data.template)
+          setIacValidation(data.validation || null)
+          setIacReady(data.status === 'iac_ready')
+          setPhase('iac')
+        } else {
+          // Connected but nothing authored yet — skip to iac (which auto-generates)
+          // only if the secrets were already saved; otherwise resume at env_vars.
+          let envSaved = false
+          try {
+            const env = await api.getEnvVars(projectId)
+            const secrets = env.user_secret || []
+            envSaved = secrets.length > 0 && secrets.every((v) => v.secrets_manager_arn)
+          } catch { /* fall through to env_vars */ }
+          if (!cancelled) setPhase(envSaved ? 'iac' : 'env_vars')
+        }
+      } catch {
+        if (!cancelled) setPhase('aws_connect')  // AWS not connected yet
+      } finally {
+        if (!cancelled) setHydrating(false)
+      }
+    }
+    hydrate()
+    return () => { cancelled = true }
+  }, [projectId])
+
+  // Fetch the CloudFormation console URL only when the user actually needs the
+  // connect step — avoids minting a spurious pending connection on every refresh
+  // once the account is already connected.
+  useEffect(() => {
+    if (hydrating || phase !== 'aws_connect' || !projectId || roleConnected || cfnConsoleUrl) return
     setUrlLoading(true)
     api.initAwsConnection(projectId)
       .then((data) => setCfnConsoleUrl(data.cfn_console_url))
       .catch(() => {})
       .finally(() => setUrlLoading(false))
-  }, [projectId])
+  }, [hydrating, phase, projectId, roleConnected, cfnConsoleUrl])
 
   // Fetch env vars when entering env_vars phase
   useEffect(() => {
@@ -1658,6 +1700,17 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
 
   // Stop polling if the panel unmounts mid-deploy.
   useEffect(() => () => stopDeployPoll(), [])
+
+  if (hydrating) {
+    return (
+      <WizardPanel>
+        <WizardCard width='lg' className='text-center'>
+          <span className='mx-auto block h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin' />
+          <p className='mt-4 text-sm text-text-muted'>Loading your progress…</p>
+        </WizardCard>
+      </WizardPanel>
+    )
+  }
 
   if (phase === 'aws_connect') {
     return (
