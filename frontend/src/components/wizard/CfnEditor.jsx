@@ -20,9 +20,11 @@ if (!window.MonacoEnvironment) {
 // Use the locally-bundled monaco instead of the default CDN download.
 loader.config({ monaco })
 
-// Browser-side "LSP": completion / hover / schema squiggles against the
-// CloudFormation JSON schema. Fetched on demand; if the request fails the editor
-// still works and the backend cfn-lint markers remain the source of truth.
+// Browser-side "LSP": completion + hover against the CloudFormation JSON schema.
+// Schema *validation* is deliberately OFF — the goformation schema can't model CFN
+// intrinsics (!Ref / !Sub / !GetAtt / {{resolve:...}}), so it flags a real template
+// with perpetual false-positive errors. The backend cfn-lint markers (the Validate
+// button) are the authoritative diagnostics.
 const CFN_SCHEMA_URI =
   'https://raw.githubusercontent.com/awslabs/goformation/master/schema/cloudformation.schema.json'
 
@@ -34,7 +36,7 @@ function ensureYamlConfigured() {
     enableSchemaRequest: true,
     hover: true,
     completion: true,
-    validate: true,
+    validate: false,  // see note above — cfn-lint (backend) owns diagnostics
     format: true,
     schemas: [{ uri: CFN_SCHEMA_URI, fileMatch: ['*'] }],
   })
