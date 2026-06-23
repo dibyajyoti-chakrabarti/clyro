@@ -1978,7 +1978,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
               </Button>
             </div>
           ) : (
-            <div className='mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]'>
+            <div className='mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]'>
               <div className='flex flex-col'>
                 <div className='h-[680px] overflow-hidden rounded-lg border border-white/[0.09]'>
                   <CfnEditor
@@ -2025,10 +2025,16 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
                       e.g. “make the database multi-AZ”, “increase the backend to 2 tasks”, “add an alarm for SQS backlog”.
                     </p>
                   ) : refineHistory.map((m, i) => (
-                    <div key={i} className={m.role === 'user' ? 'text-right' : ''}>
-                      <span className={`inline-block rounded-lg px-3 py-2 text-xs ${m.role === 'user' ? 'bg-accent/15 text-text-primary' : 'bg-white/[0.04] text-text-muted'}`}>
-                        {m.text}
-                      </span>
+                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[92%] rounded-lg px-3 py-2 text-xs ${m.role === 'user' ? 'bg-accent/15 text-text-primary' : 'bg-white/[0.04] text-text-muted'}`}>
+                        {m.role === 'user' ? (
+                          m.text
+                        ) : (
+                          <div className='space-y-2 [&_p]:m-0 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-4 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_a]:underline'>
+                            <ReactMarkdown>{m.text}</ReactMarkdown>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                   {iacRefining ? (
@@ -2614,6 +2620,9 @@ export default function ProjectWizard() {
         : 'Continue'
 
   const fullWidth = step === 3 || step === 5
+  // Step 4 (IaC editor) wants the wide working surface like step 3, but keeps the
+  // outer scroll its taller phases rely on (fullWidth steps manage their own).
+  const wideStep = step === 4
   const totalSteps = stepConfig.length
 
   return (
@@ -2647,7 +2656,7 @@ export default function ProjectWizard() {
           </div>
         </div>
 
-        <div className={`flex min-h-0 flex-1 flex-col ${fullWidth ? 'p-4 sm:p-6' : 'overflow-y-auto px-6 py-8 sm:px-10 sm:py-10'}`}>
+        <div className={`flex min-h-0 flex-1 flex-col ${fullWidth ? 'p-4 sm:p-6' : wideStep ? 'overflow-y-auto p-4 sm:p-6' : 'overflow-y-auto px-6 py-8 sm:px-10 sm:py-10'}`}>
           <header className={fullWidth ? 'shrink-0' : ''}>
             <h2 className='text-2xl font-semibold tracking-tight sm:text-3xl'>{currentStepData.title}</h2>
             <p className='mt-2 max-w-2xl text-sm text-text-muted'>{currentStepData.subtitle}</p>
