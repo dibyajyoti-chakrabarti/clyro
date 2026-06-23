@@ -43,6 +43,15 @@ AUTHORING RULES (from the build spec):
 - resources: for each entry in resources[], create exactly the AWS resource types in
   its `cfn_resources`. Apply sizing (Fargate vCPU/memory + desired task count; RDS/
   Aurora instance_class + Multi-AZ; ElastiCache node_class + replicas).
+- stateful-resource hygiene (avoids cfn-lint warnings that would otherwise need a fix
+  round):
+    * Do NOT set EngineVersion on RDS DBInstance / Aurora DBCluster — omit it so AWS
+      selects a current supported default. Pinning a specific minor version (e.g.
+      '16.3') triggers W3691 ("deprecated and cannot be used to create new RDS DB
+      instances") and fails at deploy as versions age out.
+    * On every stateful data resource (RDS DBInstance/DBCluster, ElastiCache
+      ReplicationGroup) set BOTH DeletionPolicy AND UpdateReplacePolicy (Snapshot for
+      RDS/Aurora, Retain for ElastiCache). cfn-lint W3011 fires if only one is present.
 - naming: prefix every resource name with naming_prefix.
 - secrets: reference each entry in secrets[] via a CloudFormation dynamic reference
   ({{resolve:secretsmanager:<arn>}}) injected as a container environment variable —
