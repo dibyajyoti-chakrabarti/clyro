@@ -7,7 +7,7 @@ export default function FullscreenLayout() {
   return (
     <div className='min-h-screen bg-background text-text-primary'>
       <header className='border-b border-border bg-surface'>
-        <div className='mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4'>
+        <div className='mx-auto flex w-full max-w-[1600px] items-center justify-between px-6 py-4'>
           <p className='text-xl font-semibold'>Clyro</p>
           <p className='text-base font-semibold'>Project {id || 'ABC'}</p>
           <Link to='/app/projects'>
@@ -15,7 +15,7 @@ export default function FullscreenLayout() {
           </Link>
         </div>
       </header>
-      <main className='mx-auto min-h-[calc(100vh-73px)] w-full max-w-6xl px-6 py-6'>
+      <main className='mx-auto min-h-[calc(100vh-73px)] w-full max-w-[1600px] px-6 py-6'>
         <Outlet />
       </main>
     </div>
