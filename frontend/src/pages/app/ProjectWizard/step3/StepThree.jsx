@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { X, Database, Globe, Layers, Server, Settings2, Zap } from 'lucide-react'
 import CanvasSurface from './canvas/CanvasSurface'
 import CanvasNode from './canvas/CanvasNode'
@@ -19,6 +19,9 @@ function StepThreePanel({
   const surfaceRef = useRef(null)
   const panState = useRef(null)
   const [activeDrawer, setActiveDrawer] = useState(null)
+  const [zoom, setZoom] = useState(1.0)
+  const zoomIn = useCallback(() => setZoom(z => Math.min(2.0, +(z + 0.1).toFixed(1))), [])
+  const zoomOut = useCallback(() => setZoom(z => Math.max(0.4, +(z - 0.1).toFixed(1))), [])
 
   const {
     canvasNodes,
@@ -42,6 +45,7 @@ function StepThreePanel({
     confirmProposal,
     dismissProposal,
     handleSend,
+    handleAskAbout,
   } = useCanvasAgent({ projectId, setStep3InputPrefill, step3InputPrefill })
 
   const iconByType = {
@@ -97,6 +101,8 @@ function StepThreePanel({
     setActiveDrawer((current) => (current === drawer ? null : drawer))
   }
 
+  const openChatDrawer = () => openDrawer('chat')
+
   const drawerMotion = (drawer) => {
     const isOpen = activeDrawer === drawer
     return isOpen
@@ -138,7 +144,34 @@ function StepThreePanel({
           CanvasNode={CanvasNode}
           NodePopup={NodePopup}
           setChatInput={setChatInput}
+          zoom={zoom}
+          openChatDrawer={openChatDrawer}
+          handleAskAbout={handleAskAbout}
         />
+
+        <div className='pointer-events-none absolute bottom-8 left-8 z-30'>
+          <div className='pointer-events-auto overflow-hidden rounded-[22px] border border-border bg-surface/90 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-md'>
+            <button
+              type='button'
+              className='grid h-10 w-10 place-items-center text-lg font-light text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
+              onClick={zoomIn}
+              aria-label='Zoom in'
+            >
+              +
+            </button>
+            <div className='select-none border-y border-border py-0.5 text-center text-[10px] text-text-muted'>
+              {Math.round(zoom * 100)}%
+            </div>
+            <button
+              type='button'
+              className='grid h-10 w-10 place-items-center text-lg font-light text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
+              onClick={zoomOut}
+              aria-label='Zoom out'
+            >
+              −
+            </button>
+          </div>
+        </div>
 
         <div className='pointer-events-none absolute bottom-8 right-8 z-30 flex flex-col items-end'>
           <div className='pointer-events-auto overflow-hidden rounded-[22px] border border-border bg-surface/90 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-md transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-accent hover:shadow-[0_24px_48px_rgba(0,0,0,0.32)]'>

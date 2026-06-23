@@ -35,6 +35,14 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
     }
   }, [chatHistory])
 
+  const spreadPositions = (positions) => {
+    const result = {}
+    for (const [id, pos] of Object.entries(positions)) {
+      result[id] = { x: Math.round(pos.x * 1.8) + 80, y: Math.round(pos.y * 1.8) + 80 }
+    }
+    return result
+  }
+
   useEffect(() => {
     if (!projectId) return
     let active = true
@@ -42,7 +50,7 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
       .then((res) => {
         if (!active) return
         setCanvas(res.canvas)
-        setNodePositions(res.positions || {})
+        setNodePositions(spreadPositions(res.positions || {}))
       })
       .catch(() => {})
     api.getCanvasChat(projectId)
@@ -75,6 +83,20 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
     } else {
       setPendingOp(null)
       appendAgent(res.message)
+    }
+  }
+
+  const handleAskAbout = async (message) => {
+    const priorTurns = chatHistory.slice(-8)
+    setChatHistory((prev) => [...prev, { role: 'user', text: message }])
+    setAgentLoading(true)
+    try {
+      const res = await api.canvasAgent(projectId, { prompt: message, history: priorTurns })
+      applyResult(res)
+    } catch {
+      appendAgent('Something went wrong talking to the canvas agent.')
+    } finally {
+      setAgentLoading(false)
     }
   }
 
@@ -163,5 +185,6 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
     confirmProposal,
     dismissProposal,
     handleSend,
+    handleAskAbout,
   }
 }

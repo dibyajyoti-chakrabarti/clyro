@@ -1,8 +1,8 @@
 export default function NodePopup({
   selected,
   position,
-  chatInputRef,
-  setChatInput,
+  openChatDrawer,
+  handleAskAbout,
 }) {
   return (
     <div
@@ -48,10 +48,9 @@ export default function NodePopup({
             e.currentTarget.style.color = "#FFB300";
           }}
           onClick={() => {
-            setChatInput(`Tell me about the ${selected.label}`);
-            if (chatInputRef.current) {
-              chatInputRef.current.focus();
-            }
+            const msg = `Tell me about the ${selected.label}`;
+            if (openChatDrawer) openChatDrawer();
+            if (handleAskAbout) handleAskAbout(msg);
           }}
         >
           Ask agent about this →
