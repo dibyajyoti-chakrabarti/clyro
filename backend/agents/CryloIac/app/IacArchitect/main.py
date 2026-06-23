@@ -160,20 +160,21 @@ _tools: list[Any] = []
 if mcp_client:
     _tools.append(mcp_client)
 
-_model = None
+_models: dict[bool, Any] = {}
 
 
-def _get_model():
-    global _model
-    if _model is None:
-        _model = load_model()
-    return _model
+def _get_model(fast: bool = False):
+    # Cache one client per tier (Sonnet for generate, Haiku for refine) so warm
+    # runtimes reuse them across calls.
+    if fast not in _models:
+        _models[fast] = load_model(fast=fast)
+    return _models[fast]
 
 
-def build_agent() -> Agent:
+def build_agent(fast: bool = False) -> Agent:
     # Fresh agent per call — the runtime may stay warm across unrelated projects, so a
     # reused Agent would leak template/history between requests.
-    return Agent(model=_get_model(), system_prompt=SYSTEM_PROMPT, tools=_tools)
+    return Agent(model=_get_model(fast), system_prompt=SYSTEM_PROMPT, tools=_tools)
 
 
 def _format_history(history: list) -> str:
@@ -224,7 +225,8 @@ async def invoke(payload, context):
     mode = payload.get("mode", "generate")
     log.info("IacArchitect invoked (mode=%s)", mode)
 
-    agent = build_agent()
+    # refine (chat Q&A + light edits) runs on Haiku; generate stays on Sonnet.
+    agent = build_agent(fast=(mode == "refine"))
     user_message = _build_user_message(payload)
 
     full_text = ""
