@@ -45,7 +45,7 @@ const steps = [
   },
 ];
 
-const CARD_HEIGHT = "62vh";
+const CARD_HEIGHT = "76vh";
 
 export default function HowItWorks() {
   const sectionRef = useRef(null);
@@ -57,22 +57,22 @@ export default function HowItWorks() {
   return (
     <section
       ref={sectionRef}
-      className="relative w-full bg-[#F6F2EA] py-6 px-4 sm:px-6"
+      className="relative w-full bg-[#F6F2EA] py-6 px-0"
     >
       {/* Rounded wrapper */}
-      <div className="mx-auto max-w-[1700px] bg-[#F6F2EA] rounded-3xl overflow-hidden">
-        <div className="px-4 sm:px-6 lg:px-10 xl:px-12">
+      <div className="w-full max-w-none bg-[#F6F2EA] rounded-3xl overflow-hidden">
+        <div className="px-0">
           <div ref={containerRef}>
             {/* Heading */}
-            <div className="pt-16 pb-10 flex flex-col items-center text-center">
+            <div className="pt-8 pb-4 flex flex-col items-center text-center">
               {/* Main heading */}
-              <h2 className="text-5xl font-bold tracking-tight sm:text-6xl lg:text-7xl leading-none">
+              <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl leading-none">
                 <span className="text-black">How It </span>
                 <span className="text-black/15">Works.</span>
               </h2>
 
               {/* Decorative divider */}
-              <div className="mt-8 flex items-center gap-3">
+              <div className="mt-5 flex items-center gap-3">
                 <div className="h-px w-12 bg-black/10" />
                 <span className="text-[11px] tracking-[0.15em] text-black/30 uppercase font-medium">
                   5 Steps
@@ -110,7 +110,7 @@ export default function HowItWorks() {
                     style={{
                       height: CARD_HEIGHT,
                       width: "100%",
-                      maxWidth: "1600px",
+                      maxWidth: "none",
                     }}
                   >
                     <HowItWorksCard
