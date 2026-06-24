@@ -232,10 +232,12 @@ def _build_user_message(payload: dict[str, Any]) -> str:
 async def invoke(payload, context):
     payload = _normalize_payload(payload)
     mode = payload.get("mode", "generate")
-    log.info("IacArchitect invoked (mode=%s)", mode)
+    force_strong = bool(payload.get("force_strong"))
+    log.info("IacArchitect invoked (mode=%s, force_strong=%s)", mode, force_strong)
 
     # refine (chat Q&A + light edits) runs on Haiku; generate stays on Sonnet.
-    agent = build_agent(fast=(mode == "refine"))
+    # A big / structural change can opt into Sonnet via force_strong.
+    agent = build_agent(fast=(mode == "refine" and not force_strong))
     user_message = _build_user_message(payload)
 
     full_text = ""

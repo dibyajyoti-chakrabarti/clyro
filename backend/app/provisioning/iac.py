@@ -186,11 +186,12 @@ def generate(project: Project) -> dict[str, Any]:
 
 
 def refine(project: Project, instruction: str, history: list | None = None,
-           template: str | None = None) -> dict[str, Any]:
+           template: str | None = None, force_strong: bool = False) -> dict[str, Any]:
     """Refine the current template via the agent. The agent decides whether the
     instruction is a *question* (answer it, leave the template untouched) or a
     *change* (edit the template). ``template`` is the live editor content so the
-    agent works on what the user sees (manual edits included), not a stale copy."""
+    agent works on what the user sees (manual edits included), not a stale copy.
+    ``force_strong`` routes the edit to Sonnet (instead of Haiku) for big changes."""
     deployment = ensure_deployment(project)
     current = (template if template is not None else deployment.cloudformation_template) or ""
     if not current:
@@ -208,6 +209,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
         "instruction": instruction,
         "build_spec": spec,
         "history": history or [],
+        "force_strong": force_strong,
     }, project)
 
     region = deployment.aws_connection.aws_region or "us-east-1"

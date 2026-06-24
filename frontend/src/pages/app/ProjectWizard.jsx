@@ -1451,6 +1451,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [iacReady, setIacReady] = useState(false)
   const [refineInput, setRefineInput] = useState('')
   const [refineHistory, setRefineHistory] = useState([])
+  const [forceStrong, setForceStrong] = useState(false)
   const iacGenStartedRef = useRef(false)
 
   // provisioning phase state
@@ -1610,7 +1611,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     try {
       // Send the current editor content so the agent refines what the user sees
       // (manual edits included), not a stale server copy.
-      const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate })
+      const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, force_strong: forceStrong })
       if (data.outcome === 'answer') {
         // A question — the agent answered without touching the template.
         setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || '' }])
@@ -2045,6 +2046,16 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
                   ) : null}
                 </div>
                 <div className='border-t border-white/[0.07] p-2'>
+                  <label className='mb-2 flex items-center gap-2 text-[11px] text-text-muted'>
+                    <input
+                      type='checkbox'
+                      checked={forceStrong}
+                      onChange={(e) => setForceStrong(e.target.checked)}
+                      disabled={iacRefining}
+                      className='h-3 w-3 accent-accent'
+                    />
+                    Use the stronger model (for big / structural changes)
+                  </label>
                   <div className='flex gap-2'>
                     <input
                       type='text'

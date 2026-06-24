@@ -260,6 +260,7 @@ def iac_refine(request, pk):
             project, instruction,
             history=request.data.get('history') or [],
             template=request.data.get('template'),
+            force_strong=bool(request.data.get('force_strong')),
         ))
     except iac.IacError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
