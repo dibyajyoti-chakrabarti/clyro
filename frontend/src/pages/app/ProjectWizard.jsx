@@ -1418,6 +1418,16 @@ function StepThreePanel({ projectId, setStep3InputPrefill, step3InputPrefill, st
   )
 }
 
+// Curated, user-selectable Bedrock models (keys must match the agent's registry in
+// model/load.py). Each must be enabled in Bedrock "Model access" before it works.
+const MODEL_OPTIONS = [
+  { key: 'sonnet-4-5', label: 'Claude Sonnet 4.5' },
+  { key: 'haiku-4-5', label: 'Claude Haiku 4.5' },
+  { key: 'nova-pro', label: 'Amazon Nova Pro' },
+  { key: 'nova-lite', label: 'Amazon Nova Lite' },
+  { key: 'qwen-coder', label: 'Qwen3-Coder 30B' },
+]
+
 function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) {
   const [phase, setPhase] = useState('aws_connect')
   const [hydrating, setHydrating] = useState(true)
@@ -1452,6 +1462,12 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [refineInput, setRefineInput] = useState('')
   const [refineHistory, setRefineHistory] = useState([])
   const [forceStrong, setForceStrong] = useState(false)
+  // Model choice per slot: generate (initial template), chat (lightweight refine),
+  // and stronger (used when the "stronger model" toggle is on). Keys map to the
+  // agent's registry; defaults mirror the agent's own Sonnet/Haiku split.
+  const [generateModel, setGenerateModel] = useState('sonnet-4-5')
+  const [chatModel, setChatModel] = useState('haiku-4-5')
+  const [strongModel, setStrongModel] = useState('sonnet-4-5')
   const iacGenStartedRef = useRef(false)
 
   // provisioning phase state
@@ -1574,7 +1590,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     setIacGenerating(true)
     setIacError(null)
     try {
-      const data = await api.generateIac(projectId)
+      const data = await api.generateIac(projectId, { model: generateModel })
       setIacTemplate(data.template || '')
       setIacValidation(data.validation || null)
       setIacReady(data.status === 'iac_ready')
@@ -1611,7 +1627,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     try {
       // Send the current editor content so the agent refines what the user sees
       // (manual edits included), not a stale server copy.
-      const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, force_strong: forceStrong })
+      const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, model: forceStrong ? strongModel : chatModel })
       if (data.outcome === 'answer') {
         // A question — the agent answered without touching the template.
         setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || '' }])
@@ -1963,6 +1979,27 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
             <p className='mt-1 text-sm text-text-muted'>
               Clyro generated this CloudFormation template from your architecture. Edit it directly or ask for changes, then validate before provisioning.
             </p>
+            <div className='mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-text-muted'>
+              <span className='font-medium text-text-primary'>Models</span>
+              {[
+                ['Generate', generateModel, setGenerateModel],
+                ['Chat', chatModel, setChatModel],
+                ['Stronger', strongModel, setStrongModel],
+              ].map(([label, value, setter]) => (
+                <label key={label} className='flex items-center gap-1.5'>
+                  {label}
+                  <select
+                    value={value}
+                    onChange={(e) => setter(e.target.value)}
+                    className='rounded-md border border-white/[0.09] bg-surface px-2 py-1 text-xs text-text-primary focus-visible:outline-none focus-visible:border-accent/50'
+                  >
+                    {MODEL_OPTIONS.map((m) => (
+                      <option key={m.key} value={m.key}>{m.label}</option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
           </div>
 
           {iacGenerating && !iacTemplate ? (

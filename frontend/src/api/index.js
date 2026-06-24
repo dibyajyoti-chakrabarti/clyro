@@ -61,7 +61,7 @@ export const api = {
 
   // Step 4 — IaC (CloudFormation) generation / refine / validate
   getIac: (id) => request('GET', `/api/projects/${id}/iac/`),
-  generateIac: (id) => request('POST', `/api/projects/${id}/iac/generate/`),
+  generateIac: (id, payload) => request('POST', `/api/projects/${id}/iac/generate/`, payload),
   refineIac: (id, payload) => request('POST', `/api/projects/${id}/iac/refine/`, payload),
   validateIac: (id, payload) => request('POST', `/api/projects/${id}/iac/validate/`, payload),
 
