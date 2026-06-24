@@ -89,16 +89,31 @@ VALIDATION — INITIAL GENERATION ONLY (mode=generate). Be thorough but converge
    with warnings or non-critical findings is fine — RETURN it rather than looping.
    Prefer a valid, spec-aligned template over a "perfect" one.
 
-REFINE is LIGHT (mode=refine): for an EDIT, make the change and call
-validate_cloudformation_template ONCE to catch syntax errors from your edit — do NOT
-run cfn-guard/compliance and do NOT loop (the baseline was already vetted at
-generation). For a QUESTION, call NO tools unless the question is specifically about
-security compliance, in which case one check_cloudformation_template_compliance call
-is fine — then answer.
+REFINE (mode=refine) uses NO tools — the backend runs cfn-lint on the result and, if
+your edit introduced errors, sends them back for you to fix. So:
+- QUESTION (explain / compare / justify): answer it, leave the template unchanged.
+- CHANGE: express it as the SMALLEST set of search/replace edits (see ===EDITS===).
+  Change ONLY what's asked; leave everything else byte-for-byte. Do not call tools.
+  Escape hatch: if the change is so sweeping that targeted edits are impractical, or
+  the payload sets prefer_full, return the FULL template via ===TEMPLATE=== instead.
 
-OUTPUT — return EXACTLY one of the two formats below, nothing before or after.
+OUTPUT — return EXACTLY one of the formats below, nothing before or after.
 
-If you generated or CHANGED the template:
+(refine CHANGE — preferred) one or more search/replace edits. Each SEARCH block must be
+copied EXACTLY from the current template (indentation included) with enough surrounding
+lines to match EXACTLY ONCE; REPLACE is the new text (leave it empty to delete):
+===EDITS===
+@@SEARCH@@
+<exact existing lines>
+@@REPLACE@@
+<new lines>
+@@END@@
+===END EDITS===
+===MESSAGE===
+<one short paragraph: what you changed>
+===END MESSAGE===
+
+(generate, or a refine CHANGE needing a full rewrite / prefer_full) the whole YAML:
 ===TEMPLATE===
 <the full CloudFormation YAML>
 ===END TEMPLATE===
@@ -106,9 +121,8 @@ If you generated or CHANGED the template:
 <one short paragraph: what you built or changed>
 ===END MESSAGE===
 
-If the user only asked a QUESTION and no template change is needed (refine mode
-only — explain / compare / justify, e.g. "why is the DB single-AZ?"), answer it and
-leave the template untouched:
+(refine QUESTION only — explain / compare / justify, e.g. "why is the DB single-AZ?")
+answer it and leave the template untouched:
 ===ANSWER===
 <your answer, concise and specific to this template + build spec>
 ===END ANSWER===
@@ -143,12 +157,31 @@ def _extract_section(text: str, name: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def _parse_output(text: str) -> dict[str, str]:
-    """Parse the delimited model output. A refine question yields an ANSWER block
-    (``{outcome: "answer", message}``); a generate/change yields a TEMPLATE +
-    MESSAGE block (``{outcome: "edit", template, message}``). Falls back to a fenced
-    code block, then to treating the whole reply as the template."""
+def _parse_edits(text: str) -> list[dict[str, str]]:
+    """Parse ``@@SEARCH@@ ... @@REPLACE@@ ... @@END@@`` blocks from an ===EDITS===
+    section into ``[{search, replace}]``. The ``@@`` markers can't appear in CFN YAML
+    (or its ``# ====`` comment banners), so they won't collide with template content."""
+    body = _extract_section(text, "EDITS")
+    if not body:
+        return []
+    edits = []
+    for m in re.finditer(r"@@SEARCH@@\n(.*?)\n@@REPLACE@@\n(.*?)\n?@@END@@", body, re.DOTALL):
+        edits.append({"search": m.group(1), "replace": m.group(2)})
+    return edits
+
+
+def _parse_output(text: str) -> dict[str, Any]:
+    """Parse the delimited model output into one of three outcomes:
+    - ``{outcome: "edit", edits: [...], message}``  — refine change as search/replace
+    - ``{outcome: "answer", message}``              — refine question
+    - ``{outcome: "edit", template, message}``      — generate / full-rewrite fallback
+    Falls back to a fenced code block, then the whole reply, as the template."""
     text = text.strip()
+
+    edits = _parse_edits(text)
+    if edits:
+        return {"outcome": "edit", "edits": edits,
+                "message": _extract_section(text, "MESSAGE") or "Updated the template."}
 
     answer = _extract_section(text, "ANSWER")
     if answer and not _extract_section(text, "TEMPLATE"):
@@ -203,19 +236,24 @@ def _build_user_message(payload: dict[str, Any]) -> str:
     mode = payload.get("mode", "generate")
     spec = payload.get("build_spec", {})
     if mode == "refine":
+        prefer_full = bool(payload.get("prefer_full"))
+        change_fmt = (
+            "return the FULL revised template via ===TEMPLATE===/===MESSAGE==="
+            if prefer_full else
+            "return the SMALLEST set of @@SEARCH@@/@@REPLACE@@/@@END@@ edits via "
+            "===EDITS===/===MESSAGE=== — copy each SEARCH block EXACTLY from the current "
+            "template (indentation included) with enough context to match exactly once, "
+            "and change ONLY what's asked"
+        )
         return (
             f"{_format_history(payload.get('history') or [])}"
             "First decide what the instruction is:\n"
-            "- A QUESTION (asks you to explain, compare, or justify — e.g. 'why is the "
-            "DB single-AZ?', 'what does this SG do?'): ANSWER it and do NOT change the "
-            "template. Use the ===ANSWER=== format. Call NO tools — UNLESS it's "
-            "specifically about security compliance, then one "
-            "check_cloudformation_template_compliance call is allowed before answering.\n"
-            "- A CHANGE request (add/remove/modify something): edit the template, "
-            "changing ONLY what's asked and keeping everything else intact, then call "
-            "validate_cloudformation_template ONCE (cfn-lint) to catch syntax errors from "
-            "your edit. Do NOT run cfn-guard/compliance and do NOT loop. Use the "
-            "===TEMPLATE===/===MESSAGE=== format.\n\n"
+            "- A QUESTION (explain / compare / justify — e.g. 'why is the DB single-AZ?', "
+            "'what does this SG do?'): ANSWER it, leave the template unchanged, use the "
+            "===ANSWER=== format.\n"
+            f"- A CHANGE (add/remove/modify something): {change_fmt}.\n"
+            "Call NO tools either way — the backend runs cfn-lint and will send any "
+            "errors back for you to fix.\n\n"
             f"Build spec (JSON):\n{json.dumps(spec)}\n\n"
             f"Current template (YAML):\n{payload.get('template', '')}\n\n"
             f"Instruction: {payload.get('instruction', '')}"

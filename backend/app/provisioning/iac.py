@@ -10,6 +10,7 @@ of record on ``Deployment.cloudformation_template``.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from cfnlint import api as cfnlint_api
@@ -29,6 +30,8 @@ from app import agentcore
 
 from .build_spec import build_spec
 
+log = logging.getLogger(__name__)
+
 # cfn-lint severity → the level strings the frontend maps to Monaco MarkerSeverity.
 _LEVEL = {"error": "error", "warning": "warning", "informational": "info"}
 
@@ -36,6 +39,39 @@ _LEVEL = {"error": "error", "warning": "warning", "informational": "info"}
 class IacError(Exception):
     """A precondition for IaC generation is missing (no finalized canvas, no
     connected AWS account, etc.). Carries a user-facing message."""
+
+
+class _EditApplyError(Exception):
+    """A search/replace edit block could not be applied cleanly (no match or an
+    ambiguous match) — refine falls back to a full-template rewrite."""
+
+
+def _apply_edits(template: str, edits: list[dict[str, str]]) -> str:
+    """Apply the agent's search/replace blocks to the template deterministically.
+    Each SEARCH must match EXACTLY ONCE; otherwise we raise and let the caller fall
+    back to a full rewrite (a wrong/ambiguous patch is worse than re-authoring)."""
+    result = template
+    for edit in edits:
+        search = edit.get("search", "")
+        replace = edit.get("replace", "")
+        if not search:
+            raise _EditApplyError("empty SEARCH block")
+        count = result.count(search)
+        if count != 1:
+            raise _EditApplyError(
+                f"SEARCH block matched {count} times (need exactly 1): {search[:80]!r}"
+            )
+        result = result.replace(search, replace, 1)
+    return result
+
+
+def _lint_fix_instruction(validation: dict[str, Any]) -> str:
+    """A terse instruction listing the cfn-lint ERRORS a just-applied edit introduced,
+    for one bounded corrective round."""
+    errs = [d for d in validation.get("diagnostics", []) if d.get("level") == "error"][:8]
+    listed = "\n".join(f"- L{d.get('line')} {d.get('rule')}: {d.get('message')}" for d in errs)
+    return ("Your last edit introduced these cfn-lint ERRORS. Fix ONLY these, changing "
+            f"nothing else:\n{listed}")
 
 
 # ── Preconditions + spec assembly ──────────────────────────────────────────────
@@ -221,10 +257,51 @@ def refine(project: Project, instruction: str, history: list | None = None,
         return {"outcome": "answer", "message": message, "template": current,
                 "validation": validation, "status": deployment.status}
 
-    # Edit → persist the agent's updated template.
-    new_template = (resp or {}).get("template", "") or current
+    # Edit → the agent returns either search/replace blocks (preferred, cheap) or a
+    # full template (escape hatch / old agent). Apply blocks deterministically; on any
+    # apply failure, ask the agent once for the full template instead.
     message = (resp or {}).get("message") or "Updated the template."
+    edits = (resp or {}).get("edits") or []
+    if edits:
+        try:
+            new_template = _apply_edits(current, edits)
+        except _EditApplyError as exc:
+            log.info("refine: search/replace didn't apply (%s); requesting full rewrite", exc)
+            resp = _invoke_iac({
+                "mode": "refine", "template": current, "instruction": instruction,
+                "build_spec": spec, "history": history or [],
+                "force_strong": force_strong, "prefer_full": True,
+            }, project)
+            new_template = (resp or {}).get("template", "") or current
+            message = (resp or {}).get("message") or message
+    else:
+        new_template = (resp or {}).get("template", "") or current
+
     validation = lint_template(new_template, region)
+
+    # One bounded corrective round if the edit introduced cfn-lint ERRORS (warnings are
+    # acceptable). Only keep the fix if it actually reduces errors.
+    if validation["errors"]:
+        fix_resp = _invoke_iac({
+            "mode": "refine", "template": new_template,
+            "instruction": _lint_fix_instruction(validation),
+            "build_spec": spec, "history": history or [], "force_strong": force_strong,
+        }, project)
+        fixed = None
+        fix_edits = (fix_resp or {}).get("edits") or []
+        if fix_edits:
+            try:
+                fixed = _apply_edits(new_template, fix_edits)
+            except _EditApplyError:
+                fixed = None
+        elif (fix_resp or {}).get("template"):
+            fixed = fix_resp["template"]
+        if fixed:
+            fixed_validation = lint_template(fixed, region)
+            if fixed_validation["errors"] < validation["errors"]:
+                new_template, validation = fixed, fixed_validation
+                message = (fix_resp or {}).get("message") or message
+
     deployment.cloudformation_template = new_template
     deployment.status = Deployment.Status.GENERATING_IAC
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
