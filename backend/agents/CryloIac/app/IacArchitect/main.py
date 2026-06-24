@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
-import time
 from typing import Any
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -280,19 +280,30 @@ async def invoke(payload, context):
     user_message = _build_user_message(payload)
 
     # Stream the model, but only emit the parsed result at the end. A generate can
-    # run for minutes; if the HTTP response stays byte-silent the whole time, the
+    # run for minutes; if the HTTP response stays byte-silent for too long, the
     # runtime's load balancer idle-times-out and resets the connection (the caller
-    # sees ConnectionResetError). So emit a tiny heartbeat at most every 15s to keep
-    # the stream alive — the backend (parse_runtime_response) drops these.
+    # sees ConnectionResetError). Race each step against a 15s timeout and emit a
+    # heartbeat whenever the model is quiet — this covers byte-silent gaps with NO
+    # stream events (waiting for the first token, a tool call running) as well as
+    # active generation, unlike a beat that only fires per event. The backend
+    # (parse_runtime_response) drops these heartbeats. (Cold container start, before
+    # this code runs, is outside our reach — AgentCore manages that, bounded by the
+    # caller's read timeout.)
     full_text = ""
-    last_beat = time.monotonic()
-    async for event in agent.stream_async(user_message):
+    stream = aiter(agent.stream_async(user_message))
+    while True:
+        step = asyncio.ensure_future(anext(stream))
+        while True:
+            done, _ = await asyncio.wait({step}, timeout=15)
+            if done:
+                break
+            yield json.dumps({"__heartbeat__": True})
+        try:
+            event = step.result()
+        except StopAsyncIteration:
+            break
         if "data" in event and isinstance(event["data"], str):
             full_text += event["data"]
-        now = time.monotonic()
-        if now - last_beat >= 15:
-            last_beat = now
-            yield json.dumps({"__heartbeat__": True})
 
     result = _parse_output(full_text)
     yield json.dumps(result)
