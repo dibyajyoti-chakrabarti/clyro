@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../../../../api'
+import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPanel'
 import AwsConnectCard from './AwsConnectCard'
 import DeploymentSuccess from './DeploymentSuccess'
 import EnvVarsPanel from './EnvVarsPanel'
+import IacEditor from './IacEditor'
 import ProvisionLog from './ProvisionLog'
 import ReviewArchitecture from './ReviewArchitecture'
 
 function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) {
   const [phase, setPhase] = useState('aws_connect')
+  const [hydrating, setHydrating] = useState(true)
 
-  // aws_connect phase
+  // aws_connect phase state
   const [cfnConsoleUrl, setCfnConsoleUrl] = useState(null)
   const [urlLoading, setUrlLoading] = useState(false)
   const [stackOpened, setStackOpened] = useState(false)
@@ -18,7 +21,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [verifyError, setVerifyError] = useState(null)
   const [roleConnected, setRoleConnected] = useState(false)
 
-  // env_vars phase
+  // env_vars phase state
   const [envVarsLoading, setEnvVarsLoading] = useState(false)
   const [userSecretVars, setUserSecretVars] = useState([])
   const [generatedVars, setGeneratedVars] = useState([])
@@ -28,25 +31,90 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [savingEnvVars, setSavingEnvVars] = useState(false)
   const [saveError, setSaveError] = useState(null)
 
-  // provisioning / review
-  const [showTemplate, setShowTemplate] = useState(false)
+  // iac phase state
+  const [iacTemplate, setIacTemplate] = useState('')
+  const [iacValidation, setIacValidation] = useState(null)
+  const [iacGenerating, setIacGenerating] = useState(false)
+  const [iacRefining, setIacRefining] = useState(false)
+  const [iacValidating, setIacValidating] = useState(false)
+  const [iacError, setIacError] = useState(null)
+  const [iacReady, setIacReady] = useState(false)
+  const [refineInput, setRefineInput] = useState('')
+  const [refineHistory, setRefineHistory] = useState([])
+  const [forceStrong, setForceStrong] = useState(false)
+  // Model choice per slot: generate (initial template), chat (lightweight refine),
+  // and stronger (used when the "stronger model" toggle is on). Keys map to the
+  // agent's registry; defaults mirror the agent's own Sonnet/Haiku split.
+  const [generateModel, setGenerateModel] = useState('sonnet-4-5')
+  const [chatModel, setChatModel] = useState('haiku-4-5')
+  const [strongModel, setStrongModel] = useState('sonnet-4-5')
+  const iacGenStartedRef = useRef(false)
+
+  // provisioning phase state
   const [provisioningLog, setProvisioningLog] = useState([])
-  const [cfTemplate, setCfTemplate] = useState('')
+  const [deployStatus, setDeployStatus] = useState(null)
+  const [deployError, setDeployError] = useState(null)
+  const [stackOutputs, setStackOutputs] = useState([])
+  const deployPollRef = useRef(null)
+
+  // shared
+  const [showTemplate, setShowTemplate] = useState(false)
   const [copiedKey, setCopiedKey] = useState('')
 
   useEffect(() => {
     setStep4CanContinue(phase === 'success')
   }, [phase, setStep4CanContinue])
 
-  // Fetch CloudFormation console URL on mount
+  // Hydrate the Step-4 phase + template from the backend on mount so a refresh
+  // resumes where the user left off: it must not re-prompt the role stack, and
+  // must not regenerate (and thereby lose) an already-authored template. getIac
+  // 400s until AWS is connected, so a successful response implies a connection;
+  // a non-empty template means generation already happened.
   useEffect(() => {
     if (!projectId) return
+    let cancelled = false
+    const hydrate = async () => {
+      try {
+        const data = await api.getIac(projectId)
+        if (cancelled) return
+        setRoleConnected(true)
+        if (data.template) {
+          setIacTemplate(data.template)
+          setIacValidation(data.validation || null)
+          setIacReady(data.status === 'iac_ready')
+          setPhase('iac')
+        } else {
+          // Connected but nothing authored yet — skip to iac (which auto-generates)
+          // only if the secrets were already saved; otherwise resume at env_vars.
+          let envSaved = false
+          try {
+            const env = await api.getEnvVars(projectId)
+            const secrets = env.user_secret || []
+            envSaved = secrets.length > 0 && secrets.every((v) => v.secrets_manager_arn)
+          } catch { /* fall through to env_vars */ }
+          if (!cancelled) setPhase(envSaved ? 'iac' : 'env_vars')
+        }
+      } catch {
+        if (!cancelled) setPhase('aws_connect')  // AWS not connected yet
+      } finally {
+        if (!cancelled) setHydrating(false)
+      }
+    }
+    hydrate()
+    return () => { cancelled = true }
+  }, [projectId])
+
+  // Fetch the CloudFormation console URL only when the user actually needs the
+  // connect step — avoids minting a spurious pending connection on every refresh
+  // once the account is already connected.
+  useEffect(() => {
+    if (hydrating || phase !== 'aws_connect' || !projectId || roleConnected || cfnConsoleUrl) return
     setUrlLoading(true)
     api.initAwsConnection(projectId)
       .then((data) => setCfnConsoleUrl(data.cfn_console_url))
       .catch(() => {})
       .finally(() => setUrlLoading(false))
-  }, [projectId])
+  }, [hydrating, phase, projectId, roleConnected, cfnConsoleUrl])
 
   // Fetch env vars when entering env_vars phase
   useEffect(() => {
@@ -90,11 +158,83 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     setSaveError(null)
     try {
       await api.saveEnvVars(projectId, { values: secretValues, extra_vars: extraVars })
-      setPhase('review')
+      setPhase('iac')
     } catch (err) {
       setSaveError(err.data?.error || 'Failed to save secrets — please try again.')
     } finally {
       setSavingEnvVars(false)
+    }
+  }
+
+  const runGenerate = async () => {
+    setIacGenerating(true)
+    setIacError(null)
+    try {
+      const data = await api.generateIac(projectId, { model: generateModel })
+      setIacTemplate(data.template || '')
+      setIacValidation(data.validation || null)
+      setIacReady(data.status === 'iac_ready')
+      if (data.message) {
+        setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message }])
+      }
+    } catch (err) {
+      setIacError(err.data?.error || 'Failed to generate the template.')
+    } finally {
+      setIacGenerating(false)
+    }
+  }
+
+  // Generate the template once when the iac phase is entered. A ref guards against
+  // re-running (the effect deps change as generation toggles state); on failure the
+  // user retries explicitly rather than auto-looping and hammering the agent.
+  useEffect(() => {
+    if (phase !== 'iac') {
+      iacGenStartedRef.current = false
+      return
+    }
+    if (!projectId || iacTemplate || iacGenStartedRef.current) return
+    iacGenStartedRef.current = true
+    runGenerate()
+  }, [phase, projectId, iacTemplate])
+
+  const handleRefine = async () => {
+    const instruction = refineInput.trim()
+    if (!instruction || iacRefining) return
+    setIacRefining(true)
+    setIacError(null)
+    setRefineHistory((prev) => [...prev, { role: 'user', text: instruction }])
+    setRefineInput('')
+    try {
+      // Send the current editor content so the agent refines what the user sees
+      // (manual edits included), not a stale server copy.
+      const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, model: forceStrong ? strongModel : chatModel })
+      if (data.outcome === 'answer') {
+        // A question — the agent answered without touching the template.
+        setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || '' }])
+      } else {
+        setIacTemplate(data.template || '')
+        setIacValidation(data.validation || null)
+        setIacReady(data.status === 'iac_ready')
+        setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || 'Updated the template.' }])
+      }
+    } catch (err) {
+      setIacError(err.data?.error || 'Failed to refine the template.')
+    } finally {
+      setIacRefining(false)
+    }
+  }
+
+  const handleValidate = async () => {
+    setIacValidating(true)
+    setIacError(null)
+    try {
+      const data = await api.validateIac(projectId, { template: iacTemplate })
+      setIacValidation(data.validation || null)
+      setIacReady(data.status === 'iac_ready')
+    } catch (err) {
+      setIacError(err.data?.error || 'Validation failed — please try again.')
+    } finally {
+      setIacValidating(false)
     }
   }
 
@@ -106,6 +246,67 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     } catch {
       setCopiedKey('')
     }
+  }
+
+  // ── Provisioning (Step 4.5): submit + poll the live CFN feed ──────────────
+  const stopDeployPoll = () => {
+    if (deployPollRef.current) {
+      clearInterval(deployPollRef.current)
+      deployPollRef.current = null
+    }
+  }
+
+  const pollDeployOnce = async () => {
+    try {
+      const data = await api.getDeployStatus(projectId)
+      setProvisioningLog(data.log || [])
+      setDeployStatus(data.status)
+      setStackOutputs(data.outputs || [])
+      if (data.error) setDeployError(data.error)
+      if (data.status === 'complete') {
+        stopDeployPoll()
+        setPhase('success')
+      } else if (data.status === 'failed' || data.status === 'rolled_back') {
+        stopDeployPoll()
+      }
+    } catch (err) {
+      setDeployError(err.data?.error || null)  // transient — keep polling
+    }
+  }
+
+  const startDeployPoll = () => {
+    stopDeployPoll()
+    pollDeployOnce()
+    deployPollRef.current = setInterval(pollDeployOnce, 4000)
+  }
+
+  const handleProvision = async () => {
+    setDeployError(null)
+    setProvisioningLog([])
+    setStackOutputs([])
+    setDeployStatus('submitting')
+    setPhase('provisioning')
+    try {
+      await api.startDeploy(projectId)
+      startDeployPoll()
+    } catch (err) {
+      setDeployError(err.data?.error || 'Failed to start provisioning.')
+      setDeployStatus('failed')
+    }
+  }
+
+  // Stop polling if the panel unmounts mid-deploy.
+  useEffect(() => () => stopDeployPoll(), [])
+
+  if (hydrating) {
+    return (
+      <WizardPanel>
+        <WizardCard width='lg' className='text-center'>
+          <span className='mx-auto block h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin' />
+          <p className='mt-4 text-sm text-text-muted'>Loading your progress…</p>
+        </WizardCard>
+      </WizardPanel>
+    )
   }
 
   if (phase === 'aws_connect') {
@@ -151,24 +352,65 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     )
   }
 
+  if (phase === 'iac') {
+    return (
+      <IacEditor
+        template={iacTemplate}
+        onTemplateChange={(v) => { setIacTemplate(v); setIacReady(false) }}
+        validation={iacValidation}
+        generating={iacGenerating}
+        refining={iacRefining}
+        validating={iacValidating}
+        error={iacError}
+        ready={iacReady}
+        onValidate={handleValidate}
+        onRetryGenerate={runGenerate}
+        refineInput={refineInput}
+        onRefineInputChange={setRefineInput}
+        onRefine={handleRefine}
+        refineHistory={refineHistory}
+        forceStrong={forceStrong}
+        onForceStrongChange={setForceStrong}
+        generateModel={generateModel}
+        setGenerateModel={setGenerateModel}
+        chatModel={chatModel}
+        setChatModel={setChatModel}
+        strongModel={strongModel}
+        setStrongModel={setStrongModel}
+        onBack={() => setPhase('env_vars')}
+        onContinue={() => setPhase('review')}
+      />
+    )
+  }
+
   if (phase === 'review') {
     return (
       <ReviewArchitecture
         showTemplate={showTemplate}
-        cfTemplate={cfTemplate}
+        cfTemplate={iacTemplate}
         onToggleTemplate={() => setShowTemplate((prev) => !prev)}
-        onEditArchitecture={() => setPhase('env_vars')}
-        onProvision={() => setPhase('provisioning')}
+        onEditArchitecture={() => setPhase('iac')}
+        onProvision={handleProvision}
       />
     )
   }
 
   if (phase === 'provisioning') {
-    return <ProvisionLog provisioningLog={provisioningLog} />
+    return (
+      <ProvisionLog
+        provisioningLog={provisioningLog}
+        deployStatus={deployStatus}
+        deployError={deployError}
+        onRetry={handleProvision}
+        onBack={() => setPhase('review')}
+      />
+    )
   }
 
+  // success phase
   return (
     <DeploymentSuccess
+      stackOutputs={stackOutputs}
       copiedKey={copiedKey}
       onCopy={handleCopy}
       onGoToDashboard={() => {
