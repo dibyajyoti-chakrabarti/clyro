@@ -31,7 +31,7 @@ function ReviewArchitecture({ showTemplate, cfTemplate, onToggleTemplate, onEdit
             onClick={onEditArchitecture}
           >
             <ArrowLeft className='h-4 w-4' />
-            Edit architecture
+            Edit template
           </button>
           <Button variant='primary' onClick={onProvision}>
             Provision
