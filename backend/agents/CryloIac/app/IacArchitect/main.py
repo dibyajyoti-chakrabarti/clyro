@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -278,10 +279,20 @@ async def invoke(payload, context):
     agent = build_agent(fast=(mode == "refine" and not force_strong))
     user_message = _build_user_message(payload)
 
+    # Stream the model, but only emit the parsed result at the end. A generate can
+    # run for minutes; if the HTTP response stays byte-silent the whole time, the
+    # runtime's load balancer idle-times-out and resets the connection (the caller
+    # sees ConnectionResetError). So emit a tiny heartbeat at most every 15s to keep
+    # the stream alive — the backend (parse_runtime_response) drops these.
     full_text = ""
+    last_beat = time.monotonic()
     async for event in agent.stream_async(user_message):
         if "data" in event and isinstance(event["data"], str):
             full_text += event["data"]
+        now = time.monotonic()
+        if now - last_beat >= 15:
+            last_beat = now
+            yield json.dumps({"__heartbeat__": True})
 
     result = _parse_output(full_text)
     yield json.dumps(result)

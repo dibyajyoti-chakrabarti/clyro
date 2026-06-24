@@ -50,14 +50,33 @@ def require_runtime_arn(name: str) -> str:
 def parse_runtime_response(raw: bytes | str) -> dict[str, Any]:
     """Parse an AgentCore Runtime reply. A streaming entrypoint returns
     ``text/event-stream`` framing (``data: <chunk>\\n\\n``) and each yielded JSON
-    string is itself JSON-encoded by the SSE layer (double-encoded), so we strip
-    the ``data:`` lines and decode JSON until we land on the object."""
+    string is itself JSON-encoded by the SSE layer (double-encoded). Each yielded
+    value is single-line JSON, so one ``data:`` line is one event: decode each, drop
+    keepalive heartbeats (``{"__heartbeat__": true}``, which IacArchitect emits during
+    long generations to keep the stream from idle-timing-out), and return the last
+    real result. Falls back to the legacy join-all decode for a single value that
+    happens to span multiple ``data:`` lines."""
     text = (raw.decode() if isinstance(raw, bytes) else raw).strip()
     data_lines = [
         line[len("data:"):].strip()
         for line in text.splitlines()
         if line.strip().startswith("data:")
     ]
+
+    events: list[Any] | None = []
+    try:
+        for line in (data_lines or [text]):
+            if not line:
+                continue
+            obj = json.loads(line)
+            events.append(json.loads(obj) if isinstance(obj, str) else obj)
+    except (ValueError, TypeError):
+        events = None  # a value spanned multiple data lines — use the join fallback
+
+    if events:
+        real = [e for e in events if not (isinstance(e, dict) and e.get("__heartbeat__"))]
+        return (real or events)[-1]
+
     payload = "".join(data_lines) if data_lines else text
     obj = json.loads(payload)
     if isinstance(obj, str):  # double-encoded: decode once more to the object
