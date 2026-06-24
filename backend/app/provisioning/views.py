@@ -240,7 +240,7 @@ def iac_generate(request, pk):
     if err:
         return err
     try:
-        return Response(iac.generate(project))
+        return Response(iac.generate(project, model=request.data.get('model')))
     except iac.IacError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -260,7 +260,7 @@ def iac_refine(request, pk):
             project, instruction,
             history=request.data.get('history') or [],
             template=request.data.get('template'),
-            force_strong=bool(request.data.get('force_strong')),
+            model=request.data.get('model'),
         ))
     except iac.IacError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

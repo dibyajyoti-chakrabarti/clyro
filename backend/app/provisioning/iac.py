@@ -203,12 +203,13 @@ def _invoke_iac(payload: dict, project: Project) -> dict[str, Any]:
     return agentcore.invoke_runtime(arn, payload, str(project.id))
 
 
-def generate(project: Project) -> dict[str, Any]:
+def generate(project: Project, model: str | None = None) -> dict[str, Any]:
     """Author a fresh template from the build spec, persist it, and return it with
-    backend cfn-lint diagnostics."""
+    backend cfn-lint diagnostics. ``model`` is the user-selected generate model key
+    (the agent falls back to its default when omitted)."""
     deployment = ensure_deployment(project)
     spec = _spec_for(deployment)
-    resp = _invoke_iac({"mode": "generate", "build_spec": spec}, project)
+    resp = _invoke_iac({"mode": "generate", "build_spec": spec, "model": model}, project)
     template = (resp or {}).get("template", "") or ""
     message = (resp or {}).get("message") or "Generated your CloudFormation template."
 
@@ -222,16 +223,17 @@ def generate(project: Project) -> dict[str, Any]:
 
 
 def refine(project: Project, instruction: str, history: list | None = None,
-           template: str | None = None, force_strong: bool = False) -> dict[str, Any]:
+           template: str | None = None, model: str | None = None) -> dict[str, Any]:
     """Refine the current template via the agent. The agent decides whether the
     instruction is a *question* (answer it, leave the template untouched) or a
     *change* (edit the template). ``template`` is the live editor content so the
     agent works on what the user sees (manual edits included), not a stale copy.
-    ``force_strong`` routes the edit to Sonnet (instead of Haiku) for big changes."""
+    ``model`` is the user-selected model key for this turn (the frontend picks the
+    chat model, or the stronger model when its toggle is on)."""
     deployment = ensure_deployment(project)
     current = (template if template is not None else deployment.cloudformation_template) or ""
     if not current:
-        return generate(project)
+        return generate(project, model=model)
 
     # Persist the (possibly manually edited) current template before refining.
     if template is not None and template != deployment.cloudformation_template:
@@ -245,7 +247,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
         "instruction": instruction,
         "build_spec": spec,
         "history": history or [],
-        "force_strong": force_strong,
+        "model": model,
     }, project)
 
     region = deployment.aws_connection.aws_region or "us-east-1"
@@ -270,7 +272,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
             resp = _invoke_iac({
                 "mode": "refine", "template": current, "instruction": instruction,
                 "build_spec": spec, "history": history or [],
-                "force_strong": force_strong, "prefer_full": True,
+                "model": model, "prefer_full": True,
             }, project)
             new_template = (resp or {}).get("template", "") or current
             message = (resp or {}).get("message") or message
@@ -285,7 +287,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
         fix_resp = _invoke_iac({
             "mode": "refine", "template": new_template,
             "instruction": _lint_fix_instruction(validation),
-            "build_spec": spec, "history": history or [], "force_strong": force_strong,
+            "build_spec": spec, "history": history or [], "model": model,
         }, project)
         fixed = None
         fix_edits = (fix_resp or {}).get("edits") or []

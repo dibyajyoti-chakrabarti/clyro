@@ -9,7 +9,7 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent
 
 from mcp_client.client import get_mcp_client
-from model.load import load_model
+from model.load import DEFAULT_GENERATE, DEFAULT_REFINE, load_model, resolve_model_id
 
 app = BedrockAgentCoreApp()
 log = app.logger
@@ -203,21 +203,20 @@ _tools: list[Any] = []
 if mcp_client:
     _tools.append(mcp_client)
 
-_models: dict[bool, Any] = {}
+_models: dict[str, Any] = {}
 
 
-def _get_model(fast: bool = False):
-    # Cache one client per tier (Sonnet for generate, Haiku for refine) so warm
-    # runtimes reuse them across calls.
-    if fast not in _models:
-        _models[fast] = load_model(fast=fast)
-    return _models[fast]
+def _get_model(model_id: str):
+    # Cache one client per resolved model id so warm runtimes reuse them across calls.
+    if model_id not in _models:
+        _models[model_id] = load_model(model_id)
+    return _models[model_id]
 
 
-def build_agent(fast: bool = False) -> Agent:
+def build_agent(model_id: str) -> Agent:
     # Fresh agent per call — the runtime may stay warm across unrelated projects, so a
     # reused Agent would leak template/history between requests.
-    return Agent(model=_get_model(fast), system_prompt=SYSTEM_PROMPT, tools=_tools)
+    return Agent(model=_get_model(model_id), system_prompt=SYSTEM_PROMPT, tools=_tools)
 
 
 def _format_history(history: list) -> str:
@@ -271,12 +270,13 @@ def _build_user_message(payload: dict[str, Any]) -> str:
 async def invoke(payload, context):
     payload = _normalize_payload(payload)
     mode = payload.get("mode", "generate")
-    force_strong = bool(payload.get("force_strong"))
-    log.info("IacArchitect invoked (mode=%s, force_strong=%s)", mode, force_strong)
+    # The caller picks the model per slot (generate / chat / stronger) and sends its
+    # key; fall back to the mode default if absent or unknown.
+    default_key = DEFAULT_REFINE if mode == "refine" else DEFAULT_GENERATE
+    model_id = resolve_model_id(payload.get("model"), default_key)
+    log.info("IacArchitect invoked (mode=%s, model=%s)", mode, model_id)
 
-    # refine (chat Q&A + light edits) runs on Haiku; generate stays on Sonnet.
-    # A big / structural change can opt into Sonnet via force_strong.
-    agent = build_agent(fast=(mode == "refine" and not force_strong))
+    agent = build_agent(model_id)
     user_message = _build_user_message(payload)
 
     # Stream the model, but only emit the parsed result at the end. A generate can
