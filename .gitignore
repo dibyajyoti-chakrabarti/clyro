@@ -29,3 +29,11 @@ frontend/dist/
 # Misc
 .DS_Store
 *.log
+
+# Terraform — provider cache and state (state lives in S3 remote backend)
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+# Do NOT ignore .terraform.lock.hcl — it pins provider versions (like package-lock.json)
+# Do NOT ignore *.tfvars — they contain non-secret config (secrets passed via -var flags)

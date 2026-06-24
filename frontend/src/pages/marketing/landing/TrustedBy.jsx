@@ -1,7 +1,7 @@
 import awsLogo from '../../../assets/logos/AWS_Logo.svg'
-import githubLogo from '../../../assets/logos/github-fill.svg'
 import terraformLogo from '../../../assets/logos/terraform_logo.svg'
 import cloudfrontLogo from '../../../assets/logos/cloudfront_logo.svg'
+import GitHubLogo from '../../../components/common/GitHubLogo'
 
 const brands = [
   {
@@ -10,7 +10,7 @@ const brands = [
   },
   {
     name: 'GitHub',
-    logo: githubLogo,
+    logo: GitHubLogo,
   },
   {
     name: 'Terraform',
@@ -34,11 +34,15 @@ export default function TrustedBy() {
           {brands.map((brand, index) => (
             <li key={brand.name} className='contents sm:flex sm:items-center sm:gap-8 lg:gap-12'>
               <div className='flex items-center justify-center gap-3'>
-                <img
-                  src={brand.logo}
-                  alt={`${brand.name} logo`}
-                  className='h-8 w-auto object-contain opacity-80'
-                />
+                {typeof brand.logo === 'string' ? (
+                  <img
+                    src={brand.logo}
+                    alt={`${brand.name} logo`}
+                    className='h-8 w-auto opacity-80'
+                  />
+                ) : (
+                  <brand.logo className='h-8 w-auto opacity-80' aria-label={`${brand.name} logo`} />
+                )}
                 <span className='text-xl font-medium text-black/85'>{brand.name}</span>
               </div>
               {index < brands.length - 1 ? (

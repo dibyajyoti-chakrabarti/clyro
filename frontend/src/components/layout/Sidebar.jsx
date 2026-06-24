@@ -20,12 +20,38 @@ const NAV_LINKS = [
   { to: '/app/settings', label: 'Settings', icon: Settings },
 ]
 
+const MOTION_EASE = 'cubic-bezier(.22,1,.36,1)'
+const WIDTH_MOTION = {
+  transitionProperty: 'width',
+  transitionDuration: '420ms',
+  transitionTimingFunction: MOTION_EASE,
+}
+
 function AnimatedLabel({ children, collapsed, className = '' }) {
+  const motionStyle = collapsed
+    ? {
+        opacity: 0,
+        transform: 'translateX(-12px)',
+        transitionProperty: 'opacity, transform, max-width',
+        transitionDuration: '180ms',
+        transitionTimingFunction: 'ease-out',
+        transitionDelay: '0ms',
+        willChange: 'opacity, transform, max-width',
+      }
+    : {
+        opacity: 1,
+        transform: 'translateX(0px)',
+        transitionProperty: 'opacity, transform, max-width',
+        transitionDuration: '240ms',
+        transitionTimingFunction: 'ease-out',
+        transitionDelay: '120ms',
+        willChange: 'opacity, transform, max-width',
+      }
+
   return (
     <span
-      className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${
-        collapsed ? 'max-w-[96px] translate-x-0 opacity-100' : 'max-w-[160px] translate-x-0 opacity-100'
-      } ${className}`.trim()}
+      className={`overflow-hidden whitespace-nowrap ${className}`.trim()}
+      style={motionStyle}
     >
       {children}
     </span>
@@ -60,10 +86,35 @@ function SidebarAvatar({ profile, collapsed }) {
     <Link
       to='/app/profile'
       title={name || 'Profile'}
-      className='flex h-[60px] items-center gap-3 rounded-2xl border border-transparent px-2 py-2 transition-all duration-300 ease-in-out hover:border-white/10 hover:bg-white/[0.04]'
+      className='flex h-[60px] items-center gap-3 rounded-2xl border border-transparent px-2 py-2 transition-[background-color,border-color,transform] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-white/10 hover:bg-white/[0.04]'
     >
       {avatar}
-      <div className={`min-w-0 flex-1 transition-all duration-300 ease-in-out ${collapsed ? 'max-w-0 -translate-x-2 opacity-0' : 'max-w-[180px] translate-x-0 opacity-100'}`}>
+      <div
+        className='min-w-0 flex-1 overflow-hidden whitespace-nowrap'
+        style={
+          collapsed
+            ? {
+                maxWidth: '0px',
+                opacity: 0,
+                transform: 'translateX(-12px)',
+                transitionProperty: 'max-width, opacity, transform',
+                transitionDuration: '180ms',
+                transitionTimingFunction: 'ease-out',
+                transitionDelay: '0ms',
+                willChange: 'max-width, opacity, transform',
+              }
+            : {
+                maxWidth: '180px',
+                opacity: 1,
+                transform: 'translateX(0px)',
+                transitionProperty: 'max-width, opacity, transform',
+                transitionDuration: '240ms',
+                transitionTimingFunction: 'ease-out',
+                transitionDelay: '120ms',
+                willChange: 'max-width, opacity, transform',
+              }
+        }
+      >
         <p className='truncate text-sm font-semibold text-white'>{name || 'Profile'}</p>
         <p className='truncate text-xs text-white/65'>{profile?.email || ''}</p>
       </div>
@@ -81,9 +132,25 @@ export default function Sidebar() {
   }, [])
 
   return (
-    <div className={`shrink-0 transition-all duration-300 ease-in-out ${collapsed ? 'w-[80px]' : 'w-[260px]'}`}>
-      <aside className='sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-3xl border border-white/[0.08] bg-[#050912] px-4 py-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)] transition-all duration-300 ease-in-out'>
-        <Link to='/app/dashboard' className={`flex items-center transition-all duration-300 ease-in-out ${collapsed ? 'justify-center px-0' : 'gap-3 px-2'}`}>
+    <div
+      className='shrink-0'
+      style={{
+        width: collapsed ? '80px' : '260px',
+        transitionProperty: 'width',
+        transitionDuration: '420ms',
+        transitionTimingFunction: MOTION_EASE,
+        willChange: 'width',
+      }}
+    >
+      <aside
+        className='sticky top-4 flex h-[calc(100vh-2rem)] flex-col rounded-3xl border border-white/[0.08] bg-[#050912] px-4 py-5 text-white shadow-[0_24px_80px_rgba(0,0,0,0.45)]'
+        style={WIDTH_MOTION}
+      >
+        <Link
+          to='/app/dashboard'
+          className={`flex items-center transition-[gap,padding,transform] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] ${collapsed ? 'justify-center px-0' : 'gap-3 px-2'}`}
+          style={{ willChange: 'transform, gap' }}
+        >
           <div className='flex items-center gap-3'>
             <img
               src={clyroLogo}
@@ -91,9 +158,20 @@ export default function Sidebar() {
               className='h-10 w-10 object-contain'
             />
             <span
-              className={`overflow-hidden whitespace-nowrap text-2xl font-semibold text-white transition-all duration-300 ease-in-out ${
+              className={`overflow-hidden whitespace-nowrap text-2xl font-semibold text-white transition-[opacity,transform,max-width] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] ${
                 collapsed ? 'max-w-0 -translate-x-2 opacity-0' : 'max-w-[120px] translate-x-0 opacity-100'
               }`}
+              style={
+                collapsed
+                  ? {
+                      transitionDelay: '0ms',
+                      willChange: 'opacity, transform, max-width',
+                    }
+                  : {
+                      transitionDelay: '120ms',
+                      willChange: 'opacity, transform, max-width',
+                    }
+              }
             >
               Clyro
             </span>
@@ -110,7 +188,7 @@ export default function Sidebar() {
                 to={item.to}
                 title={collapsed ? item.label : undefined}
                 className={({ isActive }) =>
-                  `group flex items-center rounded-2xl border px-4 py-3 transition-all duration-300 ease-in-out ${
+                  `group flex items-center rounded-2xl border px-4 py-3 transition-[background-color,border-color,color,transform,gap,padding] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] ${
                     collapsed ? 'flex-col gap-1' : 'gap-3'
                   } ${
                     isActive
@@ -121,9 +199,9 @@ export default function Sidebar() {
               >
                 {({ isActive }) => (
                   <>
-                    <span className='flex h-6 w-6 shrink-0 items-center justify-center'>
+                    <span className='flex h-6 w-6 shrink-0 items-center justify-center' style={{ willChange: 'transform' }}>
                       <Icon
-                        className={`h-5 w-5 shrink-0 transition-colors duration-300 ease-in-out ${
+                        className={`h-5 w-5 shrink-0 transition-colors duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] ${
                           isActive ? 'text-[#FFC400]' : 'text-white'
                         }`}
                       />
@@ -143,9 +221,10 @@ export default function Sidebar() {
             type='button'
             onClick={() => setCollapsed((prev) => !prev)}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className={`flex h-[48px] w-full items-center rounded-2xl border border-transparent px-4 text-sm font-medium text-white/65 transition-all duration-300 ease-in-out hover:border-white/10 hover:bg-white/[0.04] hover:text-white ${
+            className={`flex h-[48px] w-full items-center rounded-2xl border border-transparent px-4 text-sm font-medium text-white/65 transition-[background-color,border-color,color,transform,width,gap,padding] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-white/10 hover:bg-white/[0.04] hover:text-white ${
               collapsed ? 'justify-center gap-0' : 'gap-3'
             }`}
+            style={{ willChange: 'transform, width' }}
           >
             <span className='flex h-5 w-5 shrink-0 items-center justify-center text-white'>
               {collapsed ? <PanelLeftOpen className='h-5 w-5' /> : <PanelLeftClose className='h-5 w-5' />}
@@ -163,9 +242,10 @@ export default function Sidebar() {
             type='button'
             onClick={logout}
             title={collapsed ? 'Sign out' : undefined}
-            className={`mt-3 flex h-[48px] w-full items-center rounded-2xl border border-transparent px-4 text-sm font-medium text-white/65 transition-all duration-300 ease-in-out hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-300 ${
+            className={`mt-3 flex h-[48px] w-full items-center rounded-2xl border border-transparent px-4 text-sm font-medium text-white/65 transition-[background-color,border-color,color,transform,gap,padding] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-300 ${
               collapsed ? 'justify-center gap-0' : 'gap-3'
             }`}
+            style={{ willChange: 'transform' }}
           >
             <LogOut className='h-5 w-5 shrink-0 text-white' />
             <AnimatedLabel collapsed={collapsed} className='text-sm font-medium'>

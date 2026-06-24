@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Bell, Globe, Mail, MessageSquareMore, MoonStar, Palette, Workflow } from 'lucide-react'
 import Button from '../../components/ui/Button'
+import GlassSelect from "../../components/ui/GlassSelect";
 
 const AWS_REGIONS = [
   { value: 'ap-south-1', label: 'Asia Pacific — Mumbai (ap-south-1)' },
@@ -71,91 +72,89 @@ export default function Settings() {
   }
 
   return (
-    <div className='space-y-5'>
-      <div className='mb-6'>
-        <h1 className='text-5xl font-semibold text-white'>Settings</h1>
-        <p className='mt-2 text-base text-text-muted'>Manage your preferences.</p>
+    <div className="space-y-5">
+      <div className="mb-6">
+        <h1 className="text-5xl font-semibold text-white">Settings</h1>
+        <p className="mt-2 text-base text-text-muted">
+          Manage your preferences.
+        </p>
       </div>
 
       <Card>
-        <div className='space-y-4'>
+        <div className="space-y-4">
           <SectionHeader
             icon={Globe}
-            title='Default AWS Region'
-            description='Used as the default when creating new projects. You can override this per project.'
+            title="Default AWS Region"
+            description="Used as the default when creating new projects. You can override this per project."
           />
 
-          <div className='flex flex-col gap-2 md:flex-row md:items-center'>
-            <select
+          <div className="flex flex-col gap-2 md:flex-row md:items-center">
+            <GlassSelect
+              options={AWS_REGIONS}
               value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              className='h-12 flex-1 rounded-xl border border-white/[0.08] bg-background/40 px-4 text-sm text-text-primary outline-none transition-[border-color,box-shadow] duration-150 hover:border-white/[0.14] focus:border-amber-300/40 focus:ring-2 focus:ring-amber-400/20'
-            >
-              {AWS_REGIONS.map((r) => (
-                <option key={r.value} value={r.value} className='bg-surface'>
-                  {r.label}
-                </option>
-              ))}
-            </select>
+              onChange={setRegion}
+            />
             <Button
-              variant='primary'
+              variant="primary"
               onClick={handleSave}
               disabled={saved}
-              className='h-12 w-full rounded-xl px-5 md:w-[120px]'
+              className="h-12 w-full rounded-xl px-5 md:w-[120px]"
             >
-              {saved ? 'Saved' : 'Save'}
+              {saved ? "Saved" : "Save"}
             </Button>
           </div>
 
-          <p className='text-sm text-text-muted'>Stored locally in your browser - not synced across devices.</p>
+          <p className="text-sm text-text-muted">
+            Stored locally in your browser - not synced across devices.
+          </p>
         </div>
       </Card>
 
       <Card>
-        <div className='space-y-4'>
+        <div className="space-y-4">
           <SectionHeader
             icon={Bell}
-            title='Notifications'
-            description='Control how Clyro notifies you about your infrastructure events.'
+            title="Notifications"
+            description="Control how Clyro notifies you about your infrastructure events."
           />
 
-          <div className='space-y-2'>
+          <div className="space-y-2">
             <ComingSoonRow
               icon={Mail}
-              label='Email notifications'
-              description='Deployment success, failure, and cost alerts'
+              label="Email notifications"
+              description="Deployment success, failure, and cost alerts"
             />
             <ComingSoonRow
               icon={MessageSquareMore}
-              label='Slack integration'
-              description='Post deployment events to a channel'
+              label="Slack integration"
+              description="Post deployment events to a channel"
             />
             <ComingSoonRow
               icon={Workflow}
-              label='Webhooks'
-              description='Send events to your own endpoint'
+              label="Webhooks"
+              description="Send events to your own endpoint"
             />
           </div>
         </div>
       </Card>
 
       <Card>
-        <div className='space-y-4'>
+        <div className="space-y-4">
           <SectionHeader
             icon={Palette}
-            title='Appearance'
-            description='Visual preferences for the Clyro interface.'
+            title="Appearance"
+            description="Visual preferences for the Clyro interface."
           />
 
-          <div className='space-y-2'>
+          <div className="space-y-2">
             <ComingSoonRow
               icon={MoonStar}
-              label='Theme'
-              description='Light, dark, or system default'
+              label="Theme"
+              description="Light, dark, or system default"
             />
           </div>
         </div>
       </Card>
     </div>
-  )
+  );
 }

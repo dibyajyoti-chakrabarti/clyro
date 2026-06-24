@@ -1,3 +1,378 @@
+const CARD_THEMES = {
+  "01": {
+    background: "linear-gradient(90deg, #F4E4B2 0%, #DDB24B 100%)",
+    border: "1px solid rgba(0,0,0,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.18), 0 6px 16px rgba(0,0,0,0.10)",
+    headingColor: "#0B0B0B",
+    highlightColor: "#FFB300",
+    stepBg: "#06101D",
+    stepColor: "#FFB300",
+    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
+    titleColor: "rgba(17,17,17,0.45)",
+    bodyColor: "rgba(17,17,17,0.72)",
+    chipBg: "rgba(255,255,255,0.55)",
+    chipText: "#111111",
+    chipBorder: "rgba(0,0,0,0.06)",
+    badgeBg: "rgba(255,255,255,0.20)",
+    badgeBorder: "rgba(255,255,255,0.25)",
+    badgeText: "rgba(0,0,0,0.75)",
+    processText: "rgba(17,17,17,0.45)",
+  },
+  "02": {
+    background: "linear-gradient(90deg, #E2BC58 0%, #C89227 100%)",
+    border: "1px solid rgba(0,0,0,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.18), 0 6px 16px rgba(0,0,0,0.10)",
+    headingColor: "#0B0B0B",
+    highlightColor: "#FFB300",
+    stepBg: "#06101D",
+    stepColor: "#FFB300",
+    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
+    titleColor: "rgba(17,17,17,0.45)",
+    bodyColor: "rgba(17,17,17,0.72)",
+    chipBg: "rgba(255,255,255,0.55)",
+    chipText: "#111111",
+    chipBorder: "rgba(0,0,0,0.06)",
+    badgeBg: "rgba(255,255,255,0.20)",
+    badgeBorder: "rgba(255,255,255,0.25)",
+    badgeText: "rgba(0,0,0,0.75)",
+    processText: "rgba(17,17,17,0.45)",
+  },
+  "03": {
+    background: "linear-gradient(90deg, #6A4A16 0%, #1D1510 100%)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.28), 0 6px 16px rgba(0,0,0,0.16)",
+    headingColor: "#FFFFFF",
+    highlightColor: "#FFB300",
+    stepBg: "#06101D",
+    stepColor: "#FFB300",
+    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
+    titleColor: "rgba(255,255,255,0.45)",
+    bodyColor: "rgba(255,255,255,0.72)",
+    chipBg: "rgba(255,255,255,0.10)",
+    chipText: "#FFFFFF",
+    chipBorder: "rgba(255,255,255,0.08)",
+    badgeBg: "rgba(255,255,255,0.08)",
+    badgeBorder: "rgba(255,255,255,0.10)",
+    badgeText: "rgba(255,255,255,0.90)",
+    processText: "rgba(255,255,255,0.45)",
+  },
+  "04": {
+    background: "linear-gradient(90deg, #03142F 0%, #1C1C1C 100%)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.32), 0 6px 16px rgba(0,0,0,0.18)",
+    headingColor: "#FFFFFF",
+    highlightColor: "#FFB300",
+    stepBg: "#06101D",
+    stepColor: "#FFB300",
+    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
+    titleColor: "rgba(255,255,255,0.45)",
+    bodyColor: "rgba(255,255,255,0.72)",
+    chipBg: "rgba(255,255,255,0.10)",
+    chipText: "#FFFFFF",
+    chipBorder: "rgba(255,255,255,0.08)",
+    badgeBg: "rgba(255,255,255,0.08)",
+    badgeBorder: "rgba(255,255,255,0.10)",
+    badgeText: "rgba(255,255,255,0.90)",
+    processText: "rgba(255,255,255,0.45)",
+  },
+  "05": {
+    background: "linear-gradient(90deg, #02122B 0%, #1A1714 100%)",
+    border: "1px solid rgba(255,255,255,0.08)",
+    boxShadow: "0 16px 40px rgba(0,0,0,0.36), 0 6px 16px rgba(0,0,0,0.20)",
+    headingColor: "#FFFFFF",
+    highlightColor: "#FFB300",
+    stepBg: "#06101D",
+    stepColor: "#FFB300",
+    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
+    titleColor: "rgba(255,255,255,0.45)",
+    bodyColor: "rgba(255,255,255,0.72)",
+    chipBg: "rgba(255,255,255,0.10)",
+    chipText: "#FFFFFF",
+    chipBorder: "rgba(255,255,255,0.08)",
+    badgeBg: "rgba(255,255,255,0.08)",
+    badgeBorder: "rgba(255,255,255,0.10)",
+    badgeText: "rgba(255,255,255,0.90)",
+    processText: "rgba(255,255,255,0.45)",
+  },
+};
+
+const CARD_COPY = {
+  "01": {
+    summary:
+      "Analyze your codebase and identify the services required for deployment.",
+    chips: ["React Frontend", "Django Backend", "PostgreSQL", "Redis", "Celery Workers"],
+    flow: ["Repository", "Analysis", "Detection", "Blueprint"],
+    accentLabel: "Repository Scan Ready",
+  },
+  "02": {
+    summary:
+      "Understand your infrastructure goals before generating the architecture.",
+    chips: [
+      "Traffic Expectations",
+      "Environment Setup",
+      "Domain Selection",
+      "Database Choice",
+      "Scaling Requirements",
+    ],
+    flow: ["Requirements", "Validation", "Planning"],
+    accentLabel: "Intent Capture",
+  },
+  "03": {
+    summary:
+      "Create an optimized deployment blueprint based on your application needs.",
+    chips: [
+      "Architecture Graph",
+      "Service Mapping",
+      "Resource Planning",
+      "Cost Projection",
+      "Optimization Rules",
+    ],
+    flow: ["Architecture", "Optimization", "Final Design"],
+    accentLabel: "Blueprint Generated",
+  },
+  "04": {
+    summary:
+      "Provision cloud resources and launch your architecture automatically.",
+    chips: [
+      "Cloud Resources",
+      "Infrastructure Provisioning",
+      "Security Policies",
+      "Deployment Pipeline",
+      "Production Launch",
+    ],
+    flow: ["Provision", "Configure", "Deploy"],
+    accentLabel: "Deployment In Motion",
+  },
+  "05": {
+    summary: "Track performance, health, and cloud spend in one place.",
+    chips: [
+      "Health Monitoring",
+      "Usage Analytics",
+      "Cost Tracking",
+      "Performance Insights",
+      "Optimization Recommendations",
+    ],
+    flow: ["Monitor", "Analyze", "Optimize"],
+    accentLabel: "Operations Live",
+  },
+};
+
+function Chip({ children, variant = "dark" }) {
+  const variantClasses =
+    variant === "light"
+      ? "bg-[rgba(255,255,255,0.55)] text-[#111111] border-[rgba(0,0,0,0.06)]"
+      : "bg-[rgba(255,255,255,0.10)] text-white border-[rgba(255,255,255,0.08)]";
+
+  return (
+    <span
+      className={`inline-flex h-[42px] items-center rounded-full border px-[18px] text-[15px] font-semibold tracking-normal transition-[filter] hover:brightness-105 ${variantClasses}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function StatusBadge({ children, variant = "dark" }) {
+  const variantClasses =
+    variant === "light"
+      ? "bg-[rgba(255,255,255,0.20)] border-[rgba(255,255,255,0.25)] text-[rgba(0,0,0,0.75)]"
+      : "bg-[rgba(255,255,255,0.08)] border-[rgba(255,255,255,0.10)] text-[rgba(255,255,255,0.90)]";
+
+  return (
+    <div
+      className={`inline-flex h-[54px] w-[220px] items-center rounded-[18px] border px-5 backdrop-blur-[12px] ${variantClasses}`}
+    >
+      <span className="text-[12px] font-semibold uppercase tracking-[0.18em] opacity-90">
+        Status
+      </span>
+      <span className="ml-2 text-[20px] font-bold leading-none">{children}</span>
+    </div>
+  );
+}
+
+function StepCircle({ step, theme }) {
+  return (
+    <div
+      className="flex h-[120px] w-[120px] items-center justify-center rounded-full"
+      style={{
+        background: theme.stepBg,
+        color: theme.stepColor,
+        boxShadow: theme.stepShadow,
+      }}
+    >
+      <span className="text-[56px] font-extrabold leading-none">{step}</span>
+    </div>
+  );
+}
+
+function ContentBlock({ step, headingTop, headingHighlight, copy, theme, isLightCard }) {
+  const fullHeading = `${headingTop} ${headingHighlight}`.trim();
+  const words = fullHeading.split(/\s+/).filter(Boolean);
+  const chipVariant = step === "01" || step === "02" ? "light" : "dark";
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div>
+          <p
+            className="text-[14px] font-bold uppercase tracking-[0.25em]"
+            style={{
+              color: isLightCard ? "rgba(17,17,17,0.45)" : "rgba(255,255,255,0.45)",
+            }}
+          >
+            Step {step}
+          </p>
+
+          <h3
+            className="mt-3 max-w-[80%] font-extrabold uppercase leading-[0.95] tracking-[-0.03em]"
+            style={{
+              fontSize: "56px",
+              color: theme.headingColor,
+            }}
+          >
+            {words.map((word, index) => {
+              const isHighlighted = word === headingHighlight;
+              return (
+                <span
+                  key={`${word}-${index}`}
+                  className="inline-block"
+                  style={{
+                    marginRight: index === words.length - 1 ? 0 : "0.18em",
+                  }}
+                >
+                  {isHighlighted ? (
+                    <span style={{ color: theme.highlightColor }}>{word}</span>
+                  ) : (
+                    word
+                  )}
+                </span>
+              );
+            })}
+          </h3>
+
+          <p
+            className="mt-6 max-w-[70%] text-[22px] font-normal leading-[1.5]"
+            style={{
+              color: isLightCard ? "rgba(17,17,17,0.72)" : "rgba(255,255,255,0.72)",
+            }}
+          >
+            {copy.summary}
+          </p>
+
+          <div className="mt-8 flex max-w-[100%] flex-wrap gap-3">
+            {copy.chips.map((chip) => (
+              <Chip key={chip} variant={chipVariant}>
+                {chip}
+              </Chip>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="mt-auto pt-8 text-[15px] font-bold uppercase tracking-[0.18em]"
+          style={{
+            color: isLightCard ? "rgba(17,17,17,0.45)" : "rgba(255,255,255,0.45)",
+            opacity: 0.55,
+          }}
+        >
+          {copy.flow.map((item, index) => (
+            <span key={item} className="inline-flex items-center">
+              <span>{item}</span>
+              {index < copy.flow.length - 1 ? <span className="mx-2">→</span> : null}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VisualBlock({ illustration }) {
+  return (
+    <div className="flex h-full min-h-0 items-center justify-center overflow-hidden">
+      <img
+        src={illustration}
+        alt=""
+        className="block select-none object-contain pointer-events-none"
+        style={{
+          width: "70%",
+          maxWidth: "75%",
+          maxHeight: "90%",
+        }}
+        draggable={false}
+      />
+    </div>
+  );
+}
+
+function OddCardLayout({ step, headingTop, headingHighlight, illustration, theme, copy, isLightCard }) {
+  return (
+    <div
+      className="grid h-full min-h-0 grid-rows-[120px_1fr] md:grid-rows-[120px_1fr]"
+      style={{
+        gridTemplateColumns: "56% 22% 22%",
+        gridTemplateAreas: '"content status step" "content visual visual"',
+      }}
+    >
+      <div className="md:[grid-area:content]">
+        <ContentBlock
+          step={step}
+          headingTop={headingTop}
+          headingHighlight={headingHighlight}
+          copy={copy}
+          theme={theme}
+          isLightCard={isLightCard}
+        />
+      </div>
+      <div className="flex items-center justify-center md:[grid-area:status]">
+        <StatusBadge variant={isLightCard ? "light" : "dark"}>
+          {copy.accentLabel}
+        </StatusBadge>
+      </div>
+      <div className="flex items-center justify-center md:[grid-area:step]">
+        <StepCircle step={step} theme={theme} />
+      </div>
+      <div className="md:[grid-area:visual]">
+        <VisualBlock illustration={illustration} />
+      </div>
+    </div>
+  );
+}
+
+function EvenCardLayout({ step, headingTop, headingHighlight, illustration, theme, copy, isLightCard }) {
+  return (
+    <div
+      className="grid h-full min-h-0 grid-rows-[120px_1fr] md:grid-rows-[120px_1fr]"
+      style={{
+        gridTemplateColumns: "22% 22% 56%",
+        gridTemplateAreas: '"step status content" "visual visual content"',
+      }}
+    >
+      <div className="flex items-center justify-center md:[grid-area:step]">
+        <StepCircle step={step} theme={theme} />
+      </div>
+      <div className="flex items-center justify-center md:[grid-area:status]">
+        <StatusBadge variant={isLightCard ? "light" : "dark"}>
+          {copy.accentLabel}
+        </StatusBadge>
+      </div>
+      <div className="md:[grid-area:content]">
+        <ContentBlock
+          step={step}
+          headingTop={headingTop}
+          headingHighlight={headingHighlight}
+          copy={copy}
+          theme={theme}
+          isLightCard={isLightCard}
+        />
+      </div>
+      <div className="md:[grid-area:visual]">
+        <VisualBlock illustration={illustration} />
+      </div>
+    </div>
+  );
+}
+
 export default function HowItWorksCard({
   step,
   headingTop,
@@ -5,148 +380,45 @@ export default function HowItWorksCard({
   title,
   highlight,
   illustration,
-  accent,
 }) {
   const resolvedHeadingTop = headingTop ?? title ?? "";
   const resolvedHeadingHighlight = headingHighlight ?? highlight ?? "";
-
-  const themes = {
-    yellow: {
-      background:
-        "linear-gradient(135deg, #050B16 0%, #0E1D36 55%, #2A1B08 100%)",
-      accentColor: "#F4C430",
-      glowColor: "rgba(244,196,48,0.22)",
-      borderColor: "rgba(244,196,48,0.18)",
-      stepBg: "linear-gradient(135deg, #F4C430, #C88800)",
-      stepShadow: "0 0 36px rgba(244,196,48,0.30)",
-    },
-    orange: {
-      background: "linear-gradient(135deg, #150B0B 0%, #43201B 100%)",
-      accentColor: "#E08A1E",
-      glowColor: "rgba(224,138,30,0.25)",
-      borderColor: "rgba(224,138,30,0.18)",
-      stepBg: "linear-gradient(135deg, #E08A1E, #A85800)",
-      stepShadow: "0 0 36px rgba(224,138,30,0.30)",
-    },
-    blue: {
-      background: "linear-gradient(135deg, #081512 0%, #184034 100%)",
-      accentColor: "#43B581",
-      glowColor: "rgba(67,181,129,0.25)",
-      borderColor: "rgba(67,181,129,0.18)",
-      stepBg: "linear-gradient(135deg, #43B581, #1E7A52)",
-      stepShadow: "0 0 36px rgba(67,181,129,0.30)",
-    },
-    green: {
-      background: "linear-gradient(135deg, #0B1024 0%, #2A3475 100%)",
-      accentColor: "#5DA9FF",
-      glowColor: "rgba(93,169,255,0.25)",
-      borderColor: "rgba(93,169,255,0.18)",
-      stepBg: "linear-gradient(135deg, #5DA9FF, #2060C8)",
-      stepShadow: "0 0 36px rgba(93,169,255,0.30)",
-    },
-    violet: {
-      background:
-        "linear-gradient(135deg, #030712 0%, #0F172A 45%, #134E4A 100%)",
-      accentColor: "#4FD1C5",
-      glowColor: "rgba(79,209,197,0.22)",
-      borderColor: "rgba(79,209,197,0.18)",
-      stepBg: "linear-gradient(135deg, #4FD1C5, #0E7C75)",
-      stepShadow: "0 0 36px rgba(79,209,197,0.30)",
-    },
-  };
-
-  const stepThemeMap = {
-    "01": themes.yellow,
-    "02": themes.orange,
-    "03": themes.blue,
-    "04": themes.green,
-    "05": themes.violet,
-  };
-
-  const theme = stepThemeMap[step] ?? themes[accent] ?? themes.yellow;
-
-  const fullHeading =
-    `${resolvedHeadingTop} ${resolvedHeadingHighlight}`.trim();
-  const words = fullHeading.split(/\s+/).filter(Boolean);
+  const theme = CARD_THEMES[step] ?? CARD_THEMES["05"];
+  const copy = CARD_COPY[step] ?? CARD_COPY["05"];
+  const isLightCard = step === "01" || step === "02";
+  const isEven = Number(step) % 2 === 0;
 
   return (
     <article
       className="relative flex h-full w-full flex-col overflow-hidden rounded-[34px]"
       style={{
-        padding: "24px",
+        padding: "32px",
         background: theme.background,
-        border: `1px solid ${theme.borderColor}`,
-        boxShadow: `0 20px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06), inset 0 -1px 0 ${theme.glowColor}`,
+        border: theme.border,
+        boxShadow: theme.boxShadow,
       }}
     >
-      {/* Radial glow behind illustration */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: `radial-gradient(ellipse 70% 55% at 50% 80%, ${theme.glowColor}, transparent 70%)`,
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
-
-      {/* Step badge */}
-      <div
-        className="absolute right-[20px] top-[20px] z-[20] flex h-[56px] w-[56px] items-center justify-center rounded-full text-[28px] font-extrabold text-white md:right-[28px] md:top-[28px] md:h-[72px] md:w-[72px] md:text-[36px] lg:right-[32px] lg:top-[32px] lg:h-[96px] lg:w-[96px] lg:text-[48px]"
-        style={{
-          background: theme.stepBg,
-          boxShadow: theme.stepShadow,
-        }}
-      >
-        {step}
-      </div>
-
-      {/* Heading */}
-      <div className="z-[10] flex-shrink-0 pr-24 pt-7 lg:pr-32">
-        <h3
-          className="font-extrabold uppercase leading-[1.05] tracking-[-0.02em] text-white"
-          style={{
-            fontSize: "clamp(28px, 3.2vw, 56px)",
-            wordSpacing: "0.12em",
-            whiteSpace: "normal",
-            overflowWrap: "break-word",
-          }}
-        >
-          {words.map((word, index) => {
-            const isHighlighted = word === resolvedHeadingHighlight;
-            return (
-              <span
-                key={`${word}-${index}`}
-                className="inline-block"
-                style={{
-                  marginRight: index === words.length - 1 ? 0 : "0.2em",
-                }}
-              >
-                {isHighlighted ? (
-                  <span style={{ color: theme.accentColor }}>{word}</span>
-                ) : (
-                  word
-                )}
-              </span>
-            );
-          })}
-        </h3>
-      </div>
-
-      {/* Illustration */}
-      <div
-        className="hidden md:flex flex-1 w-full items-end justify-center overflow-hidden px-6 pb-4 pt-4"
-        style={{ position: "relative", zIndex: 1 }}
-      >
-        <img
-          src={illustration}
-          alt=""
-          className="block h-full w-full object-contain select-none pointer-events-none"
-          style={{ objectPosition: "center bottom" }}
-          draggable={false}
+      {isEven ? (
+        <EvenCardLayout
+          step={step}
+          headingTop={resolvedHeadingTop}
+          headingHighlight={resolvedHeadingHighlight}
+          illustration={illustration}
+          theme={theme}
+          copy={copy}
+          isLightCard={isLightCard}
         />
-      </div>
+      ) : (
+        <OddCardLayout
+          step={step}
+          headingTop={resolvedHeadingTop}
+          headingHighlight={resolvedHeadingHighlight}
+          illustration={illustration}
+          theme={theme}
+          copy={copy}
+          isLightCard={isLightCard}
+        />
+      )}
     </article>
   );
 }
