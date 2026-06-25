@@ -288,6 +288,7 @@ class Deployment(models.Model):
     class Status(models.TextChoices):
         PENDING = 'pending'
         GENERATING_IAC = 'generating_iac'
+        IAC_READY = 'iac_ready'
         SUBMITTING = 'submitting'
         IN_PROGRESS = 'in_progress'
         COMPLETE = 'complete'

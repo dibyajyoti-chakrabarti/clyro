@@ -123,6 +123,12 @@ REASONING_RUNTIME_ARN = env('REASONING_RUNTIME_ARN', default='')
 # empty (default), it runs the in-process scanner agent (local fallback).
 REPORECON_RUNTIME_ARN = env('REPORECON_RUNTIME_ARN', default='')
 
+# ── Step 4 (IaC generation) ─────────────────────────────────────────────────
+# Deployed IacArchitect runtime that authors / refines the CloudFormation
+# template from the build spec. Required to generate or refine a template;
+# the standalone validate endpoint runs cfn-lint in-process and needs no ARN.
+IAC_RUNTIME_ARN = env('IAC_RUNTIME_ARN', default='')
+
 # AgentCore Memory id for persisting the canvas chat (so it survives a refresh).
 # When empty, chat persistence no-ops and the UI runs without it.
 AGENTCORE_MEMORY_ID = env('AGENTCORE_MEMORY_ID', default='')
