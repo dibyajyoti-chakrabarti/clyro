@@ -14,6 +14,7 @@ const steps = [
     headingHighlight: "REPOSITORY",
     illustration: step1Illustration,
     accent: "yellow",
+    stepBg: "#E8D5A3",
   },
   {
     step: "02",
@@ -21,6 +22,7 @@ const steps = [
     headingHighlight: "INTENT",
     illustration: step2Illustration,
     accent: "orange",
+    stepBg: "#C4A86A",
   },
   {
     step: "03",
@@ -28,6 +30,7 @@ const steps = [
     headingHighlight: "INFRASTRUCTURE",
     illustration: step3Illustration,
     accent: "blue",
+    stepBg: "#7A5C28",
   },
   {
     step: "04",
@@ -35,6 +38,7 @@ const steps = [
     headingHighlight: "INFRASTRUCTURE",
     illustration: step4Illustration,
     accent: "green",
+    stepBg: "#2A1C08",
   },
   {
     step: "05",
@@ -42,6 +46,7 @@ const steps = [
     headingHighlight: "INFRASTRUCTURE",
     illustration: step5Illustration,
     accent: "orange",
+    stepBg: "#0D0900",
   },
 ];
 
@@ -57,27 +62,28 @@ export default function HowItWorks() {
   return (
     <section
       ref={sectionRef}
-      className="relative w-full bg-[#F6F2EA] py-6 px-0"
+      className="relative w-full py-6 px-0"
+      style={{ backgroundColor: "var(--step-bg, #E8D5A3)" }}
     >
       {/* Rounded wrapper */}
-      <div className="w-full max-w-none bg-[#F6F2EA] rounded-3xl overflow-hidden">
+      <div className="w-full max-w-none rounded-3xl overflow-hidden bg-transparent">
         <div className="px-0">
           <div ref={containerRef}>
             {/* Heading */}
             <div className="pt-8 pb-4 flex flex-col items-center text-center">
               {/* Main heading */}
               <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl leading-none">
-                <span className="text-black">How It </span>
-                <span className="text-black/15">Works.</span>
+                <span style={{ color: "#1A1208" }}>How It </span>
+                <span style={{ color: "#6B5020" }}>Works.</span>
               </h2>
 
               {/* Decorative divider */}
               <div className="mt-5 flex items-center gap-3">
-                <div className="h-px w-12 bg-black/10" />
-                <span className="text-[11px] tracking-[0.15em] text-black/30 uppercase font-medium">
+                <div className="h-px w-12 opacity-40" style={{ backgroundColor: "#C9A84C" }} />
+                <span className="text-[11px] tracking-[0.15em] uppercase font-medium" style={{ color: "#6B5020" }}>
                   5 Steps
                 </span>
-                <div className="h-px w-12 bg-black/10" />
+                <div className="h-px w-12 opacity-40" style={{ backgroundColor: "#C9A84C" }} />
               </div>
             </div>
 
@@ -95,6 +101,7 @@ export default function HowItWorks() {
                   ref={(el) => {
                     cardsRef.current[index] = el;
                   }}
+                  data-step-bg={item.stepBg}
                   style={{
                     position: "absolute",
                     top: 0,
