@@ -59,6 +59,16 @@ export const api = {
   getEnvVars: (id) => request('GET', `/api/projects/${id}/env-vars/`),
   saveEnvVars: (id, payload) => request('POST', `/api/projects/${id}/env-vars/save/`, payload),
 
+  // Step 4 — IaC (CloudFormation) generation / refine / validate
+  getIac: (id) => request('GET', `/api/projects/${id}/iac/`),
+  generateIac: (id, payload) => request('POST', `/api/projects/${id}/iac/generate/`, payload),
+  refineIac: (id, payload) => request('POST', `/api/projects/${id}/iac/refine/`, payload),
+  validateIac: (id, payload) => request('POST', `/api/projects/${id}/iac/validate/`, payload),
+
+  // Step 4.5 — provisioning (submit template + live feed)
+  startDeploy: (id) => request('POST', `/api/projects/${id}/deploy/`),
+  getDeployStatus: (id) => request('GET', `/api/projects/${id}/deploy/status/`),
+
   // GitHub
   storeInstallation: (installation_id) =>
     request('POST', '/api/github/installations/', { installation_id }),

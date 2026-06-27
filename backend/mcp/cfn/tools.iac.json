@@ -1,0 +1,44 @@
+[
+  {
+    "name": "validate_cloudformation_template",
+    "description": "Validate a CloudFormation template's syntax, AWS resource types, and property schemas using cfn-lint (offline; read-only). Returns is_valid plus error/warning/info counts and per-issue line numbers and paths. Use before returning a generated or refined template.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "template_content": {
+          "type": "string",
+          "description": "CloudFormation template as a YAML or JSON string."
+        },
+        "regions": {
+          "type": "array",
+          "description": "Optional AWS regions to validate against, e.g. ['ap-south-1'].",
+          "items": { "type": "string" }
+        },
+        "ignore_checks": {
+          "type": "array",
+          "description": "Optional cfn-lint rule IDs to ignore, e.g. ['W2001', 'E3012'].",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["template_content"]
+    }
+  },
+  {
+    "name": "check_cloudformation_template_compliance",
+    "description": "Validate a CloudFormation template against security and compliance rules using cfn-guard (read-only). Returns is_compliant, violation_count, and per-violation remediation guidance. Use once on generation to catch insecure configs (public access, missing encryption, weak logging).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "template_content": {
+          "type": "string",
+          "description": "CloudFormation template as a YAML or JSON string."
+        },
+        "rules_file_path": {
+          "type": "string",
+          "description": "Optional path to a cfn-guard rules file. Omit to use the bundled default rules."
+        }
+      },
+      "required": ["template_content"]
+    }
+  }
+]

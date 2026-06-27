@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "CryloIac",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "CryloIac"
+  },
+  "runtimes": [
+    {
+      "name": "IacArchitect",
+      "build": "CodeZip",
+      "entrypoint": "main.py",
+      "codeLocation": "app/IacArchitect/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP"
+    }
+  ],
+  "memories": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [
+    {
+      "name": "CryloIacGw",
+      "description": "CloudFormation validation + compliance for the IaC agent",
+      "targets": [
+        {
+          "name": "cfn",
+          "targetType": "lambdaFunctionArn",
+          "lambdaFunctionArn": {
+            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-cfn",
+            "toolSchemaFile": "../../mcp/cfn/tools.iac.json"
+          }
+        }
+      ],
+      "authorizerType": "NONE",
+      "enableSemanticSearch": true,
+      "exceptionLevel": "NONE"
+    }
+  ],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "httpGateways": [],
+  "harnesses": [],
+  "datasets": []
+}

@@ -2,7 +2,7 @@ import { ArrowRight, CheckCircle2, Copy } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
 import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPanel'
 
-function DeploymentSuccess({ copiedKey, onCopy, onGoToDashboard }) {
+function DeploymentSuccess({ stackOutputs = [], copiedKey, onCopy, onGoToDashboard }) {
   return (
     <WizardPanel>
       <WizardCard width='lg' className='border-green-500/25'>
@@ -11,25 +11,22 @@ function DeploymentSuccess({ copiedKey, onCopy, onGoToDashboard }) {
         </div>
         <h3 className='mt-4 text-center text-xl font-semibold tracking-tight'>Your infrastructure is live</h3>
 
-        {/* TODO: fetch from GET /api/deployments/{id}/outputs/ */}
         <div className='mt-6 space-y-2'>
-          {[
-            ['Frontend URL', '—'],
-            ['Backend API', '—'],
-            ['CloudFront URL', '—'],
-          ].map(([label, value]) => (
-            <div key={label} className='flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2'>
-              <div>
-                <p className='text-xs text-text-muted'>{label}</p>
-                <p className='text-sm font-medium text-text-primary'>{value}</p>
+          {stackOutputs.length === 0 ? (
+            <p className='text-center text-sm text-text-muted'>No stack outputs were returned.</p>
+          ) : stackOutputs.map((o) => (
+            <div key={o.key} className='flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2'>
+              <div className='min-w-0'>
+                <p className='text-xs text-text-muted'>{o.description || o.key}</p>
+                <p className='truncate text-sm font-medium text-text-primary'>{o.value}</p>
               </div>
               <button
                 type='button'
-                className='flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-text-muted transition-colors hover:border-accent/60 hover:text-text-primary'
-                onClick={() => onCopy(label, value)}
+                className='flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-text-muted transition-colors hover:border-accent/60 hover:text-text-primary'
+                onClick={() => onCopy(o.key, o.value)}
               >
                 <Copy className='h-3 w-3' />
-                {copiedKey === label ? 'Copied!' : 'Copy'}
+                {copiedKey === o.key ? 'Copied!' : 'Copy'}
               </button>
             </div>
           ))}
