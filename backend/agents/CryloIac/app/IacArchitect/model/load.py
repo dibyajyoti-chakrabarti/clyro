@@ -6,11 +6,12 @@ from strands.models.bedrock import BedrockModel
 # use, and must support Converse tool use (generate calls validate/compliance) plus
 # the delimited output contract — weaker models may need a smoke test first.
 MODELS = {
+    # Claude — cross-region inference profiles; enable in Bedrock Model Access.
     "sonnet-4-5": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "haiku-4-5": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+    # Amazon Nova — APAC cross-region profiles; enable in Bedrock Model Access (ap-south-1).
     "nova-pro": "apac.amazon.nova-pro-v1:0",
     "nova-lite": "apac.amazon.nova-lite-v1:0",
-    "qwen-coder": "qwen.qwen3-coder-30b-a3b-v1:0",
 }
 
 # Defaults by mode when the caller doesn't pick a model (backward-compatible):

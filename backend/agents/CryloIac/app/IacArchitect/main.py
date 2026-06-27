@@ -270,43 +270,61 @@ def _build_user_message(payload: dict[str, Any]) -> str:
 async def invoke(payload, context):
     payload = _normalize_payload(payload)
     mode = payload.get("mode", "generate")
-    # The caller picks the model per slot (generate / chat / stronger) and sends its
-    # key; fall back to the mode default if absent or unknown.
+    # The caller picks the model per slot (generate / chat) and sends its key;
+    # fall back to the mode default if absent or unknown.
     default_key = DEFAULT_REFINE if mode == "refine" else DEFAULT_GENERATE
     model_id = resolve_model_id(payload.get("model"), default_key)
     log.info("IacArchitect invoked (mode=%s, model=%s)", mode, model_id)
 
-    agent = build_agent(model_id)
-    user_message = _build_user_message(payload)
+    try:
+        agent = build_agent(model_id)
+        user_message = _build_user_message(payload)
 
-    # Stream the model, but only emit the parsed result at the end. A generate can
-    # run for minutes; if the HTTP response stays byte-silent for too long, the
-    # runtime's load balancer idle-times-out and resets the connection (the caller
-    # sees ConnectionResetError). Race each step against a 15s timeout and emit a
-    # heartbeat whenever the model is quiet — this covers byte-silent gaps with NO
-    # stream events (waiting for the first token, a tool call running) as well as
-    # active generation, unlike a beat that only fires per event. The backend
-    # (parse_runtime_response) drops these heartbeats. (Cold container start, before
-    # this code runs, is outside our reach — AgentCore manages that, bounded by the
-    # caller's read timeout.)
-    full_text = ""
-    stream = aiter(agent.stream_async(user_message))
-    while True:
-        step = asyncio.ensure_future(anext(stream))
+        # Stream the model, only emitting the parsed result at the end. A generate can
+        # run for minutes; if the HTTP response stays byte-silent the runtime's load
+        # balancer idle-times-out and resets the connection. Race each step against a
+        # 15s timeout and emit a heartbeat whenever the model is quiet.
+        full_text = ""
+        stream = aiter(agent.stream_async(user_message))
         while True:
-            done, _ = await asyncio.wait({step}, timeout=15)
-            if done:
+            step = asyncio.ensure_future(anext(stream))
+            while True:
+                done, _ = await asyncio.wait({step}, timeout=15)
+                if done:
+                    break
+                yield json.dumps({"__heartbeat__": True})
+            try:
+                event = step.result()
+            except StopAsyncIteration:
                 break
-            yield json.dumps({"__heartbeat__": True})
-        try:
-            event = step.result()
-        except StopAsyncIteration:
-            break
-        if "data" in event and isinstance(event["data"], str):
-            full_text += event["data"]
+            except Exception as exc:
+                # Catch model-level errors (AccessDeniedException when the model
+                # isn't enabled, ThrottlingException, tool-call failures, etc.)
+                # and surface them as a structured error so the frontend can show
+                # a useful message instead of "empty template".
+                log.error("IacArchitect stream error (model=%s): %s", model_id, exc)
+                yield json.dumps({"error": str(exc), "template": ""})
+                return
+            if "data" in event and isinstance(event["data"], str):
+                full_text += event["data"]
 
-    result = _parse_output(full_text)
-    yield json.dumps(result)
+        if not full_text.strip():
+            # The model produced heartbeats but no text — most likely the model isn't
+            # enabled in Bedrock Model Access, or doesn't support this call format.
+            err = (
+                f"Model '{model_id}' returned no output. "
+                "Ensure it is enabled in Bedrock Model Access and supports Converse tool use."
+            )
+            log.error("IacArchitect: %s", err)
+            yield json.dumps({"error": err, "template": ""})
+            return
+
+        result = _parse_output(full_text)
+        yield json.dumps(result)
+
+    except Exception as exc:
+        log.exception("IacArchitect invoke failed (model=%s): %s", model_id, exc)
+        yield json.dumps({"error": str(exc), "template": ""})
 
 
 if __name__ == "__main__":
