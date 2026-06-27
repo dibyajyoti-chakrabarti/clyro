@@ -41,13 +41,10 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [iacReady, setIacReady] = useState(false)
   const [refineInput, setRefineInput] = useState('')
   const [refineHistory, setRefineHistory] = useState([])
-  const [forceStrong, setForceStrong] = useState(false)
-  // Model choice per slot: generate (initial template), chat (lightweight refine),
-  // and stronger (used when the "stronger model" toggle is on). Keys map to the
-  // agent's registry; defaults mirror the agent's own Sonnet/Haiku split.
-  const [generateModel, setGenerateModel] = useState('sonnet-4-5')
+  // Model choice: generate (initial template) and chat (refine turns).
+  // Generate defaults to null so the user must pick before generating.
+  const [generateModel, setGenerateModel] = useState(null)
   const [chatModel, setChatModel] = useState('haiku-4-5')
-  const [strongModel, setStrongModel] = useState('sonnet-4-5')
   const iacGenStartedRef = useRef(false)
 
   // provisioning phase state
@@ -84,7 +81,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
           setIacReady(data.status === 'iac_ready')
           setPhase('iac')
         } else {
-          // Connected but nothing authored yet — skip to iac (which auto-generates)
+          // Connected but nothing authored yet — skip to iac (pre-generate screen)
           // only if the secrets were already saved; otherwise resume at env_vars.
           let envSaved = false
           try {
@@ -171,11 +168,15 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     setIacError(null)
     try {
       const data = await api.generateIac(projectId, { model: generateModel })
-      setIacTemplate(data.template || '')
-      setIacValidation(data.validation || null)
-      setIacReady(data.status === 'iac_ready')
-      if (data.message) {
-        setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message }])
+      if (!data.template) {
+        setIacError('Generation returned an empty template — please try again.')
+      } else {
+        setIacTemplate(data.template)
+        setIacValidation(data.validation || null)
+        setIacReady(data.status === 'iac_ready')
+        if (data.message) {
+          setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message }])
+        }
       }
     } catch (err) {
       setIacError(err.data?.error || 'Failed to generate the template.')
@@ -184,18 +185,11 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     }
   }
 
-  // Generate the template once when the iac phase is entered. A ref guards against
-  // re-running (the effect deps change as generation toggles state); on failure the
-  // user retries explicitly rather than auto-looping and hammering the agent.
+  // Reset the gen-started guard when leaving the iac phase so a back-and-forward
+  // returns to the pre-generate screen rather than auto-firing again.
   useEffect(() => {
-    if (phase !== 'iac') {
-      iacGenStartedRef.current = false
-      return
-    }
-    if (!projectId || iacTemplate || iacGenStartedRef.current) return
-    iacGenStartedRef.current = true
-    runGenerate()
-  }, [phase, projectId, iacTemplate])
+    if (phase !== 'iac') iacGenStartedRef.current = false
+  }, [phase])
 
   const handleRefine = async () => {
     const instruction = refineInput.trim()
@@ -207,7 +201,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     try {
       // Send the current editor content so the agent refines what the user sees
       // (manual edits included), not a stale server copy.
-      const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, model: forceStrong ? strongModel : chatModel })
+      const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, model: chatModel })
       if (data.outcome === 'answer') {
         // A question — the agent answered without touching the template.
         setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || '' }])
@@ -300,55 +294,61 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
 
   if (hydrating) {
     return (
-      <WizardPanel>
+      <div className='flex flex-1 flex-col items-center justify-center p-8'>
         <WizardCard width='lg' className='text-center'>
           <span className='mx-auto block h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin' />
           <p className='mt-4 text-sm text-text-muted'>Loading your progress…</p>
         </WizardCard>
-      </WizardPanel>
+      </div>
     )
   }
 
+  // Non-IaC phases get their own padded container since the outer section has p-0.
+  // The IaC editor is full-bleed and manages its own layout.
   if (phase === 'aws_connect') {
     return (
-      <AwsConnectCard
-        cfnConsoleUrl={cfnConsoleUrl}
-        urlLoading={urlLoading}
-        stackOpened={stackOpened}
-        arnInput={arnInput}
-        setArnInput={setArnInput}
-        verifying={verifying}
-        verifyError={verifyError}
-        roleConnected={roleConnected}
-        onOpenStack={handleOpenStack}
-        onVerify={handleVerify}
-        onContinue={() => setPhase('env_vars')}
-      />
+      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
+        <AwsConnectCard
+          cfnConsoleUrl={cfnConsoleUrl}
+          urlLoading={urlLoading}
+          stackOpened={stackOpened}
+          arnInput={arnInput}
+          setArnInput={setArnInput}
+          verifying={verifying}
+          verifyError={verifyError}
+          roleConnected={roleConnected}
+          onOpenStack={handleOpenStack}
+          onVerify={handleVerify}
+          onContinue={() => setPhase('env_vars')}
+        />
+      </div>
     )
   }
 
   if (phase === 'env_vars') {
     return (
-      <EnvVarsPanel
-        envVarsLoading={envVarsLoading}
-        userSecretVars={userSecretVars}
-        generatedVars={generatedVars}
-        secretValues={secretValues}
-        showSecrets={showSecrets}
-        extraVars={extraVars}
-        allSecretsFilled={allSecretsFilled}
-        savingEnvVars={savingEnvVars}
-        saveError={saveError}
-        onSecretValueChange={(keyName, value) => setSecretValues((prev) => ({ ...prev, [keyName]: value }))}
-        onToggleSecretVisibility={(keyName) => setShowSecrets((prev) => ({ ...prev, [keyName]: !prev[keyName] }))}
-        onAddVariable={() => setExtraVars((prev) => [...prev, { key: '', value: '' }])}
-        onExtraVariableChange={(index, field, value) => {
-          const next = [...extraVars]
-          next[index] = { ...next[index], [field]: value }
-          setExtraVars(next)
-        }}
-        onContinue={handleSaveEnvVars}
-      />
+      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
+        <EnvVarsPanel
+          envVarsLoading={envVarsLoading}
+          userSecretVars={userSecretVars}
+          generatedVars={generatedVars}
+          secretValues={secretValues}
+          showSecrets={showSecrets}
+          extraVars={extraVars}
+          allSecretsFilled={allSecretsFilled}
+          savingEnvVars={savingEnvVars}
+          saveError={saveError}
+          onSecretValueChange={(keyName, value) => setSecretValues((prev) => ({ ...prev, [keyName]: value }))}
+          onToggleSecretVisibility={(keyName) => setShowSecrets((prev) => ({ ...prev, [keyName]: !prev[keyName] }))}
+          onAddVariable={() => setExtraVars((prev) => [...prev, { key: '', value: '' }])}
+          onExtraVariableChange={(index, field, value) => {
+            const next = [...extraVars]
+            next[index] = { ...next[index], [field]: value }
+            setExtraVars(next)
+          }}
+          onContinue={handleSaveEnvVars}
+        />
+      </div>
     )
   }
 
@@ -369,14 +369,10 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
         onRefineInputChange={setRefineInput}
         onRefine={handleRefine}
         refineHistory={refineHistory}
-        forceStrong={forceStrong}
-        onForceStrongChange={setForceStrong}
         generateModel={generateModel}
         setGenerateModel={setGenerateModel}
         chatModel={chatModel}
         setChatModel={setChatModel}
-        strongModel={strongModel}
-        setStrongModel={setStrongModel}
         onBack={() => setPhase('env_vars')}
         onContinue={() => setPhase('review')}
       />
@@ -385,39 +381,45 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
 
   if (phase === 'review') {
     return (
-      <ReviewArchitecture
-        showTemplate={showTemplate}
-        cfTemplate={iacTemplate}
-        onToggleTemplate={() => setShowTemplate((prev) => !prev)}
-        onEditArchitecture={() => setPhase('iac')}
-        onProvision={handleProvision}
-      />
+      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
+        <ReviewArchitecture
+          showTemplate={showTemplate}
+          cfTemplate={iacTemplate}
+          onToggleTemplate={() => setShowTemplate((prev) => !prev)}
+          onEditArchitecture={() => setPhase('iac')}
+          onProvision={handleProvision}
+        />
+      </div>
     )
   }
 
   if (phase === 'provisioning') {
     return (
-      <ProvisionLog
-        provisioningLog={provisioningLog}
-        deployStatus={deployStatus}
-        deployError={deployError}
-        onRetry={handleProvision}
-        onBack={() => setPhase('review')}
-      />
+      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
+        <ProvisionLog
+          provisioningLog={provisioningLog}
+          deployStatus={deployStatus}
+          deployError={deployError}
+          onRetry={handleProvision}
+          onBack={() => setPhase('review')}
+        />
+      </div>
     )
   }
 
   // success phase
   return (
-    <DeploymentSuccess
-      stackOutputs={stackOutputs}
-      copiedKey={copiedKey}
-      onCopy={handleCopy}
-      onGoToDashboard={() => {
-        setStep4CanContinue(true)
-        onAdvanceToStepFive()
-      }}
-    />
+    <div className='flex flex-1 flex-col overflow-y-auto p-8'>
+      <DeploymentSuccess
+        stackOutputs={stackOutputs}
+        copiedKey={copiedKey}
+        onCopy={handleCopy}
+        onGoToDashboard={() => {
+          setStep4CanContinue(true)
+          onAdvanceToStepFive()
+        }}
+      />
+    </div>
   )
 }
 

@@ -114,7 +114,15 @@ def ensure_deployment(project: Project) -> Deployment:
 
     intent = IntentRecord.objects.filter(project=project).order_by("-created_at").first()
     if intent is None:
-        raise IacError("This project has no intent record.")
+        from django.utils import timezone
+        intent = IntentRecord.objects.create(
+            project=project,
+            scale=IntentRecord.Scale.SMALL,
+            criticality=IntentRecord.Criticality.MEDIUM,
+            environment=IntentRecord.Environment.PRODUCTION,
+            domain_has=IntentRecord.DomainHas.NO,
+            completed_at=timezone.now(),
+        )
 
     connection = (
         AWSAccountConnection.objects.filter(project=project, connected_at__isnull=False)
