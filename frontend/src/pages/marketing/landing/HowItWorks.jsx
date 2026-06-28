@@ -1,10 +1,10 @@
 import { useRef } from "react";
 import HowItWorksCard from "../../../components/marketing/HowItWorksCard";
-import step1Illustration from "../../../assets/howItWorks/car1_ill.svg";
-import step2Illustration from "../../../assets/howItWorks/car2_ill.svg";
-import step3Illustration from "../../../assets/howItWorks/car3_ill.svg";
-import step4Illustration from "../../../assets/howItWorks/car4_ill.svg";
-import step5Illustration from "../../../assets/howItWorks/car5_ill.svg";
+import i1 from "../../../assets/howItWorks/i1.png";
+import i2 from "../../../assets/howItWorks/i2.png";
+import i3 from "../../../assets/howItWorks/i3.png";
+import i4 from "../../../assets/howItWorks/i4.png";
+import i5 from "../../../assets/howItWorks/i5.png";
 import useHowItWorksAnimation from "../../../hooks/useHowItWorksAnimation";
 
 const steps = [
@@ -12,7 +12,7 @@ const steps = [
     step: "01",
     headingTop: "UNDERSTAND YOUR",
     headingHighlight: "REPOSITORY",
-    illustration: step1Illustration,
+    illustration: i1,
     accent: "yellow",
     stepBg: "#E8D5A3",
   },
@@ -20,7 +20,7 @@ const steps = [
     step: "02",
     headingTop: "COLLECT YOUR",
     headingHighlight: "INTENT",
-    illustration: step2Illustration,
+    illustration: i2,
     accent: "orange",
     stepBg: "#C4A86A",
   },
@@ -28,7 +28,7 @@ const steps = [
     step: "03",
     headingTop: "DESIGN YOUR",
     headingHighlight: "INFRASTRUCTURE",
-    illustration: step3Illustration,
+    illustration: i3,
     accent: "blue",
     stepBg: "#7A5C28",
   },
@@ -36,7 +36,7 @@ const steps = [
     step: "04",
     headingTop: "DEPLOY YOUR",
     headingHighlight: "INFRASTRUCTURE",
-    illustration: step4Illustration,
+    illustration: i4,
     accent: "green",
     stepBg: "#2A1C08",
   },
@@ -44,7 +44,7 @@ const steps = [
     step: "05",
     headingTop: "MONITOR & OPTIMIZE YOUR",
     headingHighlight: "INFRASTRUCTURE",
-    illustration: step5Illustration,
+    illustration: i5,
     accent: "orange",
     stepBg: "#0D0900",
   },

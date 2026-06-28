@@ -2,292 +2,270 @@ import { Sparkles } from "lucide-react";
 
 const CARD_THEMES = {
   "01": {
-    cardBorder: "1px solid rgba(0,0,0,0.12)",
+    cardBorder: "1px solid rgba(255,255,255,0.08)",
     cardShadow: "0 2px 8px rgba(0,0,0,0.08)",
-    leftPanelBg: "#F0E6CC",
-    rightPanelBg: "#1A1208",
-    headingColor: "#1A1208",
-    highlightColor: "#C9A84C",
-    bodyTextColor: "#3D2E10",
-    badgeBg: "#1A1208",
-    badgeText: "#C9A84C",
-    stepNumBg: "#1A1208",
-    stepNumText: "#C9A84C",
-    stepNumBorder: "rgba(201,168,76,0.35)",
-    chipBg: "#FFFFFF",
-    chipBorder: "rgba(0,0,0,0.08)",
-    chipText: "#1A1208",
-    chipIcon: "#C9A84C",
-    taglineBg: "rgba(255,255,255,0.6)",
-    taglineBorder: "rgba(0,0,0,0.08)",
-    taglineMain: "#1A1208",
-    taglineSub: "#6B5020",
-    taglineIcon: "#C9A84C",
-    statusBg: "#1A1208",
-    statusBorder: "rgba(201,168,76,0.20)",
-    statusLabel: "rgba(232,213,163,0.5)",
-    statusText: "#E8D5A3",
+    overlayGradient: "linear-gradient(to right, #E8D5A3 0%, #E8D5A3 38%, transparent 72%, transparent 100%)",
+    headingColor: "#1A1200",
+    highlightColor: "#7A5C00",
+    bodyTextColor: "#2C2100",
+    bodyMutedColor: "rgba(44, 33, 0, 0.75)",
+    taglineMain: "#1A1200",
+    taglineSub: "rgba(44, 33, 0, 0.6)",
+    taglineBorderColor: "rgba(0, 0, 0, 0.12)",
+    taglineIcon: "#7A5C00",
+    chipBorder: "rgba(0, 0, 0, 0.12)",
+    numBg: "rgba(255,255,255,0.3)",
+    numText: "#5C3D00",
+    pillBg: "rgba(0, 0, 0, 0.06)",
+    pillBorder: "rgba(0, 0, 0, 0.15)",
+    pillText: "rgba(0, 0, 0, 0.7)",
   },
   "02": {
-    cardBorder: "1px solid rgba(0,0,0,0.12)",
+    cardBorder: "1px solid rgba(255,255,255,0.08)",
     cardShadow: "0 2px 8px rgba(0,0,0,0.08)",
-    leftPanelBg: "#D4B97A",
-    rightPanelBg: "#1A1208",
-    headingColor: "#1A1208",
-    highlightColor: "#8B5E10",
-    bodyTextColor: "#2E1F08",
-    badgeBg: "#1A1208",
-    badgeText: "#D4B97A",
-    stepNumBg: "#1A1208",
-    stepNumText: "#D4B97A",
-    stepNumBorder: "rgba(212,185,122,0.35)",
-    chipBg: "rgba(255,255,255,0.45)",
-    chipBorder: "rgba(0,0,0,0.10)",
-    chipText: "#1A1208",
-    chipIcon: "#8B5E10",
-    taglineBg: "rgba(255,255,255,0.35)",
-    taglineBorder: "rgba(0,0,0,0.08)",
-    taglineMain: "#1A1208",
-    taglineSub: "#3D2508",
-    taglineIcon: "#8B5E10",
-    statusBg: "#1A1208",
-    statusBorder: "rgba(212,185,122,0.20)",
-    statusLabel: "rgba(212,185,122,0.5)",
-    statusText: "#D4B97A",
+    overlayGradient: "linear-gradient(to left, #B8A070 0%, #B8A070 38%, transparent 72%, transparent 100%)",
+    headingColor: "#1A1200",
+    highlightColor: "#7A5C00",
+    bodyTextColor: "#2C2100",
+    bodyMutedColor: "rgba(44, 33, 0, 0.75)",
+    taglineMain: "#1A1200",
+    taglineSub: "rgba(44, 33, 0, 0.6)",
+    taglineBorderColor: "rgba(0, 0, 0, 0.12)",
+    taglineIcon: "#7A5C00",
+    chipBorder: "rgba(0, 0, 0, 0.12)",
+    numBg: "rgba(255,255,255,0.3)",
+    numText: "#5C3D00",
+    pillBg: "rgba(0, 0, 0, 0.06)",
+    pillBorder: "rgba(0, 0, 0, 0.15)",
+    pillText: "rgba(0, 0, 0, 0.7)",
   },
   "03": {
     cardBorder: "1px solid rgba(255,255,255,0.08)",
     cardShadow: "0 2px 8px rgba(0,0,0,0.08)",
-    leftPanelBg: "#5C3D10",
-    rightPanelBg: "#0F0A04",
-    headingColor: "#F0E6CC",
+    overlayGradient: "linear-gradient(to right, #6B5020 0%, #6B5020 38%, transparent 72%, transparent 100%)",
+    headingColor: "#FFFFFF",
     highlightColor: "#C9A84C",
-    bodyTextColor: "#C4A87A",
-    badgeBg: "#C9A84C",
-    badgeText: "#1A1208",
-    stepNumBg: "#C9A84C",
-    stepNumText: "#1A1208",
-    stepNumBorder: "rgba(201,168,76,0.35)",
-    chipBg: "rgba(255,255,255,0.07)",
-    chipBorder: "rgba(255,255,255,0.12)",
-    chipText: "#F0E6CC",
-    chipIcon: "#C9A84C",
-    taglineBg: "rgba(255,255,255,0.06)",
-    taglineBorder: "rgba(255,255,255,0.10)",
-    taglineMain: "#F0E6CC",
-    taglineSub: "#C4A87A",
+    bodyTextColor: "#FFFFFF",
+    bodyMutedColor: "rgba(255,255,255,0.8)",
+    taglineMain: "#FFFFFF",
+    taglineSub: "rgba(255,255,255,0.65)",
+    taglineBorderColor: "rgba(255,255,255,0.15)",
     taglineIcon: "#C9A84C",
-    statusBg: "rgba(255,255,255,0.07)",
-    statusBorder: "rgba(255,255,255,0.10)",
-    statusLabel: "rgba(255,255,255,0.40)",
-    statusText: "#F0E6CC",
+    chipBorder: "rgba(255,255,255,0.12)",
+    numBg: "rgba(0,0,0,0.55)",
+    numText: "#C9A84C",
+    pillBg: "rgba(255,255,255,0.08)",
+    pillBorder: "rgba(255,255,255,0.3)",
+    pillText: "rgba(255,255,255,0.85)",
   },
   "04": {
     cardBorder: "1px solid rgba(255,255,255,0.06)",
     cardShadow: "0 2px 8px rgba(0,0,0,0.08)",
-    leftPanelBg: "#1C1005",
-    rightPanelBg: "#0A0602",
-    headingColor: "#F0E6CC",
+    overlayGradient: "linear-gradient(to left, #2A1C08 0%, #2A1C08 38%, transparent 72%, transparent 100%)",
+    headingColor: "#FFFFFF",
     highlightColor: "#C9A84C",
-    bodyTextColor: "#A08B68",
-    badgeBg: "#C9A84C",
-    badgeText: "#1A1208",
-    stepNumBg: "#C9A84C",
-    stepNumText: "#1A1208",
-    stepNumBorder: "rgba(201,168,76,0.35)",
-    chipBg: "rgba(255,255,255,0.05)",
-    chipBorder: "rgba(255,255,255,0.09)",
-    chipText: "#E8D5A3",
-    chipIcon: "#C9A84C",
-    taglineBg: "rgba(255,255,255,0.04)",
-    taglineBorder: "rgba(255,255,255,0.08)",
-    taglineMain: "#E8D5A3",
-    taglineSub: "#A08B68",
+    bodyTextColor: "#FFFFFF",
+    bodyMutedColor: "rgba(255,255,255,0.8)",
+    taglineMain: "#FFFFFF",
+    taglineSub: "rgba(255,255,255,0.65)",
+    taglineBorderColor: "rgba(255,255,255,0.15)",
     taglineIcon: "#C9A84C",
-    statusBg: "rgba(255,255,255,0.05)",
-    statusBorder: "rgba(255,255,255,0.08)",
-    statusLabel: "rgba(255,255,255,0.40)",
-    statusText: "#E8D5A3",
+    chipBorder: "rgba(255,255,255,0.09)",
+    numBg: "rgba(0,0,0,0.55)",
+    numText: "#C9A84C",
+    pillBg: "rgba(255,255,255,0.08)",
+    pillBorder: "rgba(255,255,255,0.3)",
+    pillText: "rgba(255,255,255,0.85)",
   },
   "05": {
     cardBorder: "1px solid rgba(255,255,255,0.04)",
     cardShadow: "0 2px 8px rgba(0,0,0,0.08)",
-    leftPanelBg: "#0D0900",
-    rightPanelBg: "#070400",
-    headingColor: "#F0E6CC",
+    overlayGradient: "linear-gradient(to right, #0D0900 0%, #0D0900 38%, transparent 72%, transparent 100%)",
+    headingColor: "#FFFFFF",
     highlightColor: "#C9A84C",
-    bodyTextColor: "#7A6848",
-    badgeBg: "#C9A84C",
-    badgeText: "#0D0900",
-    stepNumBg: "#C9A84C",
-    stepNumText: "#0D0900",
-    stepNumBorder: "rgba(201,168,76,0.35)",
-    chipBg: "rgba(255,255,255,0.04)",
-    chipBorder: "rgba(255,255,255,0.07)",
-    chipText: "#E8D5A3",
-    chipIcon: "#C9A84C",
-    taglineBg: "rgba(255,255,255,0.03)",
-    taglineBorder: "rgba(255,255,255,0.06)",
-    taglineMain: "#E8D5A3",
-    taglineSub: "#7A6848",
+    bodyTextColor: "#FFFFFF",
+    bodyMutedColor: "rgba(255,255,255,0.8)",
+    taglineMain: "#FFFFFF",
+    taglineSub: "rgba(255,255,255,0.65)",
+    taglineBorderColor: "rgba(255,255,255,0.15)",
     taglineIcon: "#C9A84C",
-    statusBg: "rgba(255,255,255,0.04)",
-    statusBorder: "rgba(255,255,255,0.06)",
-    statusLabel: "rgba(255,255,255,0.35)",
-    statusText: "#E8D5A3",
+    chipBorder: "rgba(255,255,255,0.07)",
+    numBg: "rgba(0,0,0,0.55)",
+    numText: "#C9A84C",
+    pillBg: "rgba(255,255,255,0.08)",
+    pillBorder: "rgba(255,255,255,0.3)",
+    pillText: "rgba(255,255,255,0.85)",
   },
 };
 
 const CARD_COPY = {
   "01": {
     summary: "Analyze your codebase and identify the services required for deployment.",
+    detail: "Our engine scans your repo structure, detects frameworks, languages, and dependencies — then maps every service that needs to be provisioned. No manual config files. No guesswork.",
     ctaMain: "We scan. You deploy.",
     ctaSub: "No guesswork, just clarity.",
+    pills: ["Auto-detect", "Zero config", "Multi-language"],
   },
   "02": {
     summary: "Understand your infrastructure goals before generating the architecture.",
+    detail: "Tell us your deployment goals — scalability, cost-efficiency, high availability — and we translate them into concrete infrastructure requirements before a single resource is spun up.",
     ctaMain: "Your goals. Our blueprint.",
     ctaSub: "Clarity before complexity.",
+    pills: ["Goal-driven", "Intent mapping", "Pre-flight check"],
   },
   "03": {
     summary: "Create an optimized deployment blueprint based on your application needs.",
+    detail: "We generate a production-grade architecture diagram tailored to your app, selecting the right services, regions, and configurations. Review and approve before anything is built.",
     ctaMain: "Infrastructure mapped.",
     ctaSub: "Optimized before it's built.",
+    pills: ["Blueprint gen", "Region-aware", "Cost-optimized"],
   },
   "04": {
     summary: "Provision cloud resources and launch your architecture automatically.",
+    detail: "With one click, we provision all your cloud resources — load balancers, databases, compute, networking — fully automated. Your stack goes live in minutes, not days.",
     ctaMain: "One click. Full stack.",
     ctaSub: "Live in minutes, not days.",
+    pills: ["One-click deploy", "Full stack", "Auto-provisioned"],
   },
   "05": {
     summary: "Track performance, health, and cloud spend in one place.",
+    detail: "Get real-time visibility into uptime, latency, and cloud costs. We surface anomalies and optimization opportunities so your infrastructure stays healthy and cost-efficient.",
     ctaMain: "Always on. Always optimized.",
     ctaSub: "Ship with confidence.",
+    pills: ["Live metrics", "Spend tracking", "Auto-optimize"],
   },
 };
 
-// Absolute badge anchored to the card's top-right corner
-function CornerNumberBadge({ step, theme }) {
+function CornerNumberBadge({ step, theme, isOdd }) {
   return (
     <div
       style={{
         position: "absolute",
         top: 0,
-        right: 0,
-        width: "80px",
-        height: "80px",
-        background: theme.stepNumBg,
-        // TL:0  TR:16px (matches card corner)  BR:0  BL:16px (curved inward)
-        borderRadius: "0 16px 0 16px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 10,
-        flexShrink: 0,
+        // odd → top-right, even → top-left
+        ...(isOdd ? { right: 0 } : { left: 0 }),
+        zIndex: 3,
+        fontSize: "4rem",
+        fontWeight: 800,
+        lineHeight: 1,
+        padding: "0.5rem 1rem",
+        letterSpacing: "-0.02em",
+        color: theme.numText,
+        backgroundColor: theme.numBg,
+        fontFamily: "inherit",
       }}
     >
-      <span
-        style={{
-          color: theme.stepNumText,
-          fontSize: "36px",
-          fontWeight: 800,
-          lineHeight: 1,
-          fontFamily: "inherit",
-        }}
-      >
-        {step}
-      </span>
+      {step}
     </div>
   );
 }
 
-function TextColumn({ step, headingTop, headingHighlight, copy, theme }) {
+function TextColumn({ headingTop, headingHighlight, copy, theme, isEven }) {
   return (
     <div
       className="w-full lg:w-[52%] lg:flex-shrink-0 flex flex-col h-full"
       style={{
-        padding: "48px",
-        background: theme.leftPanelBg,
+        paddingTop: "48px",
+        paddingBottom: "48px",
+        paddingLeft: isEven ? "24px" : "48px",
+        paddingRight: isEven ? "48px" : "24px",
+        maxWidth: "520px",
+        ...(isEven ? { marginLeft: "auto" } : { marginRight: "auto" }),
         boxSizing: "border-box",
+        position: "relative",
+        zIndex: 2,
+        textAlign: "left",
+        gap: "1.25rem",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      {/* 1. Badge row: pill + sparkle inline */}
-      <div className="flex items-center" style={{ gap: "10px" }}>
-        <span
-          style={{
-            background: theme.badgeBg,
-            color: theme.badgeText,
-            letterSpacing: "0.08em",
-            padding: "6px 14px",
-            borderRadius: "20px",
-            fontSize: "12px",
-            fontWeight: 700,
-            lineHeight: 1,
-            display: "inline-block",
-          }}
-        >
-          STEP {step}
-        </span>
-        <span
-          style={{
-            color: theme.highlightColor,
-            fontSize: "16px",
-            opacity: 0.8,
-            lineHeight: 1,
-          }}
-        >
-          ✦
-        </span>
-      </div>
-
-      {/* 2. Main heading block */}
+      {/* Heading */}
       <h3
         style={{
-          marginTop: "24px",
           color: theme.headingColor,
-          fontWeight: 800,
-          fontSize: "clamp(36px, 4vw, 52px)",
+          fontWeight: 900,
+          fontSize: "clamp(2.2rem, 4vw, 3.5rem)",
           lineHeight: 1.05,
+          letterSpacing: "-0.02em",
           textTransform: "uppercase",
           fontFamily: "inherit",
+          margin: 0,
+          textShadow: "0 2px 12px rgba(0,0,0,0.4)",
         }}
       >
         {headingTop}
         <br />
-        <span style={{ color: theme.highlightColor }}>{headingHighlight}</span>
+        <span style={{ color: theme.highlightColor, textShadow: "0 2px 8px rgba(0,0,0,0.3)" }}>
+          {headingHighlight}
+        </span>
       </h3>
 
-      {/* Decorative sparkle near heading */}
-      <span
-        style={{
-          color: theme.highlightColor,
-          fontSize: "16px",
-          opacity: 0.8,
-          marginTop: "12px",
-          display: "inline-block",
-          lineHeight: 1,
-        }}
-      >
+      {/* Decorative sparkle */}
+      <span style={{ color: theme.highlightColor, fontSize: "16px", opacity: 0.8, lineHeight: 1 }}>
         ✦
       </span>
 
-      {/* 3. Body text */}
+      {/* Summary paragraph */}
       <p
         style={{
-          marginTop: "20px",
           color: theme.bodyTextColor,
-          fontSize: "15px",
-          lineHeight: 1.6,
-          maxWidth: "380px",
+          fontSize: "1.15rem",
+          lineHeight: 1.7,
+          fontWeight: 500,
+          margin: 0,
+          textShadow: "0 1px 4px rgba(0,0,0,0.5)",
         }}
       >
         {copy.summary}
       </p>
 
-      {/* 4. Bottom tagline — flex push to bottom */}
+      {/* Detail paragraph */}
+      <p
+        style={{
+          color: theme.bodyMutedColor,
+          fontSize: "0.95rem",
+          lineHeight: 1.7,
+          fontWeight: 400,
+          margin: 0,
+          textShadow: "0 1px 4px rgba(0,0,0,0.5)",
+        }}
+      >
+        {copy.detail}
+      </p>
+
+      {/* Feature pills */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+        {copy.pills.map((tag) => (
+          <span
+            key={tag}
+            style={{
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              padding: "0.3rem 0.75rem",
+              borderRadius: "999px",
+              border: `1px solid ${theme.pillBorder}`,
+              color: theme.pillText,
+              backgroundColor: theme.pillBg,
+              letterSpacing: "0.03em",
+              textTransform: "uppercase",
+            }}
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      {/* Tagline — pushed to bottom */}
       <div
-        className="flex items-center"
-        style={{ gap: "12px", marginTop: "auto", paddingTop: "32px" }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.75rem",
+          marginTop: "auto",
+          paddingTop: "1.25rem",
+          borderTop: `1px solid ${theme.taglineBorderColor}`,
+        }}
       >
         <div
           style={{
@@ -304,46 +282,39 @@ function TextColumn({ step, headingTop, headingHighlight, copy, theme }) {
           <Sparkles size={18} style={{ color: theme.taglineIcon }} strokeWidth={2} />
         </div>
         <div>
-          <div
+          <p
             style={{
-              color: theme.taglineMain,
+              fontSize: "1rem",
               fontWeight: 700,
-              fontSize: "15px",
-              lineHeight: 1.3,
+              color: theme.taglineMain,
+              margin: 0,
+              textShadow: "0 1px 4px rgba(0,0,0,0.5)",
             }}
           >
             {copy.ctaMain}
-          </div>
-          <div
+          </p>
+          <p
             style={{
+              fontSize: "0.8rem",
+              fontWeight: 400,
               color: theme.taglineSub,
-              fontSize: "13px",
-              lineHeight: 1.4,
-              marginTop: "2px",
+              margin: 0,
             }}
           >
             {copy.ctaSub}
-          </div>
+          </p>
         </div>
       </div>
     </div>
   );
 }
 
-function VisualColumn({ illustration, theme }) {
+function VisualColumn() {
   return (
     <div
       className="hidden lg:block flex-1 min-w-0 h-full"
-      style={{ background: theme.rightPanelBg }}
-    >
-      <img
-        src={illustration}
-        alt=""
-        className="block select-none pointer-events-none w-full h-full"
-        style={{ objectFit: "cover", display: "block" }}
-        draggable={false}
-      />
-    </div>
+      style={{ position: "relative", zIndex: 2 }}
+    />
   );
 }
 
@@ -365,27 +336,38 @@ export default function HowItWorksCard({
     <article
       className="relative flex h-full w-full overflow-hidden rounded-[16px]"
       style={{
-        background: theme.leftPanelBg,
+        backgroundImage: `url(${illustration})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
         border: theme.cardBorder,
         boxShadow: theme.cardShadow,
         minHeight: "480px",
         flexDirection: isEven ? "row-reverse" : "row",
       }}
     >
-      {/* Corner number badge — always top-right of the card */}
-      <CornerNumberBadge step={step} theme={theme} />
+      {/* Directional gradient overlay — opaque on text side, transparent on image side */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: theme.overlayGradient,
+          zIndex: 1,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Corner number — odd: top-right, even: top-left */}
+      <CornerNumberBadge step={step} theme={theme} isOdd={!isEven} />
 
       <TextColumn
-        step={step}
         headingTop={resolvedHeadingTop}
         headingHighlight={resolvedHeadingHighlight}
         copy={copy}
         theme={theme}
+        isEven={isEven}
       />
-      <VisualColumn
-        illustration={illustration}
-        theme={theme}
-      />
+      <VisualColumn />
     </article>
   );
 }
