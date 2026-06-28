@@ -243,11 +243,18 @@ def _get_model(model_id: str):
     return _models[model_id]
 
 
+# Model families that handle the Converse tool-call sequence strands emits, so they run
+# the FULL toolful path (cfn-lint/cfn-guard self-correction). Anthropic + the agentic open
+# models (Kimi / MiniMax / GLM) are verified to survive ConverseStream + tools and
+# self-correct to clean templates; DeepSeek is enabled here to test the same. (Amazon Nova
+# and Qwen raised modelStreamErrorException on streamed tools and produced invalid output —
+# they've been dropped.) If a model here errors on streamed tools, drop it from this list.
+_TOOLFUL_FAMILIES = ("anthropic", "moonshotai", "kimi", "minimax", "glm", "zai", "deepseek")
+
+
 def _supports_tool_use(model_id: str) -> bool:
-    """Claude models (Anthropic Converse API) support the MCP tool-call sequence that
-    strands produces. Amazon Nova models currently raise modelStreamErrorException when
-    given tool definitions via ConverseStream — run them toolless."""
-    return "anthropic" in model_id
+    mid = (model_id or "").lower()
+    return any(fam in mid for fam in _TOOLFUL_FAMILIES)
 
 
 def build_agent(model_id: str) -> Agent:
@@ -339,10 +346,9 @@ async def invoke(payload, context):
             except StopAsyncIteration:
                 break
             except Exception as exc:
-                # Catch model-level errors (AccessDeniedException when the model
-                # isn't enabled, ThrottlingException, tool-call failures, etc.)
-                # and surface them as a structured error so the frontend can show
-                # a useful message instead of "empty template".
+                # Surface model-level errors (AccessDenied when the model isn't enabled,
+                # Throttling, tool-call failures) as a structured error so the frontend
+                # shows a useful message instead of "empty template".
                 log.error("IacArchitect stream error (model=%s): %s", model_id, exc)
                 yield json.dumps({"error": str(exc), "template": ""})
                 return

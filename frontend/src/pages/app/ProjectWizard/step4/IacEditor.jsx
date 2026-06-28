@@ -8,12 +8,14 @@ import CfnEditor from '../../../../components/wizard/CfnEditor'
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const MODEL_OPTIONS = [
-  // Claude models — fully supported (Converse API + tool use)
+  // Claude — fully supported (Converse + tool use)
   { key: 'sonnet-4-5', label: 'Claude Sonnet 4.5' },
   { key: 'haiku-4-5', label: 'Claude Haiku 4.5' },
-  // Amazon Nova — requires Nova Pro/Lite enabled in Bedrock Model Access (ap-south-1)
-  { key: 'nova-pro', label: 'Amazon Nova Pro' },
-  { key: 'nova-lite', label: 'Amazon Nova Lite' },
+  // Agentic open models — tool-tuned, run the toolful self-correcting path
+  { key: 'kimi-k2-5', label: 'Kimi K2.5' },
+  { key: 'minimax-m2-5', label: 'MiniMax M2.5' },
+  { key: 'glm-5', label: 'GLM 5' },
+  { key: 'deepseek-v3-2', label: 'DeepSeek V3.2' },
 ]
 
 const STAGES = [
