@@ -330,30 +330,55 @@ async def invoke(payload, context):
 
         # Stream the model, only emitting the parsed result at the end. A generate can
         # run for minutes; if the HTTP response stays byte-silent the runtime's load
-        # balancer idle-times-out and resets the connection. Race each step against a
-        # 15s timeout and emit a heartbeat whenever the model is quiet.
+        # balancer idle-times-out and resets the connection, so we emit a heartbeat
+        # whenever the model is quiet for 15s.
+        #
+        # The whole stream is consumed inside ONE task (`_pump`) that feeds a queue, and
+        # only the queue read is raced against the heartbeat timeout. Racing each `anext`
+        # in its own task (the previous approach) copied the asyncio context per step, so
+        # strands' `current_context` ContextVar — set/reset around every MCP tool call —
+        # was reset in a different context than it was set in, raising
+        # "ValueError: <Token ...> was created in a different Context" on every tool call.
+        # Keeping the stream on a single context fixes that.
         full_text = ""
-        stream = aiter(agent.stream_async(user_message))
-        while True:
-            step = asyncio.ensure_future(anext(stream))
-            while True:
-                done, _ = await asyncio.wait({step}, timeout=15)
-                if done:
-                    break
-                yield json.dumps({"__heartbeat__": True})
+        queue: asyncio.Queue = asyncio.Queue()
+        _DONE = object()
+
+        async def _pump():
             try:
-                event = step.result()
-            except StopAsyncIteration:
-                break
-            except Exception as exc:
-                # Surface model-level errors (AccessDenied when the model isn't enabled,
-                # Throttling, tool-call failures) as a structured error so the frontend
-                # shows a useful message instead of "empty template".
-                log.error("IacArchitect stream error (model=%s): %s", model_id, exc)
-                yield json.dumps({"error": str(exc), "template": ""})
-                return
-            if "data" in event and isinstance(event["data"], str):
-                full_text += event["data"]
+                async for ev in agent.stream_async(user_message):
+                    await queue.put(("event", ev))
+            except Exception as exc:  # noqa: BLE001 — forward to the consumer below
+                await queue.put(("error", exc))
+            finally:
+                await queue.put(("done", _DONE))
+
+        pump = asyncio.ensure_future(_pump())
+        getter = None
+        try:
+            while True:
+                if getter is None:
+                    getter = asyncio.ensure_future(queue.get())
+                done, _ = await asyncio.wait({getter}, timeout=15)
+                if not done:
+                    yield json.dumps({"__heartbeat__": True})
+                    continue
+                kind, item = getter.result()
+                getter = None
+                if kind == "done":
+                    break
+                if kind == "error":
+                    # AccessDenied (model not enabled), Throttling, tool-call failures →
+                    # surface a structured error so the frontend shows a useful message.
+                    log.error("IacArchitect stream error (model=%s): %s", model_id, item)
+                    yield json.dumps({"error": str(item), "template": ""})
+                    return
+                if "data" in item and isinstance(item["data"], str):
+                    full_text += item["data"]
+        finally:
+            for _t in (pump, getter):
+                if _t is not None and not _t.done():
+                    _t.cancel()
 
         if not full_text.strip():
             # The model produced heartbeats but no text — most likely the model isn't
