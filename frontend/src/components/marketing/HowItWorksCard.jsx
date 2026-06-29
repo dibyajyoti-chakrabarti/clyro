@@ -35,7 +35,7 @@ const CARD_THEMES = {
     badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
     badgeText: "#fff8e0",
     cardBorder: "1.5px solid rgba(212, 160, 23, 0.45)",
-    cardShadow: "0 0 0 1px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08)",
+    cardShadow: "0 -4px 16px rgba(0,0,0,0.08), -4px 0 16px rgba(0,0,0,0.06), 4px 0 16px rgba(0,0,0,0.06)",
   },
   "02": {
     headingColor: "#FFF8E8",
@@ -52,7 +52,7 @@ const CARD_THEMES = {
     badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
     badgeText: "#fff8e0",
     cardBorder: "1.5px solid rgba(212, 160, 23, 0.45)",
-    cardShadow: "0 0 0 1px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08)",
+    cardShadow: "0 -4px 16px rgba(0,0,0,0.08), -4px 0 16px rgba(0,0,0,0.06), 4px 0 16px rgba(0,0,0,0.06)",
   },
   "03": {
     headingColor: "#ffffff",
@@ -69,7 +69,7 @@ const CARD_THEMES = {
     badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
     badgeText: "#fff8e0",
     cardBorder: "1.5px solid rgba(212, 160, 23, 0.6)",
-    cardShadow: "0 0 0 1px rgba(0,0,0,0.15), 0 8px 40px rgba(0,0,0,0.3), 0 2px 12px rgba(0,0,0,0.2)",
+    cardShadow: "0 -4px 20px rgba(0,0,0,0.2), -4px 0 20px rgba(0,0,0,0.15), 4px 0 20px rgba(0,0,0,0.15)",
   },
   "04": {
     headingColor: "#ffffff",
@@ -86,7 +86,7 @@ const CARD_THEMES = {
     badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
     badgeText: "#fff8e0",
     cardBorder: "1.5px solid rgba(212, 160, 23, 0.6)",
-    cardShadow: "0 0 0 1px rgba(0,0,0,0.15), 0 8px 40px rgba(0,0,0,0.3), 0 2px 12px rgba(0,0,0,0.2)",
+    cardShadow: "0 -4px 20px rgba(0,0,0,0.2), -4px 0 20px rgba(0,0,0,0.15), 4px 0 20px rgba(0,0,0,0.15)",
   },
   "05": {
     headingColor: "#ffffff",
@@ -103,7 +103,7 @@ const CARD_THEMES = {
     badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
     badgeText: "#fff8e0",
     cardBorder: "1.5px solid rgba(212, 160, 23, 0.6)",
-    cardShadow: "0 0 0 1px rgba(0,0,0,0.15), 0 8px 40px rgba(0,0,0,0.3), 0 2px 12px rgba(0,0,0,0.2)",
+    cardShadow: "0 -4px 20px rgba(0,0,0,0.2), -4px 0 20px rgba(0,0,0,0.15), 4px 0 20px rgba(0,0,0,0.15)",
   },
 };
 
@@ -210,11 +210,14 @@ export default function HowItWorksCard({
         width: "100%",
         height: "100%",
         minHeight: "480px",
-        borderRadius: "20px",
+        borderRadius: "20px 20px 0 0",
         overflow: "hidden",
         position: "relative",
         backgroundColor: bgColor,
-        border: theme.cardBorder,
+        borderTop: theme.cardBorder,
+        borderLeft: theme.cardBorder,
+        borderRight: theme.cardBorder,
+        borderBottom: "none",
         boxShadow: theme.cardShadow,
       }}
     >

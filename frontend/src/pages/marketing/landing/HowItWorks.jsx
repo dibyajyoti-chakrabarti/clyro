@@ -50,8 +50,6 @@ const steps = [
   },
 ];
 
-const CARD_HEIGHT = "76vh";
-
 export default function HowItWorks() {
   const sectionRef = useRef(null);
   const containerRef = useRef(null);
@@ -62,15 +60,31 @@ export default function HowItWorks() {
   return (
     <section
       ref={sectionRef}
-      className="relative w-full py-6 px-0"
-      style={{ backgroundColor: "var(--step-bg, #EAD9A8)" }}
+      className="relative w-full"
+      style={{
+        backgroundColor: "var(--step-bg, #EAD9A8)",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        padding: 0,
+        margin: 0,
+      }}
     >
       {/* Rounded wrapper */}
-      <div className="w-full max-w-none rounded-3xl overflow-hidden bg-transparent">
-        <div className="px-0">
-          <div ref={containerRef}>
+      <div
+        className="w-full max-w-none rounded-t-3xl bg-transparent"
+        style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+      >
+        <div
+          className="px-0"
+          style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+        >
+          <div
+            ref={containerRef}
+            style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+          >
             {/* Heading */}
-            <div className="pt-8 pb-4 flex flex-col items-center text-center">
+            <div className="pt-8 pb-4 flex flex-col items-center text-center" style={{ flexShrink: 0 }}>
               {/* Main heading */}
               <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl leading-none">
                 <span style={{ color: "#1A1208" }}>How It </span>
@@ -87,12 +101,14 @@ export default function HowItWorks() {
               </div>
             </div>
 
-            {/* Card stage */}
+            {/* Card stage — fills remaining height */}
             <div
               style={{
                 position: "relative",
-                height: CARD_HEIGHT,
-                marginBottom: "4rem",
+                flex: 1,
+                minHeight: 0,
+                margin: 0,
+                padding: 0,
               }}
             >
               {steps.map((item, index) => (
@@ -115,7 +131,7 @@ export default function HowItWorks() {
                 >
                   <div
                     style={{
-                      height: CARD_HEIGHT,
+                      height: "100%",
                       width: "100%",
                       maxWidth: "none",
                     }}
