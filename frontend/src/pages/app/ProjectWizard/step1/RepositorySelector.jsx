@@ -1,6 +1,6 @@
 import { GitBranch, ShieldCheck } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
-import Select from '../../../../components/ui/Select'
+import DropDown from '../components/DropDown'
 import PremiumStepHeading from './PremiumStepHeading'
 
 function RepositorySelector({
@@ -46,14 +46,12 @@ function RepositorySelector({
                 Repository
               </label>
               <div style={{ animation: 'repoFadeIn 250ms ease-out' }}>
-                <Select
+                <DropDown
                   value={selectedRepo}
                   disabled={loadingRepos}
                   placeholder={loadingRepos ? 'Loading repositories…' : 'Select a repository…'}
                   options={availableRepos.map((repo) => ({ value: repo.full_name, label: repo.full_name }))}
-                  onChange={(event) => handleRepoChange(event.target.value)}
-                  className='w-full'
-                  selectClassName='h-[60px] rounded-[16px] border-[rgba(255,196,0,0.18)] bg-[#0f0f0f] px-5 text-[15px] text-white/90 transition-[border-color,box-shadow,transform] duration-200 hover:border-[rgba(255,196,0,0.32)] focus-visible:border-[#FFD54A]/70 focus-visible:ring-[2px] focus-visible:ring-[rgba(255,213,74,0.18)]'
+                  onChange={(value) => handleRepoChange(value)}
                 />
               </div>
             </div>
@@ -63,7 +61,7 @@ function RepositorySelector({
                 Branch
               </label>
               <div style={{ animation: 'repoFadeIn 250ms ease-out 120ms both' }}>
-                <Select
+                <DropDown
                   value={selectedBranch}
                   disabled={selectedRepo === '' || loadingBranches}
                   placeholder={
@@ -74,9 +72,7 @@ function RepositorySelector({
                         : 'Select a branch…'
                   }
                   options={availableBranches.map((branch) => ({ value: branch, label: branch }))}
-                  onChange={(event) => setSelectedBranch(event.target.value)}
-                  className='w-full'
-                  selectClassName='h-[60px] rounded-[16px] border-[rgba(255,196,0,0.18)] bg-[#0f0f0f] px-5 text-[15px] text-white/90 transition-[border-color,box-shadow,transform] duration-200 hover:border-[rgba(255,196,0,0.32)] focus-visible:border-[#FFD54A]/70 focus-visible:ring-[2px] focus-visible:ring-[rgba(255,213,74,0.18)]'
+                  onChange={(value) => setSelectedBranch(value)}
                 />
               </div>
             </div>
