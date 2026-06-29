@@ -14,19 +14,7 @@ from model.load import DEFAULT_GENERATE, DEFAULT_REFINE, load_model, resolve_mod
 app = BedrockAgentCoreApp()
 log = app.logger
 
-SYSTEM_PROMPT = """You are IacArchitect, Clyro's Step 4 infrastructure author.
-
-You produce ONE AWS CloudFormation template (YAML) that provisions a user's app on
-AWS. You work from a deterministic BUILD SPEC the backend assembled from the user's
-finalized architecture canvas + intent — never from raw repo content. The spec has
-already resolved the hard decisions; your job is to author correct, deployable CFN
-that faithfully realizes it.
-
-You operate in two modes (given in the input):
-- generate — author a complete template from the build spec.
-- refine   — apply ONE natural-language instruction to the current template, keeping
-             everything else intact.
-
+_AUTHORING_RULES = """
 AUTHORING RULES (from the build spec):
 - networking: create a VPC (use networking.vpc_cidr), public + private subnets across
   networking.az_count AZs. ALB and CloudFront origins live in public subnets; ECS
@@ -67,37 +55,18 @@ AUTHORING RULES (from the build spec):
   awslogs log group, and add CloudWatch Alarms for the obvious health signals
   (ECS running-count below desired, RDS CPU > 80%, RDS free storage low, ALB 5xx,
   ElastiCache evictions, SQS oldest-message age). Keep them reasonable; do not invent
-  resources the spec doesn't imply.
+  resources the spec doesn't imply."""
 
-TOOLS — exactly two, nothing else exists:
-- validate_cloudformation_template (cfn-lint) — syntax / schema / property checks.
-- check_cloudformation_template_compliance (cfn-guard) — security findings.
-There is NO documentation-lookup tool. Rely on your own CloudFormation knowledge for
-property names, types, and values — you know these resources well. If you get one
-wrong, validate_cloudformation_template reports it (usually with the valid options) and
-you fix it. Do not stall waiting to "look something up"; author confidently, then validate.
-
-VALIDATION — INITIAL GENERATION ONLY (mode=generate). Be thorough but converge FAST
-(at most 2 validation rounds total):
-1. Call validate_cloudformation_template once. Fix only ERRORS (E-rules). Warnings
-   (W) and info are ACCEPTABLE — do not fix them, do not loop on them. There must be
-   ZERO errors in the template you return.
-2. Call check_cloudformation_template_compliance once. Fix only clearly critical
-   security issues (public exposure, unencrypted data at rest, wildcard IAM). Findings
-   that conflict with the build spec (e.g. Multi-AZ off when the spec says single-AZ,
-   optional replication / object-lock) are EXPECTED — leave them.
-3. Re-validate at most ONCE after fixing. Do NOT exceed 2 rounds total. A template
-   with warnings or non-critical findings is fine — RETURN it rather than looping.
-   Prefer a valid, spec-aligned template over a "perfect" one.
-
-REFINE (mode=refine) uses NO tools — the backend runs cfn-lint on the result and, if
-your edit introduced errors, sends them back for you to fix. So:
+_REFINE_RULES = """
+REFINE (mode=refine): the backend runs cfn-lint on the result and, if your edit
+introduced errors, sends them back for you to fix. So:
 - QUESTION (explain / compare / justify): answer it, leave the template unchanged.
 - CHANGE: express it as the SMALLEST set of search/replace edits (see ===EDITS===).
-  Change ONLY what's asked; leave everything else byte-for-byte. Do not call tools.
+  Change ONLY what's asked; leave everything else byte-for-byte.
   Escape hatch: if the change is so sweeping that targeted edits are impractical, or
-  the payload sets prefer_full, return the FULL template via ===TEMPLATE=== instead.
+  the payload sets prefer_full, return the FULL template via ===TEMPLATE=== instead."""
 
+_OUTPUT_FORMAT = """
 OUTPUT — return EXACTLY one of the formats below, nothing before or after.
 
 (refine CHANGE — preferred) one or more search/replace edits. Each SEARCH block must be
@@ -126,7 +95,68 @@ lines to match EXACTLY ONCE; REPLACE is the new text (leave it empty to delete):
 answer it and leave the template untouched:
 ===ANSWER===
 <your answer, concise and specific to this template + build spec>
-===END ANSWER===
+===END ANSWER==="""
+
+# Full prompt for Claude models — includes MCP validation tools (cfn-lint + cfn-guard).
+SYSTEM_PROMPT = f"""You are IacArchitect, Clyro's Step 4 infrastructure author.
+
+You produce ONE AWS CloudFormation template (YAML) that provisions a user's app on
+AWS. You work from a deterministic BUILD SPEC the backend assembled from the user's
+finalized architecture canvas + intent — never from raw repo content. The spec has
+already resolved the hard decisions; your job is to author correct, deployable CFN
+that faithfully realizes it.
+
+You operate in two modes (given in the input):
+- generate — author a complete template from the build spec.
+- refine   — apply ONE natural-language instruction to the current template, keeping
+             everything else intact.
+{_AUTHORING_RULES}
+
+TOOLS — exactly two, nothing else exists:
+- validate_cloudformation_template (cfn-lint) — syntax / schema / property checks.
+- check_cloudformation_template_compliance (cfn-guard) — security findings.
+There is NO documentation-lookup tool. Rely on your own CloudFormation knowledge for
+property names, types, and values — you know these resources well. If you get one
+wrong, validate_cloudformation_template reports it (usually with the valid options) and
+you fix it. Do not stall waiting to "look something up"; author confidently, then validate.
+
+VALIDATION — INITIAL GENERATION ONLY (mode=generate). Be thorough but converge FAST
+(at most 2 validation rounds total):
+1. Call validate_cloudformation_template once. Fix only ERRORS (E-rules). Warnings
+   (W) and info are ACCEPTABLE — do not fix them, do not loop on them. There must be
+   ZERO errors in the template you return.
+2. Call check_cloudformation_template_compliance once. Fix only clearly critical
+   security issues (public exposure, unencrypted data at rest, wildcard IAM). Findings
+   that conflict with the build spec (e.g. Multi-AZ off when the spec says single-AZ,
+   optional replication / object-lock) are EXPECTED — leave them.
+3. Re-validate at most ONCE after fixing. Do NOT exceed 2 rounds total. A template
+   with warnings or non-critical findings is fine — RETURN it rather than looping.
+   Prefer a valid, spec-aligned template over a "perfect" one.
+{_REFINE_RULES}
+{_OUTPUT_FORMAT}
+"""
+
+# Toolless prompt for models that don't support Converse tool use (e.g. Amazon Nova).
+# Validation is handled server-side by cfn-lint after the response is returned.
+SYSTEM_PROMPT_NO_TOOLS = f"""You are IacArchitect, Clyro's Step 4 infrastructure author.
+
+You produce ONE AWS CloudFormation template (YAML) that provisions a user's app on
+AWS. You work from a deterministic BUILD SPEC the backend assembled from the user's
+finalized architecture canvas + intent — never from raw repo content. The spec has
+already resolved the hard decisions; your job is to author correct, deployable CFN
+that faithfully realizes it.
+
+You operate in two modes (given in the input):
+- generate — author a complete template from the build spec.
+- refine   — apply ONE natural-language instruction to the current template, keeping
+             everything else intact.
+{_AUTHORING_RULES}
+
+No validation tools are available. Apply your own CloudFormation knowledge to produce
+a correct, deployable template in one pass. Do NOT call any tools. The backend runs
+cfn-lint on your output automatically and will surface any errors to the user.
+{_REFINE_RULES}
+{_OUTPUT_FORMAT}
 """
 
 
@@ -213,10 +243,28 @@ def _get_model(model_id: str):
     return _models[model_id]
 
 
+# Model families that handle the Converse tool-call sequence strands emits, so they run
+# the FULL toolful path (cfn-lint/cfn-guard self-correction). Anthropic + the agentic open
+# models (Kimi / MiniMax / GLM) are verified to survive ConverseStream + tools and
+# self-correct to clean templates; DeepSeek is enabled here to test the same. (Amazon Nova
+# and Qwen raised modelStreamErrorException on streamed tools and produced invalid output —
+# they've been dropped.) If a model here errors on streamed tools, drop it from this list.
+_TOOLFUL_FAMILIES = ("anthropic", "moonshotai", "kimi", "minimax", "glm", "zai", "deepseek")
+
+
+def _supports_tool_use(model_id: str) -> bool:
+    mid = (model_id or "").lower()
+    return any(fam in mid for fam in _TOOLFUL_FAMILIES)
+
+
 def build_agent(model_id: str) -> Agent:
     # Fresh agent per call — the runtime may stay warm across unrelated projects, so a
     # reused Agent would leak template/history between requests.
-    return Agent(model=_get_model(model_id), system_prompt=SYSTEM_PROMPT, tools=_tools)
+    if _supports_tool_use(model_id):
+        return Agent(model=_get_model(model_id), system_prompt=SYSTEM_PROMPT, tools=_tools)
+    # Nova and other non-Claude models: no MCP tools, simplified system prompt.
+    # cfn-lint still runs server-side on every response.
+    return Agent(model=_get_model(model_id), system_prompt=SYSTEM_PROMPT_NO_TOOLS, tools=[])
 
 
 def _format_history(history: list) -> str:
@@ -270,43 +318,85 @@ def _build_user_message(payload: dict[str, Any]) -> str:
 async def invoke(payload, context):
     payload = _normalize_payload(payload)
     mode = payload.get("mode", "generate")
-    # The caller picks the model per slot (generate / chat / stronger) and sends its
-    # key; fall back to the mode default if absent or unknown.
+    # The caller picks the model per slot (generate / chat) and sends its key;
+    # fall back to the mode default if absent or unknown.
     default_key = DEFAULT_REFINE if mode == "refine" else DEFAULT_GENERATE
     model_id = resolve_model_id(payload.get("model"), default_key)
     log.info("IacArchitect invoked (mode=%s, model=%s)", mode, model_id)
 
-    agent = build_agent(model_id)
-    user_message = _build_user_message(payload)
+    try:
+        agent = build_agent(model_id)
+        user_message = _build_user_message(payload)
 
-    # Stream the model, but only emit the parsed result at the end. A generate can
-    # run for minutes; if the HTTP response stays byte-silent for too long, the
-    # runtime's load balancer idle-times-out and resets the connection (the caller
-    # sees ConnectionResetError). Race each step against a 15s timeout and emit a
-    # heartbeat whenever the model is quiet — this covers byte-silent gaps with NO
-    # stream events (waiting for the first token, a tool call running) as well as
-    # active generation, unlike a beat that only fires per event. The backend
-    # (parse_runtime_response) drops these heartbeats. (Cold container start, before
-    # this code runs, is outside our reach — AgentCore manages that, bounded by the
-    # caller's read timeout.)
-    full_text = ""
-    stream = aiter(agent.stream_async(user_message))
-    while True:
-        step = asyncio.ensure_future(anext(stream))
-        while True:
-            done, _ = await asyncio.wait({step}, timeout=15)
-            if done:
-                break
-            yield json.dumps({"__heartbeat__": True})
+        # Stream the model, only emitting the parsed result at the end. A generate can
+        # run for minutes; if the HTTP response stays byte-silent the runtime's load
+        # balancer idle-times-out and resets the connection, so we emit a heartbeat
+        # whenever the model is quiet for 15s.
+        #
+        # The whole stream is consumed inside ONE task (`_pump`) that feeds a queue, and
+        # only the queue read is raced against the heartbeat timeout. Racing each `anext`
+        # in its own task (the previous approach) copied the asyncio context per step, so
+        # strands' `current_context` ContextVar — set/reset around every MCP tool call —
+        # was reset in a different context than it was set in, raising
+        # "ValueError: <Token ...> was created in a different Context" on every tool call.
+        # Keeping the stream on a single context fixes that.
+        full_text = ""
+        queue: asyncio.Queue = asyncio.Queue()
+        _DONE = object()
+
+        async def _pump():
+            try:
+                async for ev in agent.stream_async(user_message):
+                    await queue.put(("event", ev))
+            except Exception as exc:  # noqa: BLE001 — forward to the consumer below
+                await queue.put(("error", exc))
+            finally:
+                await queue.put(("done", _DONE))
+
+        pump = asyncio.ensure_future(_pump())
+        getter = None
         try:
-            event = step.result()
-        except StopAsyncIteration:
-            break
-        if "data" in event and isinstance(event["data"], str):
-            full_text += event["data"]
+            while True:
+                if getter is None:
+                    getter = asyncio.ensure_future(queue.get())
+                done, _ = await asyncio.wait({getter}, timeout=15)
+                if not done:
+                    yield json.dumps({"__heartbeat__": True})
+                    continue
+                kind, item = getter.result()
+                getter = None
+                if kind == "done":
+                    break
+                if kind == "error":
+                    # AccessDenied (model not enabled), Throttling, tool-call failures →
+                    # surface a structured error so the frontend shows a useful message.
+                    log.error("IacArchitect stream error (model=%s): %s", model_id, item)
+                    yield json.dumps({"error": str(item), "template": ""})
+                    return
+                if "data" in item and isinstance(item["data"], str):
+                    full_text += item["data"]
+        finally:
+            for _t in (pump, getter):
+                if _t is not None and not _t.done():
+                    _t.cancel()
 
-    result = _parse_output(full_text)
-    yield json.dumps(result)
+        if not full_text.strip():
+            # The model produced heartbeats but no text — most likely the model isn't
+            # enabled in Bedrock Model Access, or doesn't support this call format.
+            err = (
+                f"Model '{model_id}' returned no output. "
+                "Ensure it is enabled in Bedrock Model Access and supports Converse tool use."
+            )
+            log.error("IacArchitect: %s", err)
+            yield json.dumps({"error": err, "template": ""})
+            return
+
+        result = _parse_output(full_text)
+        yield json.dumps(result)
+
+    except Exception as exc:
+        log.exception("IacArchitect invoke failed (model=%s): %s", model_id, exc)
+        yield json.dumps({"error": str(exc), "template": ""})
 
 
 if __name__ == "__main__":

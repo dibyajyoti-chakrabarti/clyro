@@ -6,11 +6,18 @@ from strands.models.bedrock import BedrockModel
 # use, and must support Converse tool use (generate calls validate/compliance) plus
 # the delimited output contract — weaker models may need a smoke test first.
 MODELS = {
+    # Claude — cross-region inference profiles; enable in Bedrock Model Access.
     "sonnet-4-5": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
     "haiku-4-5": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "nova-pro": "apac.amazon.nova-pro-v1:0",
-    "nova-lite": "apac.amazon.nova-lite-v1:0",
-    "qwen-coder": "qwen.qwen3-coder-30b-a3b-v1:0",
+    # Agentic, tool-tuned open models — run the FULL toolful path (self-correct via
+    # cfn-lint/cfn-guard). In-Region in ap-south-1 (plain ids; verified via
+    # `aws bedrock list-foundation-models --region ap-south-1`). Kimi/MiniMax/GLM tested
+    # clean (0 errors / 0 warnings); DeepSeek added to test the same. Nova/Qwen were
+    # dropped — toolless, they produced invalid templates or hit output-token caps.
+    "kimi-k2-5": "moonshotai.kimi-k2.5",
+    "minimax-m2-5": "minimax.minimax-m2.5",
+    "glm-5": "zai.glm-5",
+    "deepseek-v3-2": "deepseek.v3.2",
 }
 
 # Defaults by mode when the caller doesn't pick a model (backward-compatible):

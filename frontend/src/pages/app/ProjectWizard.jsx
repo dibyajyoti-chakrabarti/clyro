@@ -206,14 +206,14 @@ export default function ProjectWizard() {
 
           <section
             className={`box-border flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-[rgba(255,196,0,0.35)] shadow-[0_30px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,196,0,0.08),0_0_18px_rgba(255,196,0,0.06)] ${
-              step === 3 ? 'px-8 pb-8 pt-8 lg:px-8 lg:pb-8 lg:pt-8' : 'px-[64px] pb-[32px] pt-[72px]'
+              step === 3 || step === 4 ? 'p-0' : 'px-[64px] pb-[32px] pt-[72px]'
             }`}
             style={{
               backgroundImage:
                 'radial-gradient(circle at 100% 0%, rgba(232,184,75,0.08), transparent 28%), radial-gradient(circle at 50% 0%, rgba(255,255,255,0.025), transparent 24%), linear-gradient(180deg,#0d0d0d,#070707)',
             }}
           >
-            <div className={`box-border flex min-h-0 flex-1 flex-col ${step === 3 ? 'items-stretch' : 'items-center'}`}>
+            <div className={`box-border flex min-h-0 flex-1 flex-col ${step === 3 || step === 4 ? 'items-stretch' : 'items-center'}`}>
                 {step === 1 ? (
                   <StepOne
                     projectId={projectId}
@@ -229,6 +229,7 @@ export default function ProjectWizard() {
                     projectData={projectData}
                     setProjectData={setProjectData}
                     setStep2CanContinue={setStep2CanContinue}
+                    onComplete={() => setStep((prev) => Math.min(5, prev + 1))}
                   />
                 ) : null}
 
@@ -256,41 +257,44 @@ export default function ProjectWizard() {
                 {step === 5 ? <StepFive /> : null}
             </div>
 
-            <div className='mt-auto flex w-full items-end justify-between pt-8'>
-              {step > 1 ? (
-                <Button
-                  variant='ghost'
-                  onClick={handleBack}
-                  className='h-12 rounded-[18px] px-5'
-                >
-                  <ArrowLeft className='h-4 w-4' />
-                  Back
-                </Button>
-              ) : (
-                <div />
-              )}
-              {step === 3 ? (
-                <Button
-                  variant='primary'
-                  onClick={handleContinue}
-                  disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
-                  className='h-12 rounded-[18px] px-5 transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(255,196,0,0.18)]'
-                >
-                  Finalize
-                  <ArrowRight className='h-4 w-4' />
-                </Button>
-              ) : step !== 4 ? (
-                <Button
-                  variant='primary'
-                  onClick={handleContinue}
-                  disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
-                  className='mb-[20px] mr-[24px] h-[64px] w-[200px] rounded-[18px]'
-                >
-                  {continueLabel}
-                  <ArrowRight className='h-4 w-4' />
-                </Button>
-              ) : null}
-            </div>
+            {/* Step 4 and 2 manage their own navigation; step 3 uses Finalize inline */}
+            {step !== 4 && step !== 2 && (
+              <div className='mt-auto flex w-full items-end justify-between pt-8'>
+                {step > 1 ? (
+                  <Button
+                    variant='ghost'
+                    onClick={handleBack}
+                    className='h-12 rounded-[18px] px-5'
+                  >
+                    <ArrowLeft className='h-4 w-4' />
+                    Back
+                  </Button>
+                ) : (
+                  <div />
+                )}
+                {step === 3 ? (
+                  <Button
+                    variant='primary'
+                    onClick={handleContinue}
+                    disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
+                    className='h-12 rounded-[18px] px-5 transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(255,196,0,0.18)]'
+                  >
+                    Finalize
+                    <ArrowRight className='h-4 w-4' />
+                  </Button>
+                ) : (
+                  <Button
+                    variant='primary'
+                    onClick={handleContinue}
+                    disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
+                    className='mb-[20px] mr-[24px] h-[64px] w-[200px] rounded-[18px]'
+                  >
+                    {continueLabel}
+                    <ArrowRight className='h-4 w-4' />
+                  </Button>
+                )}
+              </div>
+            )}
           </section>
         </div>
       </main>

@@ -37,7 +37,7 @@ function QuestionBlock({ question, value, onChange }) {
   )
 }
 
-export default function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanContinue }) {
+export default function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanContinue, onComplete }) {
   const questions = useMemo(
     () =>
       getQuestions(
@@ -96,6 +96,7 @@ export default function StepTwoPanel({ projectId, projectData, setProjectData, s
 
     try {
       await api.saveIntent(projectId, payload)
+      onComplete?.()
     } catch (err) {
       setSaveError(err.message || 'Failed to save your answers')
     } finally {
@@ -151,7 +152,7 @@ export default function StepTwoPanel({ projectId, projectData, setProjectData, s
             </div>
           </div>
 
-          <div className='mt-10 flex justify-end pr-2 pb-2'>
+          <div className='mt-10 flex justify-end gap-3 pr-2 pb-2'>
             {page === 0 ? (
               <Button
                 variant='primary'
@@ -163,14 +164,32 @@ export default function StepTwoPanel({ projectId, projectData, setProjectData, s
                 <ArrowRight className='h-4 w-4' />
               </Button>
             ) : (
-              <Button
-                variant='primary'
-                onClick={handleBack}
-                className='h-[56px] min-w-[170px] rounded-[16px] border border-[#F2D57B]/60 bg-[linear-gradient(180deg,#FFD54A,#F6B700)] px-6 text-[16px] font-semibold text-black shadow-[0_0_24px_rgba(232,184,75,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-[0_0_30px_rgba(232,184,75,0.3)]'
-              >
-                <ArrowLeft className='h-4 w-4' />
-                Previous
-              </Button>
+              <>
+                <Button
+                  variant='ghost'
+                  onClick={handleBack}
+                  disabled={isSaving}
+                  className='h-[56px] min-w-[120px] rounded-[16px] px-6 text-[16px] font-semibold text-white/70 transition-all duration-200 hover:text-white'
+                >
+                  <ArrowLeft className='h-4 w-4' />
+                  Previous
+                </Button>
+                <Button
+                  variant='primary'
+                  onClick={handleContinue}
+                  disabled={!canContinue || isSaving}
+                  className='h-[56px] min-w-[170px] rounded-[16px] border border-[#F2D57B]/60 bg-[linear-gradient(180deg,#FFD54A,#F6B700)] px-6 text-[16px] font-semibold text-black shadow-[0_0_24px_rgba(232,184,75,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-[0_0_30px_rgba(232,184,75,0.3)]'
+                >
+                  {isSaving ? (
+                    <span className='h-4 w-4 rounded-full border-2 border-black border-t-transparent animate-spin' />
+                  ) : (
+                    <>
+                      Continue
+                      <ArrowRight className='h-4 w-4' />
+                    </>
+                  )}
+                </Button>
+              </>
             )}
           </div>
 

@@ -99,6 +99,8 @@ export default function CfnEditor({ value, onChange, markers = [], readOnly = fa
         readOnly,
         minimap: { enabled: false },
         fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace",
+        fontLigatures: true,
         lineNumbers: 'on',
         scrollBeyondLastLine: false,
         automaticLayout: true,

@@ -114,7 +114,15 @@ def ensure_deployment(project: Project) -> Deployment:
 
     intent = IntentRecord.objects.filter(project=project).order_by("-created_at").first()
     if intent is None:
-        raise IacError("This project has no intent record.")
+        from django.utils import timezone
+        intent = IntentRecord.objects.create(
+            project=project,
+            scale=IntentRecord.Scale.SMALL,
+            criticality=IntentRecord.Criticality.MEDIUM,
+            environment=IntentRecord.Environment.PRODUCTION,
+            domain_has=IntentRecord.DomainHas.NO,
+            completed_at=timezone.now(),
+        )
 
     connection = (
         AWSAccountConnection.objects.filter(project=project, connected_at__isnull=False)
@@ -210,6 +218,8 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
     deployment = ensure_deployment(project)
     spec = _spec_for(deployment)
     resp = _invoke_iac({"mode": "generate", "build_spec": spec, "model": model}, project)
+    if (resp or {}).get("error"):
+        raise IacError((resp or {})["error"])
     template = (resp or {}).get("template", "") or ""
     message = (resp or {}).get("message") or "Generated your CloudFormation template."
 
@@ -249,6 +259,8 @@ def refine(project: Project, instruction: str, history: list | None = None,
         "history": history or [],
         "model": model,
     }, project)
+    if (resp or {}).get("error"):
+        raise IacError((resp or {})["error"])
 
     region = deployment.aws_connection.aws_region or "us-east-1"
 
@@ -274,8 +286,12 @@ def refine(project: Project, instruction: str, history: list | None = None,
                 "build_spec": spec, "history": history or [],
                 "model": model, "prefer_full": True,
             }, project)
-            new_template = (resp or {}).get("template", "") or current
-            message = (resp or {}).get("message") or message
+            if (resp or {}).get("error"):
+                log.warning("refine fallback rewrite failed: %s", resp["error"])
+                new_template = current
+            else:
+                new_template = (resp or {}).get("template", "") or current
+                message = (resp or {}).get("message") or message
     else:
         new_template = (resp or {}).get("template", "") or current
 
