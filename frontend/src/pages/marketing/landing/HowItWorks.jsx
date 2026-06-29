@@ -1,10 +1,10 @@
 import { useRef } from "react";
 import HowItWorksCard from "../../../components/marketing/HowItWorksCard";
-import i1 from "../../../assets/howItWorks/i1.png";
-import i2 from "../../../assets/howItWorks/i2.png";
-import i3 from "../../../assets/howItWorks/i3.png";
-import i4 from "../../../assets/howItWorks/i4.png";
-import i5 from "../../../assets/howItWorks/i5.png";
+import card1 from "../../../assets/howItWorks/card1.webp";
+import card2 from "../../../assets/howItWorks/card2.webp";
+import card3 from "../../../assets/howItWorks/card3.webp";
+import card4 from "../../../assets/howItWorks/card4.webp";
+import card5 from "../../../assets/howItWorks/card5.webp";
 import useHowItWorksAnimation from "../../../hooks/useHowItWorksAnimation";
 
 const steps = [
@@ -12,41 +12,41 @@ const steps = [
     step: "01",
     headingTop: "UNDERSTAND YOUR",
     headingHighlight: "REPOSITORY",
-    illustration: i1,
-    accent: "yellow",
-    stepBg: "#E8D5A3",
+    illustration: card1,
+    bgColor: "#F5EDD6",
+    stepBg: "#F5EDD6",
   },
   {
     step: "02",
     headingTop: "COLLECT YOUR",
     headingHighlight: "INTENT",
-    illustration: i2,
-    accent: "orange",
-    stepBg: "#C4A86A",
+    illustration: card2,
+    bgColor: "#B8922A",
+    stepBg: "#B8922A",
   },
   {
     step: "03",
     headingTop: "DESIGN YOUR",
     headingHighlight: "INFRASTRUCTURE",
-    illustration: i3,
-    accent: "blue",
-    stepBg: "#7A5C28",
+    illustration: card3,
+    bgColor: "#6B4F1E",
+    stepBg: "#6B4F1E",
   },
   {
     step: "04",
     headingTop: "DEPLOY YOUR",
     headingHighlight: "INFRASTRUCTURE",
-    illustration: i4,
-    accent: "green",
-    stepBg: "#2A1C08",
+    illustration: card4,
+    bgColor: "#221609",
+    stepBg: "#221609",
   },
   {
     step: "05",
     headingTop: "MONITOR & OPTIMIZE YOUR",
     headingHighlight: "INFRASTRUCTURE",
-    illustration: i5,
-    accent: "orange",
-    stepBg: "#0D0900",
+    illustration: card5,
+    bgColor: "#0F0A03",
+    stepBg: "#0F0A03",
   },
 ];
 
@@ -63,7 +63,7 @@ export default function HowItWorks() {
     <section
       ref={sectionRef}
       className="relative w-full py-6 px-0"
-      style={{ backgroundColor: "var(--step-bg, #E8D5A3)" }}
+      style={{ backgroundColor: "var(--step-bg, #EAD9A8)" }}
     >
       {/* Rounded wrapper */}
       <div className="w-full max-w-none rounded-3xl overflow-hidden bg-transparent">
@@ -125,7 +125,7 @@ export default function HowItWorks() {
                       headingTop={item.headingTop}
                       headingHighlight={item.headingHighlight}
                       illustration={item.illustration}
-                      accent={item.accent}
+                      bgColor={item.bgColor}
                     />
                   </div>
                 </div>
