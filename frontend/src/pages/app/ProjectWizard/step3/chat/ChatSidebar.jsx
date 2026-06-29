@@ -1,6 +1,6 @@
 import Lottie from 'lottie-react'
 import { ArrowLeft, Send, Sparkles } from 'lucide-react'
-import handLoadingAnimation from '../../../../../assets/loader_animation/hand_loading.json'
+import handLoadingAnimation from '../../../../../assets/loader_animation/logo_spinner_v3.json'
 import Button from '../../../../../components/ui/Button'
 
 export default function ChatSidebar({
