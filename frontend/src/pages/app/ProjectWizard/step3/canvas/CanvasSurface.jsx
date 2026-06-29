@@ -31,7 +31,7 @@ export default function CanvasSurface({
     <>
       <div
         ref={surfaceRef}
-        className="relative h-full min-w-0 cursor-grab select-none overflow-auto rounded-[24px] active:cursor-grabbing transition-[opacity,transform,border-color,box-shadow] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)]"
+        className="absolute inset-0 cursor-grab select-none overflow-auto rounded-[24px] active:cursor-grabbing transition-[opacity,transform,border-color,box-shadow] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)]"
         style={{
           backgroundColor: "#1A1D1F",
           backgroundImage: `
