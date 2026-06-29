@@ -24,6 +24,7 @@ const CARD_THEMES = {
     headingColor: "#1a1200",
     accentGradient: "linear-gradient(135deg, #C49010 0%, #8B6000 60%, #5A3D00 100%)",
     bodyColor: "#2c1f00",
+    descColor: "rgba(44, 31, 0, 0.75)",
     taglineColor: "#1a1200",
     taglineAccentGradient: "linear-gradient(135deg, #C49010 0%, #8B6000 100%)",
     iconColor: "#7A5200",
@@ -41,6 +42,7 @@ const CARD_THEMES = {
     headingColor: "#FFF8E8",
     accentGradient: "linear-gradient(135deg, #FFF0B0 0%, #FFD966 100%)",
     bodyColor: "rgba(255, 248, 232, 0.9)",
+    descColor: "rgba(255, 248, 232, 0.7)",
     taglineColor: "#FFF8E8",
     taglineAccentGradient: "linear-gradient(135deg, #FFF0B0 0%, #FFD966 100%)",
     iconColor: "#FFE680",
@@ -58,6 +60,7 @@ const CARD_THEMES = {
     headingColor: "#ffffff",
     accentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 50%, #A86500 100%)",
     bodyColor: "rgba(255, 255, 255, 0.85)",
+    descColor: "rgba(255, 255, 255, 0.65)",
     taglineColor: "#ffffff",
     taglineAccentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 100%)",
     iconColor: "#D4A017",
@@ -75,6 +78,7 @@ const CARD_THEMES = {
     headingColor: "#ffffff",
     accentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 50%, #A86500 100%)",
     bodyColor: "rgba(255, 255, 255, 0.85)",
+    descColor: "rgba(255, 255, 255, 0.65)",
     taglineColor: "#ffffff",
     taglineAccentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 100%)",
     iconColor: "#D4A017",
@@ -92,6 +96,7 @@ const CARD_THEMES = {
     headingColor: "#ffffff",
     accentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 50%, #A86500 100%)",
     bodyColor: "rgba(255, 255, 255, 0.85)",
+    descColor: "rgba(255, 255, 255, 0.65)",
     taglineColor: "#ffffff",
     taglineAccentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 100%)",
     iconColor: "#D4A017",
@@ -112,6 +117,7 @@ const CARD_COPY = {
     headingLine1: "UNDERSTAND YOUR",
     headingAccent: "REPOSITORY",
     body: "Analyze your codebase and identify deployment services.",
+    desc: "Our engine scans frameworks, languages, and dependencies. No manual config files, no guesswork.",
     taglinePrefix: "We scan. You ",
     taglineAccent: "deploy.",
     taglineSub: "No guesswork, just clarity.",
@@ -127,6 +133,7 @@ const CARD_COPY = {
     headingLine1: "COLLECT YOUR",
     headingAccent: "INTENT",
     body: "Translate your goals into concrete infrastructure requirements.",
+    desc: "Tell us your scalability and cost goals before a single resource is spun up. We map intent to infrastructure.",
     taglinePrefix: "Your goals. Our ",
     taglineAccent: "blueprint.",
     taglineSub: "Clarity before complexity.",
@@ -141,6 +148,7 @@ const CARD_COPY = {
     headingLine1: "DESIGN YOUR",
     headingAccent: "INFRASTRUCTURE",
     body: "Generate a production-grade blueprint tailored to your app.",
+    desc: "We generate a production-grade architecture diagram tailored to your app. Review and approve before anything is built.",
     taglinePrefix: "Infrastructure ",
     taglineAccent: "mapped.",
     taglineSub: "Optimized before it's built.",
@@ -157,6 +165,7 @@ const CARD_COPY = {
     headingLine1: "DEPLOY YOUR",
     headingAccent: "INFRASTRUCTURE",
     body: "Provision all cloud resources and go live automatically.",
+    desc: "With one click, we provision load balancers, databases, compute, and networking — fully automated.",
     taglinePrefix: "One click. ",
     taglineAccent: "Full stack.",
     taglineSub: "Live in minutes, not days.",
@@ -170,6 +179,7 @@ const CARD_COPY = {
     headingLine1: "MONITOR &",
     headingAccent: "OPTIMIZE",
     body: "Track performance, health, and cloud spend in one place.",
+    desc: "Get real-time visibility into uptime, latency, and cloud costs. Anomalies surface automatically.",
     taglinePrefix: "Always on. Always ",
     taglineAccent: "optimized.",
     taglineSub: "Your infra, never idle.",
@@ -194,9 +204,9 @@ export default function HowItWorksCard({
   const featureCount = copy.features.length;
   const hasOddFeatures = featureCount % 2 !== 0;
 
-  // Tighten pill sizing for card 03 (5 features = 3 rows) to prevent overflow
-  const pillPadding = featureCount >= 5 ? "8px 12px" : "10px 16px";
-  const gridGap = featureCount >= 5 ? "8px" : "10px";
+  // Card 3 has 5 features (3 rows) — tighten to prevent overflow
+  const pillPadding = featureCount >= 5 ? "8px 12px" : "9px 14px";
+  const gridGap = featureCount >= 5 ? "7px" : "10px";
 
   const badgePosition = isEven
     ? { top: "20px", left: "20px" }
@@ -228,7 +238,7 @@ export default function HowItWorksCard({
           display: "flex",
           flexDirection: "column",
           justifyContent: "flex-start",
-          padding: "40px 40px 36px 40px",
+          padding: "44px 48px 40px 48px",
           minHeight: "100%",
           boxSizing: "border-box",
           overflow: "hidden",
@@ -238,12 +248,15 @@ export default function HowItWorksCard({
         <h3
           style={{
             fontWeight: 800,
-            fontSize: "clamp(38px, 4vw, 56px)",
-            lineHeight: 1.05,
-            letterSpacing: "0.01em",
+            fontSize: "clamp(44px, 5vw, 68px)",
+            lineHeight: 1.0,
+            letterSpacing: "-0.01em",
             textTransform: "uppercase",
             fontFamily: "inherit",
             margin: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 0,
           }}
         >
           <span style={{ color: theme.headingColor, display: "block" }}>
@@ -266,14 +279,28 @@ export default function HowItWorksCard({
         <p
           style={{
             color: theme.bodyColor,
-            fontSize: "16px",
+            fontSize: "18px",
             lineHeight: 1.5,
             fontWeight: 500,
             margin: 0,
-            marginTop: "14px",
+            marginTop: "18px",
           }}
         >
           {copy.body}
+        </p>
+
+        {/* Description paragraph */}
+        <p
+          style={{
+            color: theme.descColor,
+            fontSize: "14px",
+            lineHeight: 1.7,
+            fontWeight: 400,
+            margin: 0,
+            marginTop: "8px",
+          }}
+        >
+          {copy.desc}
         </p>
 
         {/* Feature pill grid */}
@@ -282,7 +309,7 @@ export default function HowItWorksCard({
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
             gap: gridGap,
-            marginTop: "18px",
+            marginTop: "20px",
             marginBottom: "0",
             flexShrink: 0,
           }}
@@ -305,16 +332,16 @@ export default function HowItWorksCard({
                 }}
               >
                 <Icon
-                  size={18}
+                  size={17}
                   color={theme.iconColor}
                   strokeWidth={2}
-                  style={{ flexShrink: 0 }}
+                  style={{ flexShrink: 0, width: "17px", height: "17px" }}
                 />
                 <span
                   style={{
-                    fontSize: "12px",
+                    fontSize: "13px",
                     fontWeight: 700,
-                    letterSpacing: "0.05em",
+                    letterSpacing: "0.04em",
                     textTransform: "uppercase",
                     whiteSpace: "nowrap",
                     color: theme.bodyColor,
@@ -331,10 +358,11 @@ export default function HowItWorksCard({
         <div style={{ marginTop: "auto", paddingTop: "16px", flexShrink: 0 }}>
           <p
             style={{
-              fontSize: "22px",
+              fontSize: "26px",
               fontWeight: 800,
               lineHeight: 1.1,
-              margin: "0 0 4px 0",
+              letterSpacing: "-0.01em",
+              margin: "0 0 6px 0",
             }}
           >
             <span style={{ color: theme.taglineColor }}>{copy.taglinePrefix}</span>
@@ -351,7 +379,7 @@ export default function HowItWorksCard({
           </p>
           <p
             style={{
-              fontSize: "13px",
+              fontSize: "14px",
               fontWeight: 400,
               opacity: 0.5,
               margin: 0,
@@ -396,6 +424,7 @@ export default function HowItWorksCard({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          padding: 0,
         }}
       >
         {illustration && (
@@ -403,12 +432,15 @@ export default function HowItWorksCard({
             src={illustration}
             alt=""
             style={{
-              width: step === "01" ? "88%" : "78%",
-              height: step === "01" ? "88%" : "78%",
+              width: step === "01" ? "100%" : "95%",
+              height: step === "01" ? "100%" : "95%",
+              maxWidth: step === "01" ? "100%" : "95%",
+              maxHeight: step === "01" ? "100%" : "95%",
               objectFit: "contain",
               objectPosition: "center",
               display: "block",
-              margin: "0 auto",
+              padding: step === "01" ? "8px" : "12px",
+              boxSizing: "border-box",
             }}
           />
         )}
