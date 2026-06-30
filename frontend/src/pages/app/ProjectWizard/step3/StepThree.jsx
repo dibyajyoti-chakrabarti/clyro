@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { X, Database, Globe, Layers, Server, Settings2, Zap } from 'lucide-react'
+import { X, Database, Globe, Layers, Server, Settings2, Zap, ZoomIn, ZoomOut } from 'lucide-react'
 import CanvasSurface from './canvas/CanvasSurface'
 import CanvasNode from './canvas/CanvasNode'
 import NodePopup from './canvas/NodePopup'
@@ -157,7 +157,7 @@ function StepThreePanel({
               onClick={zoomIn}
               aria-label='Zoom in'
             >
-              +
+              <ZoomIn size={18} />
             </button>
             <div className='select-none border-y border-border py-0.5 text-center text-[10px] text-text-muted'>
               {Math.round(zoom * 100)}%
@@ -168,7 +168,7 @@ function StepThreePanel({
               onClick={zoomOut}
               aria-label='Zoom out'
             >
-              −
+              <ZoomOut size={18} />
             </button>
           </div>
         </div>

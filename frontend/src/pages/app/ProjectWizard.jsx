@@ -220,6 +220,7 @@ export default function ProjectWizard() {
                     projectData={projectData}
                     setProjectData={setProjectData}
                     setStep1CanContinue={setStep1CanContinue}
+                    onContinue={handleContinue}
                   />
                 ) : null}
 
@@ -277,7 +278,7 @@ export default function ProjectWizard() {
                     variant='primary'
                     onClick={handleContinue}
                     disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
-                    className='h-12 rounded-[18px] px-5 transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(255,196,0,0.18)]'
+                    className='mb-[20px] mr-[24px] h-12 rounded-[18px] px-5 transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(255,196,0,0.18)]'
                   >
                     Finalize
                     <ArrowRight className='h-4 w-4' />

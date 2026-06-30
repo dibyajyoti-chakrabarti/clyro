@@ -5,7 +5,7 @@ import ScanBlocked from './ScanBlocked'
 import ScanResults from './ScanResults'
 import useScanFlow from '../hooks/useScanFlow'
 
-export default function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanContinue }) {
+export default function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanContinue, onContinue }) {
   const {
     phase,
     setPhase,
@@ -50,5 +50,5 @@ export default function StepOnePanel({ projectId, projectData, setProjectData, s
     return <ScanBlocked blockReason={blockReason} setPhase={setPhase} />
   }
 
-  return <ScanResults selectedRepo={selectedRepo} selectedBranch={selectedBranch} isMonorepo={isMonorepo} detectedServices={detectedServices} detectedInfra={detectedInfra} generated={generated} userSecrets={userSecrets} optional={optional} />
+  return <ScanResults selectedRepo={selectedRepo} selectedBranch={selectedBranch} isMonorepo={isMonorepo} detectedServices={detectedServices} detectedInfra={detectedInfra} generated={generated} userSecrets={userSecrets} optional={optional} onContinue={onContinue} />
 }
