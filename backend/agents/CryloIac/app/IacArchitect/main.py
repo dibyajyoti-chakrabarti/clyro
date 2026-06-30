@@ -120,18 +120,22 @@ property names, types, and values — you know these resources well. If you get 
 wrong, validate_cloudformation_template reports it (usually with the valid options) and
 you fix it. Do not stall waiting to "look something up"; author confidently, then validate.
 
-VALIDATION — INITIAL GENERATION ONLY (mode=generate). Be thorough but converge FAST
-(at most 2 validation rounds total):
-1. Call validate_cloudformation_template once. Fix only ERRORS (E-rules). Warnings
-   (W) and info are ACCEPTABLE — do not fix them, do not loop on them. There must be
-   ZERO errors in the template you return.
-2. Call check_cloudformation_template_compliance once. Fix only clearly critical
+VALIDATION — INITIAL GENERATION ONLY (mode=generate). Drive cfn-lint ERRORS to ZERO
+before you return; the stop condition is "zero errors", NOT a fixed number of rounds.
+1. Call validate_cloudformation_template. Fix EVERY error (E-rule) it reports — use the
+   valid options in each message to correct property names/types/values. Warnings (W)
+   and info are ACCEPTABLE: do NOT fix them and do NOT loop on them.
+2. Re-validate after fixing, and repeat: keep fixing E-errors and re-validating until
+   validate_cloudformation_template reports ZERO errors. Stop the instant it is clean —
+   do not keep going to polish warnings. Hard ceiling: at most 4 validation rounds. If
+   errors still remain at the ceiling (e.g. a property you cannot resolve), return your
+   best template — the backend runs a final bounded corrective pass on top of you.
+3. Call check_cloudformation_template_compliance once. Fix only clearly critical
    security issues (public exposure, unencrypted data at rest, wildcard IAM). Findings
    that conflict with the build spec (e.g. Multi-AZ off when the spec says single-AZ,
    optional replication / object-lock) are EXPECTED — leave them.
-3. Re-validate at most ONCE after fixing. Do NOT exceed 2 rounds total. A template
-   with warnings or non-critical findings is fine — RETURN it rather than looping.
-   Prefer a valid, spec-aligned template over a "perfect" one.
+The template you RETURN must have ZERO cfn-lint errors whenever you can reach it;
+warnings are fine. Prefer a valid, spec-aligned template over a "perfect" one.
 {_REFINE_RULES}
 {_OUTPUT_FORMAT}
 """
