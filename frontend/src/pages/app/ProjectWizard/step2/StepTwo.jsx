@@ -38,14 +38,7 @@ function QuestionBlock({ question, value, onChange }) {
 }
 
 export default function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanContinue, onComplete }) {
-  const questions = useMemo(
-    () =>
-      getQuestions(
-        projectData.scanResult?.detected_resources?.infrastructure?.database?.detected ?? true,
-        projectData.scanResult?.detected_resources?.services?.worker?.detected ?? false,
-      ),
-    [projectData.scanResult],
-  )
+  const questions = useMemo(() => getQuestions(), [])
 
   const pages = useMemo(() => [questions.slice(0, PAGE_SIZE), questions.slice(PAGE_SIZE, PAGE_SIZE * 2)], [questions])
 
@@ -55,7 +48,8 @@ export default function StepTwoPanel({ projectId, projectData, setProjectData, s
   const [saveError, setSaveError] = useState('')
 
   const currentQuestions = pages[page] || []
-  const canContinue = currentQuestions.every((question) => {
+  const visibleQuestions = currentQuestions.filter((q) => !q.condition || q.condition(answers))
+  const canContinue = visibleQuestions.every((question) => {
     if (question.type === 'free') {
       return String(answers[question.id] || '').trim() !== ''
     }
@@ -138,14 +132,16 @@ export default function StepTwoPanel({ projectId, projectData, setProjectData, s
               {pages.map((questionGroup, pageIndex) => (
                 <div key={pageIndex} className='w-1/2 shrink-0 px-0.5'>
                   <div className='space-y-8'>
-                    {questionGroup.map((question) => (
-                      <QuestionBlock
-                        key={question.id}
-                        question={question}
-                        value={answers[question.id]}
-                        onChange={(value) => handleChange(question.id, value)}
-                      />
-                    ))}
+                    {questionGroup
+                      .filter((q) => !q.condition || q.condition(answers))
+                      .map((question) => (
+                        <QuestionBlock
+                          key={question.id}
+                          question={question}
+                          value={answers[question.id]}
+                          onChange={(value) => handleChange(question.id, value)}
+                        />
+                      ))}
                   </div>
                 </div>
               ))}
