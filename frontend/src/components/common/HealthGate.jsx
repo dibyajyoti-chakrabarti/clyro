@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import ServerDown from '../../pages/infrastructure/ServerDown'
+import CheckingServerStatus from './CheckingServerStatus'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const POLL_INTERVAL_MS = 15000
@@ -38,7 +39,7 @@ export default function HealthGate({ children }) {
     }
   }, [])
 
-  if (!healthReady) return null
+  if (!healthReady) return <CheckingServerStatus />
   if (!backendHealthy) return <ServerDown />
   return children
 }
