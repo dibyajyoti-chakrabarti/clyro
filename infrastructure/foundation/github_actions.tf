@@ -53,9 +53,12 @@ data "aws_iam_policy_document" "github_actions_frontend" {
   }
 
   statement {
-    sid       = "CloudFrontInvalidate"
-    effect    = "Allow"
-    actions   = ["cloudfront:CreateInvalidation"]
+    sid    = "CloudFrontInvalidate"
+    effect = "Allow"
+    actions = [
+      "cloudfront:CreateInvalidation",
+      "cloudfront:GetInvalidation",
+    ]
     resources = ["arn:aws:cloudfront::${var.account_id}:distribution/*"]
   }
 }
