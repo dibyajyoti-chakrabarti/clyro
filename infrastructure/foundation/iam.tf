@@ -2,74 +2,38 @@ locals {
   iam_prefix = "${var.project}-${var.environment}"
 }
 
-# ── ECS Task Execution Role ───────────────────────────────────────────────────
-# Allows Fargate to pull images from ECR and write logs to CloudWatch
+# ── Backend Lambda Execution Role ─────────────────────────────────────────────
+# Runtime permissions for the Django container image (VPC-attached, so it can
+# reach RDS) plus the same Bedrock/AgentCore/Cognito/secrets access the ECS
+# task role used to carry.
 
-resource "aws_iam_role" "ecs_task_execution" {
-  name = "${local.iam_prefix}-ecs-task-execution"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "ecs-tasks.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_managed" {
-  role       = aws_iam_role.ecs_task_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# Allow task execution role to read secrets for container startup
-resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
-  name = "secrets-access"
-  role = aws_iam_role.ecs_task_execution.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue"]
-        Resource = [
-          aws_secretsmanager_secret.db_password.arn,
-          aws_secretsmanager_secret.django_secret_key.arn,
-          aws_secretsmanager_secret.github_app_pem.arn,
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = ["ssm:GetParameters", "ssm:GetParameter"]
-        Resource = [
-          "arn:aws:ssm:${var.aws_region}:${var.account_id}:parameter/${var.project}/${var.environment}/*"
-        ]
-      }
-    ]
-  })
-}
-
-# ── ECS Task Role ─────────────────────────────────────────────────────────────
-# Runtime permissions for the Django container
-
-resource "aws_iam_role" "ecs_task" {
-  name = "${local.iam_prefix}-ecs-task"
+resource "aws_iam_role" "backend_lambda" {
+  name = "${local.iam_prefix}-backend-lambda"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
-      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Principal = { Service = "lambda.amazonaws.com" }
       Action    = "sts:AssumeRole"
     }]
   })
 }
 
-resource "aws_iam_role_policy" "ecs_task_bedrock" {
-  name = "bedrock-and-agentcore"
-  role = aws_iam_role.ecs_task.id
+resource "aws_iam_role_policy_attachment" "backend_lambda_basic" {
+  role       = aws_iam_role.backend_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# VPC ENI management so the Lambda can attach to the private app subnets
+resource "aws_iam_role_policy_attachment" "backend_lambda_vpc" {
+  role       = aws_iam_role.backend_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy" "backend_lambda_runtime" {
+  name = "bedrock-agentcore-and-secrets"
+  role = aws_iam_role.backend_lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"

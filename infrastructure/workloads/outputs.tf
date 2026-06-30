@@ -6,14 +6,11 @@ output "rds_host" {
   value = module.rds.host
 }
 
-output "alb_dns_name" {
-  value = module.ecs_fargate.alb_dns_name
+output "rds_instance_identifier" {
+  description = "RDS instance identifier — set as GitHub secret RDS_INSTANCE_ID"
+  value       = module.rds.identifier
 }
 
-output "ecs_cluster_name" {
-  value = module.ecs_fargate.cluster_name
-}
-
-output "ecs_service_name" {
-  value = module.ecs_fargate.service_name
+output "backend_lambda_function_name" {
+  value = module.lambda_backend.function_name
 }

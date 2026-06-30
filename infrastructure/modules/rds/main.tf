@@ -46,14 +46,14 @@ resource "aws_db_instance" "main" {
   parameter_group_name   = aws_db_parameter_group.pg16.name
   vpc_security_group_ids = [var.security_group_id]
 
-  multi_az               = false
-  publicly_accessible    = false
-  backup_retention_period = 7
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "sun:04:00-sun:05:00"
+  multi_az                = false
+  publicly_accessible     = false
+  backup_retention_period = var.backup_retention_period
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "sun:04:00-sun:05:00"
 
-  deletion_protection = var.deletion_protection
-  skip_final_snapshot = var.skip_final_snapshot
+  deletion_protection       = var.deletion_protection
+  skip_final_snapshot       = var.skip_final_snapshot
   final_snapshot_identifier = var.skip_final_snapshot ? null : "${local.prefix}-rds-final-snapshot"
 
   apply_immediately = false

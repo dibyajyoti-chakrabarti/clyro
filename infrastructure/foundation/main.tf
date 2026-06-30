@@ -1,13 +1,13 @@
 module "networking" {
   source = "../modules/networking"
 
-  project              = var.project
-  environment          = var.environment
-  vpc_cidr             = var.vpc_cidr
-  public_subnet_cidrs  = var.public_subnet_cidrs
-  private_app_cidrs    = var.private_app_cidrs
-  private_data_cidrs   = var.private_data_cidrs
-  availability_zones   = var.availability_zones
+  project             = var.project
+  environment         = var.environment
+  vpc_cidr            = var.vpc_cidr
+  public_subnet_cidrs = var.public_subnet_cidrs
+  private_app_cidrs   = var.private_app_cidrs
+  private_data_cidrs  = var.private_data_cidrs
+  availability_zones  = var.availability_zones
 }
 
 module "monitoring" {
@@ -94,8 +94,6 @@ module "api_gateway" {
   domain                    = var.domain
   acm_certificate_arn       = module.acm_apigw.certificate_arn
   route53_zone_id           = module.route53.zone_id
-  vpc_id                    = module.networking.vpc_id
-  private_subnet_ids        = module.networking.private_app_subnet_ids
   api_gateway_log_group_arn = module.monitoring.api_gateway_log_group_arn
 }
 

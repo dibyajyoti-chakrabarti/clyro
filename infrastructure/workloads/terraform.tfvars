@@ -5,5 +5,4 @@ domain              = "clyro.cloud"
 rds_instance_class  = "db.t3.micro"
 deletion_protection = true
 skip_final_snapshot = false
-desired_count       = 1
 backend_image_tag   = "latest"

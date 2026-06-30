@@ -66,7 +66,7 @@ resource "aws_iam_role_policy" "github_actions_frontend" {
   policy = data.aws_iam_policy_document.github_actions_frontend.json
 }
 
-# ── Backend deploy: ECR push + ECS force-deploy ──────────────────────────────
+# ── Backend deploy: ECR push + Lambda update + migration handler swap ───────
 data "aws_iam_policy_document" "github_actions_backend" {
   statement {
     sid       = "ECRAuth"
@@ -93,23 +93,18 @@ data "aws_iam_policy_document" "github_actions_backend" {
   }
 
   statement {
-    sid    = "ECSDeployBackend"
+    sid    = "LambdaDeployBackend"
     effect = "Allow"
     actions = [
-      "ecs:UpdateService",
-      "ecs:DescribeServices",
-      "ecs:DescribeTaskDefinition",
-      "ecs:RegisterTaskDefinition",
+      "lambda:UpdateFunctionCode",
+      "lambda:UpdateFunctionConfiguration",
+      "lambda:GetFunction",
+      "lambda:GetFunctionConfiguration",
+      "lambda:InvokeFunction",
     ]
-    resources = ["*"]
-  }
-
-  # ECS needs to pass the task roles when registering new task definitions
-  statement {
-    sid       = "PassTaskRoles"
-    effect    = "Allow"
-    actions   = ["iam:PassRole"]
-    resources = [aws_iam_role.ecs_task_execution.arn, aws_iam_role.ecs_task.arn]
+    resources = [
+      "arn:aws:lambda:${var.aws_region}:${var.account_id}:function:${var.project}-${var.environment}-backend",
+    ]
   }
 }
 
@@ -119,16 +114,25 @@ resource "aws_iam_role_policy" "github_actions_backend" {
   policy = data.aws_iam_policy_document.github_actions_backend.json
 }
 
-# ── Workloads control: ECS scale + RDS stop/start ───────────────────────────
+# ── Workloads control: NAT instance + RDS stop/start (cron + manual) ───────
 data "aws_iam_policy_document" "github_actions_workloads" {
   statement {
-    sid    = "ECSScale"
+    sid       = "NATInstanceDescribe"
+    effect    = "Allow"
+    actions   = ["ec2:DescribeInstances"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "NATInstanceControl"
     effect = "Allow"
     actions = [
-      "ecs:UpdateService",
-      "ecs:DescribeServices",
+      "ec2:StopInstances",
+      "ec2:StartInstances",
     ]
-    resources = ["*"]
+    resources = [
+      "arn:aws:ec2:${var.aws_region}:${var.account_id}:instance/${module.networking.nat_instance_id}",
+    ]
   }
 
   statement {

@@ -1,5 +1,7 @@
 from django.urls import path
 
+from core.views import health_check
+
 from .canvas.views import (
     canvas_agent,
     canvas_chat,
@@ -38,6 +40,7 @@ from .provisioning.views import (
 
 urlpatterns = [
     path('hello', hello),
+    path('health/', health_check),
     path('users/me/', me),
     path('projects/', projects_list),
     path('projects/<uuid:pk>/', project_detail),
