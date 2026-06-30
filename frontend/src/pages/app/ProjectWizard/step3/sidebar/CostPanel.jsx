@@ -1,27 +1,31 @@
-import { Database, Globe, Layers, Package, Server, Workflow, Zap } from 'lucide-react'
+import { Database, DollarSign, Globe, Layers, Package, Server, Workflow, Zap } from 'lucide-react'
 
 const iconByLabel = (label) => {
   const lower = label.toLowerCase()
-  if (lower.includes('backend') || lower.includes('ecs fargate')) return Server
-  if (lower.includes('frontend') || lower.includes('cloudfront') || lower.includes('s3')) return Globe
-  if (lower.includes('postgres') || lower.includes('database') || lower.includes('rds')) return Database
-  if (lower.includes('redis') || lower.includes('cache') || lower.includes('elasticache')) return Zap
-  if (lower.includes('worker')) return Workflow
-  if (lower.includes('sqs') || lower.includes('queue')) return Layers
-  return Package
+  if (lower.includes('backend') || lower.includes('ecs fargate')) return { Icon: Server, color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20' }
+  if (lower.includes('frontend') || lower.includes('cloudfront') || lower.includes('s3')) return { Icon: Globe, color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20' }
+  if (lower.includes('postgres') || lower.includes('database') || lower.includes('rds')) return { Icon: Database, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' }
+  if (lower.includes('redis') || lower.includes('cache') || lower.includes('elasticache')) return { Icon: Zap, color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/20' }
+  if (lower.includes('worker')) return { Icon: Workflow, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20' }
+  if (lower.includes('sqs') || lower.includes('queue')) return { Icon: Layers, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' }
+  return { Icon: Package, color: 'text-text-muted', bg: 'bg-white/[0.03] border-white/[0.05]' }
 }
 
 export default function CostPanel({ canvasCost, totalCost }) {
   return (
     <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[rgba(255,193,7,0.10)] bg-[rgba(10,10,10,0.42)] shadow-[0_24px_80px_rgba(0,0,0,0.28),0_0_60px_rgba(255,193,7,0.05)] backdrop-blur-[20px]'>
-      <div className='flex items-start justify-end px-4 pt-4'>
-        <button
-          type='button'
-          aria-label='Close cost drawer'
-          className='grid h-8 w-8 place-items-center rounded-full border border-white/[0.08] bg-white/[0.03] text-text-muted transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-[rgba(255,193,7,0.18)] hover:bg-[rgba(255,255,255,0.05)] hover:text-text-primary'
-        >
-          <span className='text-sm leading-none'>x</span>
-        </button>
+      <div className='shrink-0 px-4 pt-4 pb-3'>
+        <div className='flex items-center justify-between'>
+          <div className='flex items-center gap-2'>
+            <span className='grid h-8 w-8 place-items-center rounded-full border border-[rgba(255,193,7,0.12)] bg-[rgba(255,193,7,0.06)] text-accent'>
+              <DollarSign className='h-4 w-4' />
+            </span>
+            <div>
+              <p className='text-[16px] font-semibold leading-5 tracking-tight text-text-primary'>Cost Overview</p>
+              <p className='mt-0.5 text-[12px] text-text-muted'>AWS infrastructure estimate</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className='min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border'>
@@ -31,22 +35,22 @@ export default function CostPanel({ canvasCost, totalCost }) {
             <p className='text-[48px] font-semibold leading-none tracking-tight text-text-primary'>${totalCost}</p>
             <p className='pb-1 text-[16px] font-medium text-text-muted'>/month</p>
           </div>
-          <div className='mt-4 space-y-1'>
-            <p className='text-sm font-medium text-text-primary'>Production Environment</p>
-            <p className='text-sm text-text-muted'>us-east-1</p>
+          <div className='mt-4 flex items-center gap-2'>
+            <span className='h-1.5 w-1.5 rounded-full bg-emerald-400' />
+            <p className='text-xs text-text-muted'>Live estimate · Production · us-east-1</p>
           </div>
         </div>
 
         <div className='mt-4 space-y-2'>
           {canvasCost.map((item) => {
-            const Icon = iconByLabel(item.label)
+            const { Icon, color, bg } = iconByLabel(item.label)
             return (
               <div
                 key={item.label}
                 className='flex items-center justify-between rounded-[12px] border border-white/[0.04] bg-white/[0.02] px-3 py-3 backdrop-blur-[12px] transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:border-[rgba(255,193,7,0.10)] hover:bg-white/[0.03]'
               >
                 <div className='flex min-w-0 items-center gap-3'>
-                  <div className='grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-white/[0.05] bg-white/[0.03] text-text-muted'>
+                  <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border ${bg} ${color}`}>
                     <Icon className='h-4 w-4' />
                   </div>
                   <div className='min-w-0'>
@@ -68,6 +72,8 @@ export default function CostPanel({ canvasCost, totalCost }) {
             <li>Data transfer excluded</li>
           </ul>
         </div>
+
+        <p className='mt-3 px-1 text-center text-[11px] text-text-muted/60'>Costs are estimates and may vary based on actual usage</p>
       </div>
     </div>
   )

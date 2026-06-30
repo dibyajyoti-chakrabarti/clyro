@@ -1,10 +1,10 @@
 import { useRef } from "react";
 import HowItWorksCard from "../../../components/marketing/HowItWorksCard";
-import step1Illustration from "../../../assets/howItWorks/car1_ill.svg";
-import step2Illustration from "../../../assets/howItWorks/car2_ill.svg";
-import step3Illustration from "../../../assets/howItWorks/car3_ill.svg";
-import step4Illustration from "../../../assets/howItWorks/car4_ill.svg";
-import step5Illustration from "../../../assets/howItWorks/car5_ill.svg";
+import card1 from "../../../assets/howItWorks/card1.webp";
+import card2 from "../../../assets/howItWorks/card2.webp";
+import card3 from "../../../assets/howItWorks/card3.webp";
+import card4 from "../../../assets/howItWorks/card4.webp";
+import card5 from "../../../assets/howItWorks/card5.webp";
 import useHowItWorksAnimation from "../../../hooks/useHowItWorksAnimation";
 
 const steps = [
@@ -12,40 +12,43 @@ const steps = [
     step: "01",
     headingTop: "UNDERSTAND YOUR",
     headingHighlight: "REPOSITORY",
-    illustration: step1Illustration,
-    accent: "yellow",
+    illustration: card1,
+    bgColor: "#F5EDD6",
+    stepBg: "#F5EDD6",
   },
   {
     step: "02",
     headingTop: "COLLECT YOUR",
     headingHighlight: "INTENT",
-    illustration: step2Illustration,
-    accent: "orange",
+    illustration: card2,
+    bgColor: "#B8922A",
+    stepBg: "#B8922A",
   },
   {
     step: "03",
     headingTop: "DESIGN YOUR",
     headingHighlight: "INFRASTRUCTURE",
-    illustration: step3Illustration,
-    accent: "blue",
+    illustration: card3,
+    bgColor: "#6B4F1E",
+    stepBg: "#6B4F1E",
   },
   {
     step: "04",
     headingTop: "DEPLOY YOUR",
     headingHighlight: "INFRASTRUCTURE",
-    illustration: step4Illustration,
-    accent: "green",
+    illustration: card4,
+    bgColor: "#221609",
+    stepBg: "#221609",
   },
   {
     step: "05",
     headingTop: "MONITOR & OPTIMIZE YOUR",
     headingHighlight: "INFRASTRUCTURE",
-    illustration: step5Illustration,
-    accent: "orange",
+    illustration: card5,
+    bgColor: "#0F0A03",
+    stepBg: "#0F0A03",
   },
 ];
-
-const CARD_HEIGHT = "76vh";
 
 export default function HowItWorks() {
   const sectionRef = useRef(null);
@@ -57,36 +60,55 @@ export default function HowItWorks() {
   return (
     <section
       ref={sectionRef}
-      className="relative w-full bg-[#F6F2EA] py-6 px-0"
+      className="relative w-full"
+      style={{
+        backgroundColor: "var(--step-bg, #EAD9A8)",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        padding: 0,
+        margin: 0,
+      }}
     >
       {/* Rounded wrapper */}
-      <div className="w-full max-w-none bg-[#F6F2EA] rounded-3xl overflow-hidden">
-        <div className="px-0">
-          <div ref={containerRef}>
+      <div
+        className="w-full max-w-none rounded-t-3xl bg-transparent"
+        style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+      >
+        <div
+          className="px-0"
+          style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+        >
+          <div
+            ref={containerRef}
+            style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+          >
             {/* Heading */}
-            <div className="pt-8 pb-4 flex flex-col items-center text-center">
+            <div className="pt-8 pb-4 flex flex-col items-center text-center" style={{ flexShrink: 0 }}>
               {/* Main heading */}
               <h2 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl leading-none">
-                <span className="text-black">How It </span>
-                <span className="text-black/15">Works.</span>
+                <span style={{ color: "#1A1208" }}>How It </span>
+                <span style={{ color: "#6B5020" }}>Works.</span>
               </h2>
 
               {/* Decorative divider */}
               <div className="mt-5 flex items-center gap-3">
-                <div className="h-px w-12 bg-black/10" />
-                <span className="text-[11px] tracking-[0.15em] text-black/30 uppercase font-medium">
+                <div className="h-px w-12 opacity-40" style={{ backgroundColor: "#C9A84C" }} />
+                <span className="text-[11px] tracking-[0.15em] uppercase font-medium" style={{ color: "#6B5020" }}>
                   5 Steps
                 </span>
-                <div className="h-px w-12 bg-black/10" />
+                <div className="h-px w-12 opacity-40" style={{ backgroundColor: "#C9A84C" }} />
               </div>
             </div>
 
-            {/* Card stage */}
+            {/* Card stage — fills remaining height */}
             <div
               style={{
                 position: "relative",
-                height: CARD_HEIGHT,
-                marginBottom: "4rem",
+                flex: 1,
+                minHeight: 0,
+                margin: 0,
+                padding: 0,
               }}
             >
               {steps.map((item, index) => (
@@ -95,6 +117,7 @@ export default function HowItWorks() {
                   ref={(el) => {
                     cardsRef.current[index] = el;
                   }}
+                  data-step-bg={item.stepBg}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -108,7 +131,7 @@ export default function HowItWorks() {
                 >
                   <div
                     style={{
-                      height: CARD_HEIGHT,
+                      height: "100%",
                       width: "100%",
                       maxWidth: "none",
                     }}
@@ -118,7 +141,7 @@ export default function HowItWorks() {
                       headingTop={item.headingTop}
                       headingHighlight={item.headingHighlight}
                       illustration={item.illustration}
-                      accent={item.accent}
+                      bgColor={item.bgColor}
                     />
                   </div>
                 </div>

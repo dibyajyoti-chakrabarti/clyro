@@ -1,0 +1,261 @@
+/* ── Section ── */
+.whyClyroSection {
+  background: linear-gradient(135deg, #040404 0%, #0D0A00 30%, #1A1200 55%, #0A0800 80%, #040404 100%);
+  background-size: 300% 300%;
+  animation: goldDrift 12s ease infinite;
+  padding: 100px 48px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@keyframes goldDrift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ── Grid ── */
+.whyClyroGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .whyClyroGrid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 540px) {
+  .whyClyroGrid { grid-template-columns: 1fr; }
+}
+
+/* ── Card ── */
+.whyClyroCard {
+  position: relative;
+  background-color: #0D0D0D;
+  border: 1px solid rgba(201, 168, 76, 0.45);
+  border-radius: 20px;
+  padding: 40px 36px 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 400px;
+  cursor: pointer;
+  transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+
+.whyClyroCard:hover {
+  background-color: #111008;
+  border-color: rgba(201, 168, 76, 0.75);
+  transform: translateY(-4px);
+  box-shadow: 0 0 32px rgba(201, 168, 76, 0.1), 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* Expanded card */
+.whyClyroCard.cardExpanded {
+  background-color: #111008;
+  border-color: rgba(201, 168, 76, 0.6);
+  box-shadow: 0 0 40px rgba(201, 168, 76, 0.08), 0 8px 32px rgba(0, 0, 0, 0.5);
+  transform: translateY(-4px);
+}
+
+/* ── Icon wrapper ── */
+.iconWrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 12px 0 20px;
+}
+
+/* Solid icon — base layer */
+.iconSolid {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Shatter & reform on hover — ends back at fully solid */
+.whyClyroCard:not(.cardExpanded):hover .iconSolid {
+  animation: iconShatterReform 1.0s ease forwards;
+}
+
+@keyframes iconShatterReform {
+  0%   { opacity: 1; transform: scale(1);    filter: blur(0px); }
+  25%  { opacity: 0.1; transform: scale(0.94); filter: blur(2px); }
+  50%  { opacity: 0;   transform: scale(0.90); filter: blur(3px); }
+  75%  { opacity: 0.5; transform: scale(0.97); filter: blur(1px); }
+  100% { opacity: 1;   transform: scale(1);    filter: blur(0px); }
+}
+
+/* Reset immediately on mouse leave */
+.whyClyroCard:not(.cardExpanded):not(:hover) .iconSolid {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+  filter: blur(0px) !important;
+  animation: none !important;
+  transition: opacity 0.2s ease;
+}
+
+/* Expand: ghost fade up */
+.iconWrapper.expanded .iconSolid {
+  opacity: 0 !important;
+  transform: translateY(-30px) !important;
+  filter: blur(1px) !important;
+  animation: none !important;
+  transition: opacity 0.45s ease, transform 0.45s ease, filter 0.45s ease;
+}
+
+/* ── Shatter layer ── */
+.iconShatter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.whyClyroCard:not(.cardExpanded):hover .iconShatter {
+  animation: shatterInOut 1.0s ease forwards;
+}
+
+@keyframes shatterInOut {
+  0%   { opacity: 0; }
+  20%  { opacity: 0; }
+  35%  { opacity: 1; }
+  65%  { opacity: 1; }
+  85%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* Reset shatter on mouse leave */
+.whyClyroCard:not(.cardExpanded):not(:hover) .iconShatter {
+  opacity: 0 !important;
+  animation: none !important;
+}
+
+/* Suppress shatter when expanded */
+.whyClyroCard.cardExpanded .iconShatter,
+.whyClyroCard.cardExpanded:hover .iconShatter {
+  opacity: 0 !important;
+  animation: none !important;
+}
+
+/* Suppress hover dissolve on expanded card */
+.whyClyroCard.cardExpanded:hover .iconSolid {
+  animation: none !important;
+}
+
+/* Dot particles inside iconShatter */
+.whyClyroCard:not(.cardExpanded):hover .iconShatter circle {
+  animation: dotFloat 1.0s ease forwards;
+}
+
+@keyframes dotFloat {
+  0%   { transform: translate(0, 0);                                            opacity: 0; }
+  30%  { transform: translate(var(--dx), var(--dy));                            opacity: 1; }
+  50%  { transform: translate(var(--dx), var(--dy));                            opacity: 0.8; }
+  80%  { transform: translate(calc(var(--dx) * 0.3), calc(var(--dy) * 0.3));   opacity: 0.4; }
+  100% { transform: translate(0, 0);                                            opacity: 0; }
+}
+
+/* Dashed path fragments inside iconShatter */
+.whyClyroCard:not(.cardExpanded):hover .iconShatter path,
+.whyClyroCard:not(.cardExpanded):hover .iconShatter line,
+.whyClyroCard:not(.cardExpanded):hover .iconShatter polyline {
+  stroke-dasharray: 3 8;
+  animation: dashDrift 1.0s ease forwards;
+}
+
+@keyframes dashDrift {
+  0%   { stroke-dashoffset: 0;   opacity: 1; }
+  50%  { stroke-dashoffset: -22; opacity: 0.8; }
+  100% { stroke-dashoffset: -44; opacity: 0; }
+}
+
+/* ── Description ── */
+.cardDescription {
+  opacity: 0;
+  transform: translateY(16px);
+  position: absolute;
+  top: 40px;
+  left: 36px;
+  right: 36px;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  pointer-events: none;
+  z-index: 2;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0;
+}
+
+.cardDescription.expanded {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.4s ease 0.15s, transform 0.4s ease 0.15s;
+  pointer-events: auto;
+}
+
+/* ── Bottom row ── */
+.cardBottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  position: relative;
+  z-index: 2;
+}
+
+.cardTitle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.3;
+  margin: 0;
+  flex: 1;
+}
+
+/* ── Toggle button ── */
+.toggleBtn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 168, 76, 0.4);
+  background-color: transparent;
+  color: #C9A84C;
+  font-size: 1.5rem;
+  font-weight: 300;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+
+.toggleBtn:hover {
+  background-color: #C9A84C;
+  color: #040404;
+  border-color: #C9A84C;
+}
+
+.toggleBtn.expanding {
+  animation: sparklePulse 0.35s ease forwards;
+}
+
+@keyframes sparklePulse {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.25); }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}

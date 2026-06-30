@@ -1,0 +1,15 @@
+/* Global keyframes for WhyCrylo — must stay global so CSS-module
+   selectors targeting SVG child elements and inline styles can reference them. */
+
+@keyframes dotFloat {
+  0%   { transform: translate(0, 0);                                                          opacity: 0; }
+  30%  { transform: translate(var(--dx, 4px), var(--dy, -6px));                               opacity: 1; }
+  50%  { transform: translate(var(--dx, 4px), var(--dy, -6px));                               opacity: 0.8; }
+  80%  { transform: translate(calc(var(--dx, 4px) * 0.3), calc(var(--dy, -6px) * 0.3));       opacity: 0.4; }
+  100% { transform: translate(0, 0);                                                          opacity: 0; }
+}
+
+@keyframes fadeSlideIn {
+  0%   { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}

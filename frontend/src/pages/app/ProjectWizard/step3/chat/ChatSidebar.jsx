@@ -1,4 +1,6 @@
+import Lottie from 'lottie-react'
 import { ArrowLeft, Send, Sparkles } from 'lucide-react'
+import handLoadingAnimation from '../../../../../assets/loader_animation/logo_spinner_v3.json'
 import Button from '../../../../../components/ui/Button'
 
 export default function ChatSidebar({
@@ -47,23 +49,12 @@ export default function ChatSidebar({
         </div>
 
         <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 scroll-smooth scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border'>
-          {chatHistory.length === 0 ? (
-            <div className='space-y-4'>
-              <div className='space-y-3'>
-                <p className='text-sm font-semibold text-text-primary'>Canvas Agent</p>
-                <p className='text-sm leading-6 text-text-muted'>Your architecture is ready for review.</p>
-                <div className='space-y-1.5 text-sm leading-6 text-text-muted'>
-                  <p>I can help with:</p>
-                  <ul className='space-y-1 pl-4'>
-                    <li>Cost optimization</li>
-                    <li>Scalability reviews</li>
-                    <li>Infrastructure explanations</li>
-                    <li>Production readiness</li>
-                  </ul>
-                </div>
-              </div>
-
-              <div className='flex flex-wrap gap-2'>
+          <div className='space-y-4'>
+            {chatHistory.map((message, index) => (
+              <ChatBubble key={`${message.role}-${index}`} message={message} />
+            ))}
+            {chatHistory.length === 1 && (
+              <div className='flex flex-wrap gap-2 pt-1'>
                 {suggestedActions.map((action) => (
                   <button
                     key={action}
@@ -78,19 +69,11 @@ export default function ChatSidebar({
                   </button>
                 ))}
               </div>
-            </div>
-          ) : (
-            <div className='space-y-4'>
-              {chatHistory.map((message, index) => (
-                <ChatBubble key={`${message.role}-${index}`} message={message} />
-              ))}
-            </div>
-          )}
+            )}
+          </div>
           {agentLoading ? (
             <div className='mt-4 flex justify-start'>
-              <div className='rounded-2xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 text-sm text-text-muted backdrop-blur-[12px]'>
-                ...
-              </div>
+              <Lottie animationData={handLoadingAnimation} loop autoplay style={{ width: 80, height: 80 }} />
             </div>
           ) : null}
           <div ref={chatEndRef} />

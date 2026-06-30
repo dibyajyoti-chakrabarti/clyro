@@ -1,424 +1,478 @@
+import {
+  Search,
+  Zap,
+  Code2,
+  GitBranch,
+  Target,
+  Map,
+  CheckCircle,
+  Layout,
+  Globe,
+  TrendingDown,
+  Shield,
+  Cpu,
+  MousePointerClick,
+  Layers,
+  Activity,
+  DollarSign,
+  Settings,
+  Bell,
+} from "lucide-react";
+
 const CARD_THEMES = {
   "01": {
-    background: "linear-gradient(90deg, #F4E4B2 0%, #DDB24B 100%)",
-    border: "1px solid rgba(0,0,0,0.08)",
-    boxShadow: "0 16px 40px rgba(0,0,0,0.18), 0 6px 16px rgba(0,0,0,0.10)",
-    headingColor: "#0B0B0B",
-    highlightColor: "#FFB300",
-    stepBg: "#06101D",
-    stepColor: "#FFB300",
-    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
-    titleColor: "rgba(17,17,17,0.45)",
-    bodyColor: "rgba(17,17,17,0.72)",
-    chipBg: "rgba(255,255,255,0.55)",
-    chipText: "#111111",
-    chipBorder: "rgba(0,0,0,0.06)",
-    badgeBg: "rgba(255,255,255,0.20)",
-    badgeBorder: "rgba(255,255,255,0.25)",
-    badgeText: "rgba(0,0,0,0.75)",
-    processText: "rgba(17,17,17,0.45)",
+    headingColor: "#1a1200",
+    accentGradient: "linear-gradient(135deg, #C49010 0%, #8B6000 60%, #5A3D00 100%)",
+    bodyColor: "#2c1f00",
+    descColor: "rgba(44, 31, 0, 0.75)",
+    taglineColor: "#1a1200",
+    taglineAccentGradient: "linear-gradient(135deg, #C49010 0%, #8B6000 100%)",
+    iconColor: "#7A5200",
+    pillBorder: "1px solid rgba(122, 82, 0, 0.2)",
+    pillBg: "rgba(122, 82, 0, 0.07)",
+    ctaBorder: "1.5px solid rgba(122, 82, 0, 0.4)",
+    badgeGradient: "linear-gradient(135deg, #C49010 0%, #8B6000 100%)",
+    badgeShadow: "0 4px 16px rgba(150, 100, 0, 0.35), inset 0 1px 0 rgba(255, 220, 80, 0.25)",
+    badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
+    badgeText: "#fff8e0",
+    cardBorder: "1.5px solid rgba(212, 160, 23, 0.45)",
+    cardShadow: "0 -4px 16px rgba(0,0,0,0.08), -4px 0 16px rgba(0,0,0,0.06), 4px 0 16px rgba(0,0,0,0.06)",
   },
   "02": {
-    background: "linear-gradient(90deg, #E2BC58 0%, #C89227 100%)",
-    border: "1px solid rgba(0,0,0,0.08)",
-    boxShadow: "0 16px 40px rgba(0,0,0,0.18), 0 6px 16px rgba(0,0,0,0.10)",
-    headingColor: "#0B0B0B",
-    highlightColor: "#FFB300",
-    stepBg: "#06101D",
-    stepColor: "#FFB300",
-    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
-    titleColor: "rgba(17,17,17,0.45)",
-    bodyColor: "rgba(17,17,17,0.72)",
-    chipBg: "rgba(255,255,255,0.55)",
-    chipText: "#111111",
-    chipBorder: "rgba(0,0,0,0.06)",
-    badgeBg: "rgba(255,255,255,0.20)",
-    badgeBorder: "rgba(255,255,255,0.25)",
-    badgeText: "rgba(0,0,0,0.75)",
-    processText: "rgba(17,17,17,0.45)",
+    headingColor: "#FFF8E8",
+    accentGradient: "linear-gradient(135deg, #FFF0B0 0%, #FFD966 100%)",
+    bodyColor: "rgba(255, 248, 232, 0.9)",
+    descColor: "rgba(255, 248, 232, 0.7)",
+    taglineColor: "#FFF8E8",
+    taglineAccentGradient: "linear-gradient(135deg, #FFF0B0 0%, #FFD966 100%)",
+    iconColor: "#FFE680",
+    pillBorder: "1px solid rgba(255, 240, 180, 0.25)",
+    pillBg: "rgba(255, 240, 180, 0.1)",
+    ctaBorder: "1.5px solid rgba(255, 240, 180, 0.4)",
+    badgeGradient: "linear-gradient(135deg, #C49010 0%, #8B6000 100%)",
+    badgeShadow: "0 4px 16px rgba(150, 100, 0, 0.35), inset 0 1px 0 rgba(255, 220, 80, 0.25)",
+    badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
+    badgeText: "#fff8e0",
+    cardBorder: "1.5px solid rgba(212, 160, 23, 0.45)",
+    cardShadow: "0 -4px 16px rgba(0,0,0,0.08), -4px 0 16px rgba(0,0,0,0.06), 4px 0 16px rgba(0,0,0,0.06)",
   },
   "03": {
-    background: "linear-gradient(90deg, #6A4A16 0%, #1D1510 100%)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    boxShadow: "0 16px 40px rgba(0,0,0,0.28), 0 6px 16px rgba(0,0,0,0.16)",
-    headingColor: "#FFFFFF",
-    highlightColor: "#FFB300",
-    stepBg: "#06101D",
-    stepColor: "#FFB300",
-    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
-    titleColor: "rgba(255,255,255,0.45)",
-    bodyColor: "rgba(255,255,255,0.72)",
-    chipBg: "rgba(255,255,255,0.10)",
-    chipText: "#FFFFFF",
-    chipBorder: "rgba(255,255,255,0.08)",
-    badgeBg: "rgba(255,255,255,0.08)",
-    badgeBorder: "rgba(255,255,255,0.10)",
-    badgeText: "rgba(255,255,255,0.90)",
-    processText: "rgba(255,255,255,0.45)",
+    headingColor: "#ffffff",
+    accentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 50%, #A86500 100%)",
+    bodyColor: "rgba(255, 255, 255, 0.85)",
+    descColor: "rgba(255, 255, 255, 0.65)",
+    taglineColor: "#ffffff",
+    taglineAccentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 100%)",
+    iconColor: "#D4A017",
+    pillBorder: "1px solid rgba(212, 160, 23, 0.25)",
+    pillBg: "rgba(212, 160, 23, 0.08)",
+    ctaBorder: "1.5px solid rgba(212, 160, 23, 0.5)",
+    badgeGradient: "linear-gradient(135deg, #D4A017 0%, #A67C00 100%)",
+    badgeShadow: "0 4px 16px rgba(180, 130, 0, 0.4), inset 0 1px 0 rgba(255, 235, 100, 0.3)",
+    badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
+    badgeText: "#fff8e0",
+    cardBorder: "1.5px solid rgba(212, 160, 23, 0.6)",
+    cardShadow: "0 -4px 20px rgba(0,0,0,0.2), -4px 0 20px rgba(0,0,0,0.15), 4px 0 20px rgba(0,0,0,0.15)",
   },
   "04": {
-    background: "linear-gradient(90deg, #03142F 0%, #1C1C1C 100%)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    boxShadow: "0 16px 40px rgba(0,0,0,0.32), 0 6px 16px rgba(0,0,0,0.18)",
-    headingColor: "#FFFFFF",
-    highlightColor: "#FFB300",
-    stepBg: "#06101D",
-    stepColor: "#FFB300",
-    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
-    titleColor: "rgba(255,255,255,0.45)",
-    bodyColor: "rgba(255,255,255,0.72)",
-    chipBg: "rgba(255,255,255,0.10)",
-    chipText: "#FFFFFF",
-    chipBorder: "rgba(255,255,255,0.08)",
-    badgeBg: "rgba(255,255,255,0.08)",
-    badgeBorder: "rgba(255,255,255,0.10)",
-    badgeText: "rgba(255,255,255,0.90)",
-    processText: "rgba(255,255,255,0.45)",
+    headingColor: "#ffffff",
+    accentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 50%, #A86500 100%)",
+    bodyColor: "rgba(255, 255, 255, 0.85)",
+    descColor: "rgba(255, 255, 255, 0.65)",
+    taglineColor: "#ffffff",
+    taglineAccentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 100%)",
+    iconColor: "#D4A017",
+    pillBorder: "1px solid rgba(212, 160, 23, 0.25)",
+    pillBg: "rgba(212, 160, 23, 0.08)",
+    ctaBorder: "1.5px solid rgba(212, 160, 23, 0.5)",
+    badgeGradient: "linear-gradient(135deg, #D4A017 0%, #A67C00 100%)",
+    badgeShadow: "0 4px 16px rgba(180, 130, 0, 0.4), inset 0 1px 0 rgba(255, 235, 100, 0.3)",
+    badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
+    badgeText: "#fff8e0",
+    cardBorder: "1.5px solid rgba(212, 160, 23, 0.6)",
+    cardShadow: "0 -4px 20px rgba(0,0,0,0.2), -4px 0 20px rgba(0,0,0,0.15), 4px 0 20px rgba(0,0,0,0.15)",
   },
   "05": {
-    background: "linear-gradient(90deg, #02122B 0%, #1A1714 100%)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    boxShadow: "0 16px 40px rgba(0,0,0,0.36), 0 6px 16px rgba(0,0,0,0.20)",
-    headingColor: "#FFFFFF",
-    highlightColor: "#FFB300",
-    stepBg: "#06101D",
-    stepColor: "#FFB300",
-    stepShadow: "0 0 30px rgba(255,179,0,0.15)",
-    titleColor: "rgba(255,255,255,0.45)",
-    bodyColor: "rgba(255,255,255,0.72)",
-    chipBg: "rgba(255,255,255,0.10)",
-    chipText: "#FFFFFF",
-    chipBorder: "rgba(255,255,255,0.08)",
-    badgeBg: "rgba(255,255,255,0.08)",
-    badgeBorder: "rgba(255,255,255,0.10)",
-    badgeText: "rgba(255,255,255,0.90)",
-    processText: "rgba(255,255,255,0.45)",
+    headingColor: "#ffffff",
+    accentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 50%, #A86500 100%)",
+    bodyColor: "rgba(255, 255, 255, 0.85)",
+    descColor: "rgba(255, 255, 255, 0.65)",
+    taglineColor: "#ffffff",
+    taglineAccentGradient: "linear-gradient(135deg, #F5C842 0%, #D4900A 100%)",
+    iconColor: "#D4A017",
+    pillBorder: "1px solid rgba(212, 160, 23, 0.25)",
+    pillBg: "rgba(212, 160, 23, 0.08)",
+    ctaBorder: "1.5px solid rgba(212, 160, 23, 0.5)",
+    badgeGradient: "linear-gradient(135deg, #D4A017 0%, #A67C00 100%)",
+    badgeShadow: "0 4px 16px rgba(180, 130, 0, 0.4), inset 0 1px 0 rgba(255, 235, 100, 0.3)",
+    badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
+    badgeText: "#fff8e0",
+    cardBorder: "1.5px solid rgba(212, 160, 23, 0.6)",
+    cardBorderLeft: "none",
+    cardBorderRight: "none",
+    cardShadow: "0 -4px 20px rgba(0,0,0,0.2)",
   },
 };
 
 const CARD_COPY = {
   "01": {
-    summary:
-      "Analyze your codebase and identify the services required for deployment.",
-    chips: ["React Frontend", "Django Backend", "PostgreSQL", "Redis", "Celery Workers"],
-    flow: ["Repository", "Analysis", "Detection", "Blueprint"],
-    accentLabel: "Repository Scan Ready",
+    headingLine1: "UNDERSTAND YOUR",
+    headingAccent: "REPOSITORY",
+    body: "Analyze your codebase and identify deployment services.",
+    desc: "Our engine scans frameworks, languages, and dependencies. No manual config files, no guesswork.",
+    taglinePrefix: "We scan. You ",
+    taglineAccent: "deploy.",
+    taglineSub: "No guesswork, just clarity.",
+    ctaLabel: "EXPLORE YOUR REPO",
+    features: [
+      { label: "AUTO-DETECT", Icon: Search },
+      { label: "ZERO CONFIG", Icon: Zap },
+      { label: "MULTI-LANGUAGE", Icon: Code2 },
+      { label: "SMART SCANNING", Icon: GitBranch },
+    ],
   },
   "02": {
-    summary:
-      "Understand your infrastructure goals before generating the architecture.",
-    chips: [
-      "Traffic Expectations",
-      "Environment Setup",
-      "Domain Selection",
-      "Database Choice",
-      "Scaling Requirements",
+    headingLine1: "COLLECT YOUR",
+    headingAccent: "INTENT",
+    body: "Translate your goals into concrete infrastructure requirements.",
+    desc: "Tell us your scalability and cost goals before a single resource is spun up. We map intent to infrastructure.",
+    taglinePrefix: "Your goals. Our ",
+    taglineAccent: "blueprint.",
+    taglineSub: "Clarity before complexity.",
+    ctaLabel: "SET YOUR GOALS",
+    features: [
+      { label: "GOAL-DRIVEN", Icon: Target },
+      { label: "INTENT MAPPING", Icon: Map },
+      { label: "PRE-FLIGHT CHECK", Icon: CheckCircle },
     ],
-    flow: ["Requirements", "Validation", "Planning"],
-    accentLabel: "Intent Capture",
   },
   "03": {
-    summary:
-      "Create an optimized deployment blueprint based on your application needs.",
-    chips: [
-      "Architecture Graph",
-      "Service Mapping",
-      "Resource Planning",
-      "Cost Projection",
-      "Optimization Rules",
+    headingLine1: "DESIGN YOUR",
+    headingAccent: "INFRASTRUCTURE",
+    body: "Generate a production-grade blueprint tailored to your app.",
+    desc: "We generate a production-grade architecture diagram tailored to your app. Review and approve before anything is built.",
+    taglinePrefix: "Infrastructure ",
+    taglineAccent: "mapped.",
+    taglineSub: "Optimized before it's built.",
+    ctaLabel: "VIEW BLUEPRINT",
+    features: [
+      { label: "BLUEPRINT GEN", Icon: Layout },
+      { label: "REGION-AWARE", Icon: Globe },
+      { label: "COST-OPTIMIZED", Icon: TrendingDown },
+      { label: "SECURE BY DEFAULT", Icon: Shield },
+      { label: "RIGHT-SIZED COMPUTE", Icon: Cpu },
     ],
-    flow: ["Architecture", "Optimization", "Final Design"],
-    accentLabel: "Blueprint Generated",
   },
   "04": {
-    summary:
-      "Provision cloud resources and launch your architecture automatically.",
-    chips: [
-      "Cloud Resources",
-      "Infrastructure Provisioning",
-      "Security Policies",
-      "Deployment Pipeline",
-      "Production Launch",
+    headingLine1: "DEPLOY YOUR",
+    headingAccent: "INFRASTRUCTURE",
+    body: "Provision all cloud resources and go live automatically.",
+    desc: "With one click, we provision load balancers, databases, compute, and networking — fully automated.",
+    taglinePrefix: "One click. ",
+    taglineAccent: "Full stack.",
+    taglineSub: "Live in minutes, not days.",
+    ctaLabel: "DEPLOY NOW",
+    features: [
+      { label: "ONE-CLICK DEPLOY", Icon: MousePointerClick },
+      { label: "FULL STACK LAUNCH", Icon: Layers },
     ],
-    flow: ["Provision", "Configure", "Deploy"],
-    accentLabel: "Deployment In Motion",
   },
   "05": {
-    summary: "Track performance, health, and cloud spend in one place.",
-    chips: [
-      "Health Monitoring",
-      "Usage Analytics",
-      "Cost Tracking",
-      "Performance Insights",
-      "Optimization Recommendations",
+    headingLine1: "MONITOR &",
+    headingAccent: "OPTIMIZE",
+    body: "Track performance, health, and cloud spend in one place.",
+    desc: "Get real-time visibility into uptime, latency, and cloud costs. Anomalies surface automatically.",
+    taglinePrefix: "Always on. Always ",
+    taglineAccent: "optimized.",
+    taglineSub: "Your infra, never idle.",
+    ctaLabel: "VIEW METRICS",
+    features: [
+      { label: "LIVE METRICS", Icon: Activity },
+      { label: "SPEND TRACKING", Icon: DollarSign },
+      { label: "AUTO-OPTIMIZE", Icon: Settings },
+      { label: "ANOMALY ALERTS", Icon: Bell },
     ],
-    flow: ["Monitor", "Analyze", "Optimize"],
-    accentLabel: "Operations Live",
   },
 };
 
-function Chip({ children, variant = "dark" }) {
-  const variantClasses =
-    variant === "light"
-      ? "bg-[rgba(255,255,255,0.55)] text-[#111111] border-[rgba(0,0,0,0.06)]"
-      : "bg-[rgba(255,255,255,0.10)] text-white border-[rgba(255,255,255,0.08)]";
-
-  return (
-    <span
-      className={`inline-flex h-[42px] items-center rounded-full border px-[18px] text-[15px] font-semibold tracking-normal transition-[filter] hover:brightness-105 ${variantClasses}`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function StatusBadge({ children, variant = "dark" }) {
-  const variantClasses =
-    variant === "light"
-      ? "bg-[rgba(255,255,255,0.20)] border-[rgba(255,255,255,0.25)] text-[rgba(0,0,0,0.75)]"
-      : "bg-[rgba(255,255,255,0.08)] border-[rgba(255,255,255,0.10)] text-[rgba(255,255,255,0.90)]";
-
-  return (
-    <div
-      className={`inline-flex h-[54px] w-[220px] items-center rounded-[18px] border px-5 backdrop-blur-[12px] ${variantClasses}`}
-    >
-      <span className="text-[12px] font-semibold uppercase tracking-[0.18em] opacity-90">
-        Status
-      </span>
-      <span className="ml-2 text-[20px] font-bold leading-none">{children}</span>
-    </div>
-  );
-}
-
-function StepCircle({ step, theme }) {
-  return (
-    <div
-      className="flex h-[120px] w-[120px] items-center justify-center rounded-full"
-      style={{
-        background: theme.stepBg,
-        color: theme.stepColor,
-        boxShadow: theme.stepShadow,
-      }}
-    >
-      <span className="text-[56px] font-extrabold leading-none">{step}</span>
-    </div>
-  );
-}
-
-function ContentBlock({ step, headingTop, headingHighlight, copy, theme, isLightCard }) {
-  const fullHeading = `${headingTop} ${headingHighlight}`.trim();
-  const words = fullHeading.split(/\s+/).filter(Boolean);
-  const chipVariant = step === "01" || step === "02" ? "light" : "dark";
-
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div>
-          <p
-            className="text-[14px] font-bold uppercase tracking-[0.25em]"
-            style={{
-              color: isLightCard ? "rgba(17,17,17,0.45)" : "rgba(255,255,255,0.45)",
-            }}
-          >
-            Step {step}
-          </p>
-
-          <h3
-            className="mt-3 max-w-[80%] font-extrabold uppercase leading-[0.95] tracking-[-0.03em]"
-            style={{
-              fontSize: "56px",
-              color: theme.headingColor,
-            }}
-          >
-            {words.map((word, index) => {
-              const isHighlighted = word === headingHighlight;
-              return (
-                <span
-                  key={`${word}-${index}`}
-                  className="inline-block"
-                  style={{
-                    marginRight: index === words.length - 1 ? 0 : "0.18em",
-                  }}
-                >
-                  {isHighlighted ? (
-                    <span style={{ color: theme.highlightColor }}>{word}</span>
-                  ) : (
-                    word
-                  )}
-                </span>
-              );
-            })}
-          </h3>
-
-          <p
-            className="mt-6 max-w-[70%] text-[22px] font-normal leading-[1.5]"
-            style={{
-              color: isLightCard ? "rgba(17,17,17,0.72)" : "rgba(255,255,255,0.72)",
-            }}
-          >
-            {copy.summary}
-          </p>
-
-          <div className="mt-8 flex max-w-[100%] flex-wrap gap-3">
-            {copy.chips.map((chip) => (
-              <Chip key={chip} variant={chipVariant}>
-                {chip}
-              </Chip>
-            ))}
-          </div>
-        </div>
-
-        <div
-          className="mt-auto pt-8 text-[15px] font-bold uppercase tracking-[0.18em]"
-          style={{
-            color: isLightCard ? "rgba(17,17,17,0.45)" : "rgba(255,255,255,0.45)",
-            opacity: 0.55,
-          }}
-        >
-          {copy.flow.map((item, index) => (
-            <span key={item} className="inline-flex items-center">
-              <span>{item}</span>
-              {index < copy.flow.length - 1 ? <span className="mx-2">→</span> : null}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function VisualBlock({ illustration }) {
-  return (
-    <div className="flex h-full min-h-0 items-center justify-center overflow-hidden">
-      <img
-        src={illustration}
-        alt=""
-        className="block select-none object-contain pointer-events-none"
-        style={{
-          width: "70%",
-          maxWidth: "75%",
-          maxHeight: "90%",
-        }}
-        draggable={false}
-      />
-    </div>
-  );
-}
-
-function OddCardLayout({ step, headingTop, headingHighlight, illustration, theme, copy, isLightCard }) {
-  return (
-    <div
-      className="grid h-full min-h-0 grid-rows-[120px_1fr] md:grid-rows-[120px_1fr]"
-      style={{
-        gridTemplateColumns: "56% 22% 22%",
-        gridTemplateAreas: '"content status step" "content visual visual"',
-      }}
-    >
-      <div className="md:[grid-area:content]">
-        <ContentBlock
-          step={step}
-          headingTop={headingTop}
-          headingHighlight={headingHighlight}
-          copy={copy}
-          theme={theme}
-          isLightCard={isLightCard}
-        />
-      </div>
-      <div className="flex items-center justify-center md:[grid-area:status]">
-        <StatusBadge variant={isLightCard ? "light" : "dark"}>
-          {copy.accentLabel}
-        </StatusBadge>
-      </div>
-      <div className="flex items-center justify-center md:[grid-area:step]">
-        <StepCircle step={step} theme={theme} />
-      </div>
-      <div className="md:[grid-area:visual]">
-        <VisualBlock illustration={illustration} />
-      </div>
-    </div>
-  );
-}
-
-function EvenCardLayout({ step, headingTop, headingHighlight, illustration, theme, copy, isLightCard }) {
-  return (
-    <div
-      className="grid h-full min-h-0 grid-rows-[120px_1fr] md:grid-rows-[120px_1fr]"
-      style={{
-        gridTemplateColumns: "22% 22% 56%",
-        gridTemplateAreas: '"step status content" "visual visual content"',
-      }}
-    >
-      <div className="flex items-center justify-center md:[grid-area:step]">
-        <StepCircle step={step} theme={theme} />
-      </div>
-      <div className="flex items-center justify-center md:[grid-area:status]">
-        <StatusBadge variant={isLightCard ? "light" : "dark"}>
-          {copy.accentLabel}
-        </StatusBadge>
-      </div>
-      <div className="md:[grid-area:content]">
-        <ContentBlock
-          step={step}
-          headingTop={headingTop}
-          headingHighlight={headingHighlight}
-          copy={copy}
-          theme={theme}
-          isLightCard={isLightCard}
-        />
-      </div>
-      <div className="md:[grid-area:visual]">
-        <VisualBlock illustration={illustration} />
-      </div>
-    </div>
-  );
-}
-
 export default function HowItWorksCard({
   step,
-  headingTop,
-  headingHighlight,
-  title,
-  highlight,
   illustration,
+  bgColor,
 }) {
-  const resolvedHeadingTop = headingTop ?? title ?? "";
-  const resolvedHeadingHighlight = headingHighlight ?? highlight ?? "";
   const theme = CARD_THEMES[step] ?? CARD_THEMES["05"];
   const copy = CARD_COPY[step] ?? CARD_COPY["05"];
-  const isLightCard = step === "01" || step === "02";
   const isEven = Number(step) % 2 === 0;
+  const featureCount = copy.features.length;
+  const hasOddFeatures = featureCount % 2 !== 0;
+
+  // Card 3 has 5 features (3 rows) — tighten to prevent overflow
+  const pillPadding = featureCount >= 5 ? "8px 12px" : "9px 14px";
+  const gridGap = featureCount >= 5 ? "7px" : "10px";
+
+  const badgePosition = isEven
+    ? { top: "20px", left: "20px" }
+    : { top: "20px", right: "20px" };
 
   return (
     <article
-      className="relative flex h-full w-full flex-col overflow-hidden rounded-[34px]"
       style={{
-        padding: "32px",
-        background: theme.background,
-        border: theme.border,
-        boxShadow: theme.boxShadow,
+        display: "flex",
+        flexDirection: isEven ? "row-reverse" : "row",
+        width: "100%",
+        height: "100%",
+        minHeight: "480px",
+        borderRadius: "20px 20px 0 0",
+        overflow: "hidden",
+        position: "relative",
+        backgroundColor: bgColor,
+        borderTop: theme.cardBorder,
+        borderLeft: theme.cardBorderLeft ?? theme.cardBorder,
+        borderRight: theme.cardBorderRight ?? theme.cardBorder,
+        borderBottom: "none",
+        boxShadow: theme.cardShadow,
       }}
     >
-      {isEven ? (
-        <EvenCardLayout
-          step={step}
-          headingTop={resolvedHeadingTop}
-          headingHighlight={resolvedHeadingHighlight}
-          illustration={illustration}
-          theme={theme}
-          copy={copy}
-          isLightCard={isLightCard}
-        />
-      ) : (
-        <OddCardLayout
-          step={step}
-          headingTop={resolvedHeadingTop}
-          headingHighlight={resolvedHeadingHighlight}
-          illustration={illustration}
-          theme={theme}
-          copy={copy}
-          isLightCard={isLightCard}
-        />
-      )}
+      {/* Text half */}
+      <div
+        style={{
+          flex: "0 0 48%",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "flex-start",
+          padding: "44px 48px 40px 48px",
+          minHeight: "100%",
+          boxSizing: "border-box",
+          overflow: "hidden",
+        }}
+      >
+        {/* Heading */}
+        <h3
+          style={{
+            fontWeight: 800,
+            fontSize: "clamp(44px, 5vw, 68px)",
+            lineHeight: 1.0,
+            letterSpacing: "-0.01em",
+            textTransform: "uppercase",
+            fontFamily: "inherit",
+            margin: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 0,
+          }}
+        >
+          <span style={{ color: theme.headingColor, display: "block" }}>
+            {copy.headingLine1}
+          </span>
+          <span
+            style={{
+              display: "block",
+              background: theme.accentGradient,
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              backgroundClip: "text",
+            }}
+          >
+            {copy.headingAccent}
+          </span>
+        </h3>
+
+        {/* Body line */}
+        <p
+          style={{
+            color: theme.bodyColor,
+            fontSize: "18px",
+            lineHeight: 1.5,
+            fontWeight: 500,
+            margin: 0,
+            marginTop: "18px",
+          }}
+        >
+          {copy.body}
+        </p>
+
+        {/* Description paragraph */}
+        <p
+          style={{
+            color: theme.descColor,
+            fontSize: "14px",
+            lineHeight: 1.7,
+            fontWeight: 400,
+            margin: 0,
+            marginTop: "8px",
+          }}
+        >
+          {copy.desc}
+        </p>
+
+        {/* Feature pill grid */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: gridGap,
+            marginTop: "20px",
+            marginBottom: "0",
+            flexShrink: 0,
+          }}
+        >
+          {copy.features.map(({ label, Icon }, i) => {
+            const isLast = i === featureCount - 1;
+            const spanFull = isLast && hasOddFeatures;
+            return (
+              <div
+                key={label}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: pillPadding,
+                  borderRadius: "10px",
+                  border: theme.pillBorder,
+                  background: theme.pillBg,
+                  gridColumn: spanFull ? "span 2" : undefined,
+                }}
+              >
+                <Icon
+                  size={17}
+                  color={theme.iconColor}
+                  strokeWidth={2}
+                  style={{ flexShrink: 0, width: "17px", height: "17px" }}
+                />
+                <span
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    textTransform: "uppercase",
+                    whiteSpace: "nowrap",
+                    color: theme.bodyColor,
+                  }}
+                >
+                  {label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Tagline — pushed to bottom */}
+        <div style={{ marginTop: "auto", paddingTop: "16px", flexShrink: 0 }}>
+          <p
+            style={{
+              fontSize: "26px",
+              fontWeight: 800,
+              lineHeight: 1.1,
+              letterSpacing: "-0.01em",
+              margin: "0 0 6px 0",
+            }}
+          >
+            <span style={{ color: theme.taglineColor }}>{copy.taglinePrefix}</span>
+            <span
+              style={{
+                background: theme.taglineAccentGradient,
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              {copy.taglineAccent}
+            </span>
+          </p>
+          <p
+            style={{
+              fontSize: "14px",
+              fontWeight: 400,
+              opacity: 0.5,
+              margin: 0,
+              color: theme.taglineColor,
+            }}
+          >
+            {copy.taglineSub}
+          </p>
+        </div>
+
+        {/* CTA button */}
+        <button
+          type="button"
+          style={{
+            marginTop: "14px",
+            padding: "9px 20px",
+            fontSize: "11px",
+            fontWeight: 700,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            background: "transparent",
+            border: theme.ctaBorder,
+            borderRadius: "6px",
+            color: theme.taglineColor,
+            cursor: "pointer",
+            alignSelf: "flex-start",
+            transition: "all 0.2s ease",
+            flexShrink: 0,
+          }}
+        >
+          {copy.ctaLabel}
+        </button>
+      </div>
+
+      {/* Illustration half */}
+      <div
+        style={{
+          flex: "0 0 52%",
+          maxWidth: "52%",
+          position: "relative",
+          overflow: "hidden",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
+        }}
+      >
+        {illustration && (
+          <img
+            src={illustration}
+            alt=""
+            style={{
+              width: step === "01" ? "100%" : "95%",
+              height: step === "01" ? "100%" : "95%",
+              maxWidth: step === "01" ? "100%" : "95%",
+              maxHeight: step === "01" ? "100%" : "95%",
+              objectFit: "contain",
+              objectPosition: "center",
+              display: "block",
+              padding: step === "01" ? "8px" : "12px",
+              boxSizing: "border-box",
+            }}
+          />
+        )}
+
+        {/* Step number badge */}
+        <div
+          style={{
+            position: "absolute",
+            ...badgePosition,
+            width: "68px",
+            height: "68px",
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "22px",
+            fontWeight: 800,
+            fontFamily: "inherit",
+            letterSpacing: "0.02em",
+            background: theme.badgeGradient,
+            color: theme.badgeText,
+            border: theme.badgeBorder,
+            boxShadow: theme.badgeShadow,
+            backdropFilter: "blur(4px)",
+            WebkitBackdropFilter: "blur(4px)",
+          }}
+        >
+          {step}
+        </div>
+      </div>
     </article>
   );
 }
