@@ -108,7 +108,9 @@ const CARD_THEMES = {
     badgeBorder: "2px solid rgba(255, 215, 0, 0.35)",
     badgeText: "#fff8e0",
     cardBorder: "1.5px solid rgba(212, 160, 23, 0.6)",
-    cardShadow: "0 -4px 20px rgba(0,0,0,0.2), -4px 0 20px rgba(0,0,0,0.15), 4px 0 20px rgba(0,0,0,0.15)",
+    cardBorderLeft: "none",
+    cardBorderRight: "none",
+    cardShadow: "0 -4px 20px rgba(0,0,0,0.2)",
   },
 };
 
@@ -225,8 +227,8 @@ export default function HowItWorksCard({
         position: "relative",
         backgroundColor: bgColor,
         borderTop: theme.cardBorder,
-        borderLeft: theme.cardBorder,
-        borderRight: theme.cardBorder,
+        borderLeft: theme.cardBorderLeft ?? theme.cardBorder,
+        borderRight: theme.cardBorderRight ?? theme.cardBorder,
         borderBottom: "none",
         boxShadow: theme.cardShadow,
       }}
