@@ -1,7 +1,8 @@
-from urllib.parse import urlencode, quote
+from urllib.parse import urlencode
+
+from django.conf import settings
 
 TEMPLATE_URL = 'https://clyro-cfn-bootstrap.s3.amazonaws.com/bootstrap.yaml'
-CLYRO_ACCOUNT_ID = '321613317660'
 
 
 def generate_cfn_console_url(project_name: str, external_id: str, region: str = 'us-east-1') -> str:
@@ -11,7 +12,7 @@ def generate_cfn_console_url(project_name: str, external_id: str, region: str = 
     params = {
         'stackName': stack_name,
         'templateURL': TEMPLATE_URL,
-        'param_ClyroAccountId': CLYRO_ACCOUNT_ID,
+        'param_ClyroAccountId': settings.CLYRO_AWS_ACCOUNT_ID,
         'param_ExternalId': external_id,
     }
     query = urlencode(params)

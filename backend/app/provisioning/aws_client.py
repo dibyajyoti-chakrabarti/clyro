@@ -4,8 +4,13 @@ from django.conf import settings
 
 
 def _get_clyro_session():
-    profile = getattr(settings, 'AWS_PROFILE', 'default')
-    return boto3.Session(profile_name=profile)
+    # In production (DEBUG=False) the compute's attached IAM role provides
+    # credentials automatically via the metadata endpoint — no profile needed.
+    # Named profiles are only used in local development.
+    if getattr(settings, 'DEBUG', False):
+        profile = getattr(settings, 'AWS_PROFILE', 'default')
+        return boto3.Session(profile_name=profile)
+    return boto3.Session()
 
 
 def assume_role(role_arn: str, external_id: str, session_name: str = 'ClyroSession') -> dict:
