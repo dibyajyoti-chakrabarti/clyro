@@ -34,8 +34,8 @@ class ScanResultAdmin(admin.ModelAdmin):
 
 @admin.register(IntentRecord)
 class IntentRecordAdmin(admin.ModelAdmin):
-    list_display = ('project', 'environment', 'scale', 'criticality', 'completed_at')
-    list_filter = ('environment', 'scale', 'criticality')
+    list_display = ('project', 'environment', 'scale', 'aws_account_type', 'completed_at')
+    list_filter = ('environment', 'scale', 'aws_account_type')
 
 
 @admin.register(CanvasVersion)

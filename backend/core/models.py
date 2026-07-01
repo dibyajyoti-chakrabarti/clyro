@@ -161,6 +161,10 @@ class IntentRecord(models.Model):
         NO = 'no'
         INTERNAL = 'internal'
 
+    class AwsAccountType(models.TextChoices):
+        PAID = 'paid'
+        FREE_TIER = 'free_tier'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='intent_records')
     description = models.TextField(null=True, blank=True)
@@ -172,6 +176,7 @@ class IntentRecord(models.Model):
     worker_compute_choice = models.TextField(choices=ComputeChoice.choices, null=True, blank=True)
     domain_has = models.TextField(choices=DomainHas.choices, null=True, blank=True)
     domain_name = models.TextField(null=True, blank=True)
+    aws_account_type = models.TextField(choices=AwsAccountType.choices, null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

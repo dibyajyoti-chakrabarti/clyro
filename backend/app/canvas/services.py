@@ -43,6 +43,7 @@ def _intent_to_dict(intent: IntentRecord | None) -> dict[str, Any]:
         "compute_choice": intent.compute_choice,
         "database_choice": intent.database_choice,
         "worker_compute_choice": intent.worker_compute_choice,
+        "aws_account_type": intent.aws_account_type,
     }
 
 

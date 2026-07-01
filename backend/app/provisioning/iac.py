@@ -130,6 +130,7 @@ def _intent_for_spec(intent: IntentRecord | None) -> dict[str, Any]:
         "environment": intent.environment,
         "domain_has": intent.domain_has,
         "domain_name": intent.domain_name,
+        "aws_account_type": intent.aws_account_type,
     }
 
 
@@ -166,6 +167,7 @@ def ensure_deployment(project: Project) -> Deployment:
             criticality=IntentRecord.Criticality.MEDIUM,
             environment=IntentRecord.Environment.PRODUCTION,
             domain_has=IntentRecord.DomainHas.NO,
+            aws_account_type=IntentRecord.AwsAccountType.PAID,
             completed_at=timezone.now(),
         )
 

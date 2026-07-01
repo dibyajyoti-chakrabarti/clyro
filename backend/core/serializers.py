@@ -46,6 +46,7 @@ class IntentRecordSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'description', 'scale', 'criticality', 'environment',
             'compute_choice', 'database_choice', 'worker_compute_choice',
-            'domain_has', 'domain_name', 'completed_at', 'created_at',
+            'domain_has', 'domain_name', 'aws_account_type',
+            'completed_at', 'created_at',
         ]
         read_only_fields = ['id', 'completed_at', 'created_at']
