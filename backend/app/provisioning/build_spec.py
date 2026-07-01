@@ -19,6 +19,16 @@ from typing import Any
 
 from canvas_core.cost_engine import SIZING_BY_SCALE
 
+# Free-tier target accounts get the smallest burstable footprint regardless of scale —
+# overrides SIZING_BY_SCALE. Paired with no-NAT networking below, this is what the Step 2
+# "free tier" answer promises ("stay within free limits / avoid charges"). Note Fargate
+# itself is not Free-Tier-eligible; this minimizes spend, it is not a literal $0 guarantee.
+FREE_TIER_SIZING: dict[str, Any] = {
+    "fargate_vcpu": 0.25, "fargate_gb": 0.5,
+    "rds_class": "db.t3.micro", "aurora_class": "db.t3.medium",
+    "cache_node": "cache.t3.micro", "tasks": 1,
+}
+
 # Per-target ingress ports derived from the connection graph (design Step4 §Networking).
 _PORT_BY_TARGET_TYPE: dict[str, int] = {
     "database": 5432,  # PostgreSQL (rds_postgres / aurora_postgres)
@@ -114,7 +124,8 @@ def build_spec(
     ``env_vars`` into the typed build spec the IaC agent authors CFN from.
 
     ``intent`` keys read: ``scale``, ``criticality``, ``environment``,
-    ``domain_has``, ``domain_name``. ``env_vars`` is a list of dicts shaped like
+    ``domain_has``, ``domain_name``, ``aws_account_type`` (paid | free_tier).
+    ``env_vars`` is a list of dicts shaped like
     the ``EnvVarKey`` rows (``key_name``, ``classification``, ``secrets_manager_arn``,
     ``production_default``, ``context_block``).
     """
@@ -126,13 +137,21 @@ def build_spec(
     scale = intent.get("scale") or "small"
     environment = intent.get("environment") or "production"
     criticality = intent.get("criticality") or "medium"
+    account_type = intent.get("aws_account_type") or "paid"
+    free_tier = account_type == "free_tier"
     # Multi-AZ redundancy (doubles RDS/cache) only when high *and* production —
-    # matches canvas_core.cost_engine so the review cost reconciles with Step 3.
-    multi_az = criticality == "high" and environment == "production"
+    # matches canvas_core.cost_engine so the review cost reconciles with Step 3. A
+    # free-tier target never gets Multi-AZ (it doubles cost).
+    multi_az = (not free_tier) and criticality == "high" and environment == "production"
+    # Free tier drops the NAT gateway (its biggest always-on cost) and instead runs ECS
+    # tasks in public subnets with a public IP so they can still reach ECR. RDS/cache
+    # stay in private subnets — they need no outbound internet, so they need no NAT.
+    nat_gateway = not free_tier
+    task_placement = "public" if free_tier else "private"
 
     project = _slug(canvas.get("project"))
     prefix = f"{project}-{_ENV_SHORT.get(environment, 'prod')}"
-    sizing = SIZING_BY_SCALE.get(scale, SIZING_BY_SCALE["small"])
+    sizing = dict(FREE_TIER_SIZING if free_tier else SIZING_BY_SCALE.get(scale, SIZING_BY_SCALE["small"]))
 
     has_domain = (intent.get("domain_has") == "yes") and bool(intent.get("domain_name"))
 
@@ -234,6 +253,7 @@ def build_spec(
     return {
         "project": project,
         "environment": environment,
+        "account_type": account_type,   # "paid" | "free_tier" (from Step 2)
         "naming_prefix": prefix,
         "region": region,
         "sizing": {
@@ -246,7 +266,9 @@ def build_spec(
             "vpc_cidr": "10.0.0.0/16",
             "az_count": 2,            # ALB requires >= 2 AZs; subnets are free
             "public_subnets": 2,
-            "private_subnets": 2,
+            "private_subnets": 2,     # RDS/cache live here even on free tier (no NAT needed)
+            "nat_gateway": nat_gateway,      # free tier: no NAT gateway
+            "task_placement": task_placement,  # where ECS tasks run: "private" | "public"
             "multi_az": multi_az,     # controls RDS Multi-AZ + cache replicas
             "criticality": criticality,
         },
@@ -256,8 +278,10 @@ def build_spec(
             "acm": has_domain,
         },
         "placement": {
-            "public_subnets": ["ALB", "CloudFront(origin)"],
-            "private_subnets": ["ECS tasks", "RDS", "ElastiCache"],
+            "public_subnets": (["ALB", "CloudFront(origin)"]
+                               + (["ECS tasks"] if task_placement == "public" else [])),
+            "private_subnets": ((["ECS tasks"] if task_placement == "private" else [])
+                                + ["RDS", "ElastiCache"]),
         },
         "resources": resources,
         "network_edges": network_edges,
