@@ -16,7 +16,7 @@ log = app.logger
 
 SYSTEM_PROMPT = """You are the Reasoning agent for Clyro's interactive architecture canvas.
 
-You receive a user's natural-language prompt about their AWS architecture, plus the current canvas (nodes + connections as JSON) and intent (scale, criticality, environment).
+You receive a user's natural-language prompt about their AWS architecture, plus the current canvas (nodes + connections as JSON) and intent (scale, environment, and the target AWS account type — paid vs free_tier). A free_tier target means the user wants to stay within free/low-cost limits, so favor the smallest, cheapest resources and call out cost in every proposal.
 
 Your job: produce EXACTLY ONE of two outcomes — a proposal or an answer. Never both.
 
@@ -63,7 +63,7 @@ def estimate_cost_delta(canvas_json: str, operation_json: str, intent_json: str)
     Args:
         canvas_json: Current canvas as a JSON string.
         operation_json: The proposed operation as a JSON string.
-        intent_json: The project intent (scale, criticality, environment) as a JSON string.
+        intent_json: The project intent (scale, environment, aws_account_type) as a JSON string.
 
     Returns:
         JSON string: {"before": int, "after": int, "delta": int}
