@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { X, Database, Globe, Layers, Server, Settings2, Zap, ZoomIn, ZoomOut } from 'lucide-react'
+import { Database, Globe, Layers, Server, Settings2, Zap, ZoomIn, ZoomOut } from 'lucide-react'
 import CanvasSurface from './canvas/CanvasSurface'
 import CanvasNode from './canvas/CanvasNode'
 import NodePopup from './canvas/NodePopup'
@@ -110,9 +110,6 @@ function StepThreePanel({
       : 'pointer-events-none translate-x-6 opacity-0 transition-[transform,opacity] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)]'
   }
 
-  const closeDrawerButtonClass =
-    'grid h-9 w-9 place-items-center rounded-full border border-border bg-background/70 text-text-muted transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-accent hover:text-text-primary'
-
   return (
     <div className='relative flex h-full min-h-0 w-full flex-col gap-8'>
       <div className='relative min-h-[520px] min-w-0 flex-1 overflow-hidden rounded-[28px] border border-[rgba(255,196,0,0.22)] bg-background shadow-[0_0_0_1px_rgba(255,196,0,0.05),0_0_18px_rgba(255,196,0,0.04)]'>
@@ -217,22 +214,10 @@ function StepThreePanel({
         </div>
 
         <div
-          className={`absolute inset-y-0 right-0 z-40 flex h-full min-h-0 w-full max-w-[380px] flex-col gap-8 border-l border-border bg-surface/98 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-md ${drawerMotion('cost')}`}
+          className={`absolute inset-y-0 right-0 z-40 h-full min-h-0 w-full max-w-[380px] p-4 ${drawerMotion('cost')}`}
           aria-hidden={activeDrawer !== 'cost'}
         >
-          <div className='flex items-center justify-end px-4 pt-4'>
-            <button
-              type='button'
-              className={closeDrawerButtonClass}
-              onClick={() => setActiveDrawer(null)}
-              aria-label='Close cost drawer'
-            >
-              <X className='h-4 w-4' />
-            </button>
-          </div>
-          <div className='min-h-0 flex-1 overflow-hidden px-4 pb-4'>
-            <CostPanel canvasCost={canvasCost} totalCost={totalCost} />
-          </div>
+          <CostPanel canvasCost={canvasCost} totalCost={totalCost} onClose={() => setActiveDrawer(null)} />
         </div>
       </div>
     </div>
