@@ -17,9 +17,17 @@ log = app.logger
 _AUTHORING_RULES = """
 AUTHORING RULES (from the build spec):
 - networking: create a VPC (use networking.vpc_cidr), public + private subnets across
-  networking.az_count AZs. ALB and CloudFront origins live in public subnets; ECS
-  tasks, RDS, and ElastiCache live in PRIVATE subnets with no public access. An ALB
-  always needs subnets in >= 2 AZs.
+  networking.az_count AZs. ALB and CloudFront origins live in public subnets; RDS and
+  ElastiCache live in PRIVATE subnets with no public access. An ALB always needs subnets
+  in >= 2 AZs.
+    * ECS task placement follows networking.task_placement. "private" (default) → run
+      tasks in the private subnets with AssignPublicIp DISABLED. "public" → run tasks in
+      the PUBLIC subnets with AssignPublicIp ENABLED, so they can pull images from ECR
+      without a NAT gateway.
+    * NAT gateways: create them (one per AZ, each with an EIP, and a default route from
+      the private route table) ONLY if networking.nat_gateway is true. If it is false,
+      create NO NatGateway/EIP and give the private subnets no internet route — nothing
+      there (RDS/ElastiCache) needs outbound internet.
 - security groups: create exactly one SG per resource that lists a `security_group`.
   For every network_edge:
     * kind "sg_ingress": add an ingress rule on `to_sg` allowing `port`/`protocol`
