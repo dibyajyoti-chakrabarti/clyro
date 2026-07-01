@@ -209,20 +209,49 @@ function AwsConnectCard({
 
         {/* ARN input section — shown after stack is opened */}
         {stackOpened && !roleConnected ? (
-          <div style={{ marginTop: 28 }}>
-            <ol style={{ marginBottom: 12, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{
+            marginTop: 24,
+            border: '1px solid rgba(212, 160, 23, 0.15)',
+            borderRadius: 12,
+            padding: '24px 28px',
+            background: 'rgba(255, 255, 255, 0.015)',
+          }}>
+            {/* "How it works" heading */}
+            <div style={{ fontSize: 13, fontWeight: 600, color: GOLD, marginBottom: 16 }}>
+              How it works
+            </div>
+
+            {/* Horizontal steps row */}
+            <div style={{ display: 'flex', gap: 24, marginBottom: 20, flexWrap: 'wrap' }}>
               {[
                 <>Wait for the stack status to show <strong style={{ color: '#fff' }}>CREATE_COMPLETE</strong> (≈30s)</>,
                 <>Click the <strong style={{ color: '#fff' }}>Outputs</strong> tab in the CloudFormation console</>,
                 <>Copy the value next to <strong style={{ color: '#fff' }}>RoleArn</strong> — it starts with <code style={{ fontSize: 11, background: WHITE_05, padding: '1px 4px', borderRadius: 3 }}>arn:aws:iam::</code></>,
               ].map((text, i) => (
-                <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 14, color: WHITE_60 }}>
-                  <span style={{ flexShrink: 0, fontWeight: 700, color: GOLD }}>{i + 1}.</span>
-                  <span>{text}</span>
-                </li>
+                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flex: 1, minWidth: 220 }}>
+                  <div style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: '50%',
+                    background: GOLD_10,
+                    border: '1px solid rgba(212, 160, 23, 0.4)',
+                    color: GOLD,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {i + 1}
+                  </div>
+                  <span style={{ fontSize: 13, lineHeight: 1.5, color: 'rgba(255, 255, 255, 0.75)' }}>{text}</span>
+                </div>
               ))}
-            </ol>
-            <div style={{ display: 'flex', gap: 8 }}>
+            </div>
+
+            {/* Input + Verify row */}
+            <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
               <input
                 type='text'
                 placeholder='arn:aws:iam::123456789012:role/clyro-provisioning-…'
@@ -230,26 +259,48 @@ function AwsConnectCard({
                 onChange={(e) => setArnInput(e.target.value)}
                 style={{
                   flex: 1,
+                  padding: '12px 16px',
+                  background: WHITE_03,
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: 8,
-                  border: `1px solid ${WHITE_09}`,
-                  background: 'var(--color-background, #0f0f0f)',
-                  padding: '10px 14px',
-                  fontSize: 14,
-                  color: '#fff',
+                  color: WHITE_60,
+                  fontSize: 13,
+                  fontFamily: 'monospace',
                   outline: 'none',
                 }}
                 onFocus={(e) => { e.target.style.borderColor = GOLD_50; e.target.style.boxShadow = `0 0 0 2px ${GOLD_10}` }}
-                onBlur={(e) => { e.target.style.borderColor = WHITE_09; e.target.style.boxShadow = 'none' }}
+                onBlur={(e) => { e.target.style.borderColor = 'rgba(255, 255, 255, 0.1)'; e.target.style.boxShadow = 'none' }}
               />
-              <Button
-                variant='secondary'
+              <button
                 disabled={!arnInput.trim() || verifying}
                 onClick={onVerify}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: 8,
+                  background: WHITE_05,
+                  border: `1px solid ${WHITE_15}`,
+                  color: WHITE_70,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: !arnInput.trim() || verifying ? 'not-allowed' : 'pointer',
+                  opacity: !arnInput.trim() || verifying ? 0.5 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  whiteSpace: 'nowrap',
+                }}
               >
                 {verifying ? (
-                  <span className='h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin' />
+                  <span className='animate-spin' style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    border: '2px solid currentColor',
+                    borderTopColor: 'transparent',
+                    display: 'inline-block',
+                  }} />
                 ) : 'Verify'}
-              </Button>
+              </button>
             </div>
             {verifyError ? (
               <p style={{ marginTop: 8, fontSize: 12, color: '#f87171' }}>{verifyError}</p>

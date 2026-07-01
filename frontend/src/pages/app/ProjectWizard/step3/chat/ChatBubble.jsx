@@ -14,6 +14,7 @@ export default function ChatBubble({ message }) {
           message.text
         ) : (
           <div className='space-y-2 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-4 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_a]:underline'>
+            <span className='block mb-1 text-3xl leading-none select-none text-[#FFC107] opacity-40'>❝</span>
             <ReactMarkdown>{message.text}</ReactMarkdown>
           </div>
         )}
