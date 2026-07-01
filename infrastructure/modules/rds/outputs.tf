@@ -18,3 +18,7 @@ output "db_name" {
 output "username" {
   value = aws_db_instance.main.username
 }
+
+output "identifier" {
+  value = aws_db_instance.main.identifier
+}

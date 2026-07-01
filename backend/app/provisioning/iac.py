@@ -66,12 +66,57 @@ def _apply_edits(template: str, edits: list[dict[str, str]]) -> str:
 
 
 def _lint_fix_instruction(validation: dict[str, Any]) -> str:
-    """A terse instruction listing the cfn-lint ERRORS a just-applied edit introduced,
-    for one bounded corrective round."""
+    """A terse instruction listing the cfn-lint ERRORS the current template has, for one
+    bounded corrective round. cfn-lint usually names the valid options in the message,
+    which is exactly what the agent needs to correct a wrong property name/type."""
     errs = [d for d in validation.get("diagnostics", []) if d.get("level") == "error"][:8]
     listed = "\n".join(f"- L{d.get('line')} {d.get('rule')}: {d.get('message')}" for d in errs)
-    return ("Your last edit introduced these cfn-lint ERRORS. Fix ONLY these, changing "
+    return ("The current template has these cfn-lint ERRORS. Fix ONLY these, changing "
             f"nothing else:\n{listed}")
+
+
+def _lint_fix_loop(template: str, validation: dict[str, Any], *, spec: dict, project: Project,
+                   model: str | None, region: str, history: list | None = None,
+                   max_rounds: int = 3) -> tuple[str, dict[str, Any], str | None]:
+    """Bounded server-side corrective loop: ask the agent (refine mode) to fix the
+    cfn-lint ERRORS in ``template``, re-lint, and repeat until the template is clean or
+    ``max_rounds`` is hit. This is the real enforcement on top of the agent's own
+    in-prompt validation — it does not trust the model to police itself.
+
+    The loop is condition-based (stops the moment ``errors == 0``) and strictly
+    monotonic: a round is only accepted if it *reduces* the error count, so a model that
+    keeps guessing wrong (e.g. hallucinated property names) stops the loop instead of
+    spinning. Returns ``(template, validation, message_or_None)``.
+    """
+    message = None
+    rounds = 0
+    while validation["errors"] and rounds < max_rounds:
+        rounds += 1
+        fix_resp = _invoke_iac({
+            "mode": "refine", "template": template,
+            "instruction": _lint_fix_instruction(validation),
+            "build_spec": spec, "history": history or [], "model": model,
+        }, project)
+        if (fix_resp or {}).get("error"):
+            log.warning("lint-fix round %d failed: %s", rounds, fix_resp["error"])
+            break
+        fixed = None
+        fix_edits = (fix_resp or {}).get("edits") or []
+        if fix_edits:
+            try:
+                fixed = _apply_edits(template, fix_edits)
+            except _EditApplyError:
+                fixed = None
+        elif (fix_resp or {}).get("template"):
+            fixed = fix_resp["template"]
+        if not fixed:
+            break  # agent returned nothing usable — stop rather than loop emptily
+        fixed_validation = lint_template(fixed, region)
+        if fixed_validation["errors"] >= validation["errors"]:
+            break  # no improvement (or worse) — keep the prior template, stop looping
+        template, validation = fixed, fixed_validation
+        message = (fix_resp or {}).get("message") or message
+    return template, validation, message
 
 
 # ── Preconditions + spec assembly ──────────────────────────────────────────────
@@ -223,7 +268,16 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
     template = (resp or {}).get("template", "") or ""
     message = (resp or {}).get("message") or "Generated your CloudFormation template."
 
-    validation = lint_template(template, deployment.aws_connection.aws_region or "us-east-1")
+    region = deployment.aws_connection.aws_region or "us-east-1"
+    validation = lint_template(template, region)
+    # Server-side enforcement: if the agent returned a template with cfn-lint ERRORS
+    # despite its own validation rounds, drive them to zero with a bounded fix loop.
+    if validation["errors"]:
+        template, validation, fix_msg = _lint_fix_loop(
+            template, validation, spec=spec, project=project, model=model, region=region)
+        if fix_msg:
+            message = fix_msg
+
     deployment.cloudformation_template = template
     deployment.status = Deployment.Status.GENERATING_IAC
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
@@ -297,28 +351,14 @@ def refine(project: Project, instruction: str, history: list | None = None,
 
     validation = lint_template(new_template, region)
 
-    # One bounded corrective round if the edit introduced cfn-lint ERRORS (warnings are
-    # acceptable). Only keep the fix if it actually reduces errors.
+    # Bounded corrective loop if the edit introduced cfn-lint ERRORS (warnings are
+    # acceptable). Each round only sticks if it reduces errors; it stops once clean.
     if validation["errors"]:
-        fix_resp = _invoke_iac({
-            "mode": "refine", "template": new_template,
-            "instruction": _lint_fix_instruction(validation),
-            "build_spec": spec, "history": history or [], "model": model,
-        }, project)
-        fixed = None
-        fix_edits = (fix_resp or {}).get("edits") or []
-        if fix_edits:
-            try:
-                fixed = _apply_edits(new_template, fix_edits)
-            except _EditApplyError:
-                fixed = None
-        elif (fix_resp or {}).get("template"):
-            fixed = fix_resp["template"]
-        if fixed:
-            fixed_validation = lint_template(fixed, region)
-            if fixed_validation["errors"] < validation["errors"]:
-                new_template, validation = fixed, fixed_validation
-                message = (fix_resp or {}).get("message") or message
+        new_template, validation, fix_msg = _lint_fix_loop(
+            new_template, validation, spec=spec, project=project, model=model,
+            region=region, history=history)
+        if fix_msg:
+            message = fix_msg
 
     deployment.cloudformation_template = new_template
     deployment.status = Deployment.Status.GENERATING_IAC

@@ -1,5 +1,5 @@
-output "ecs_backend_log_group" {
-  value = aws_cloudwatch_log_group.ecs_backend.name
+output "backend_lambda_log_group" {
+  value = aws_cloudwatch_log_group.backend_lambda.name
 }
 
 output "api_gateway_log_group_arn" {

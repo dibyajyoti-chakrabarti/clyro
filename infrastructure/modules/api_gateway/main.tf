@@ -25,26 +25,17 @@ resource "aws_apigatewayv2_stage" "default" {
   access_log_settings {
     destination_arn = var.api_gateway_log_group_arn
     format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      routeKey       = "$context.routeKey"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
+      requestId        = "$context.requestId"
+      ip               = "$context.identity.sourceIp"
+      requestTime      = "$context.requestTime"
+      httpMethod       = "$context.httpMethod"
+      routeKey         = "$context.routeKey"
+      status           = "$context.status"
+      protocol         = "$context.protocol"
+      responseLength   = "$context.responseLength"
       integrationError = "$context.integrationErrorMessage"
     })
   }
-}
-
-# VPC Link — allows API Gateway to reach the internal ALB
-resource "aws_apigatewayv2_vpc_link" "main" {
-  name               = "${local.prefix}-vpc-link"
-  subnet_ids         = var.private_subnet_ids
-  security_group_ids = []
-
-  tags = { Name = "${local.prefix}-vpc-link" }
 }
 
 # Custom domain for api.clyro.cloud

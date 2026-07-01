@@ -66,8 +66,8 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
   retention_in_days = 30
 }
 
-resource "aws_cloudwatch_log_group" "ecs_backend" {
-  name              = "/ecs/${local.prefix}-backend"
+resource "aws_cloudwatch_log_group" "backend_lambda" {
+  name              = "/aws/lambda/${local.prefix}-backend"
   retention_in_days = 30
 }
 

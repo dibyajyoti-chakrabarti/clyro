@@ -6,8 +6,8 @@ output "api_endpoint" {
   value = aws_apigatewayv2_api.main.api_endpoint
 }
 
-output "vpc_link_id" {
-  value = aws_apigatewayv2_vpc_link.main.id
+output "execution_arn" {
+  value = aws_apigatewayv2_api.main.execution_arn
 }
 
 output "custom_domain" {

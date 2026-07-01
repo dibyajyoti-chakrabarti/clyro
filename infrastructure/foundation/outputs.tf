@@ -15,16 +15,17 @@ output "private_data_subnet_ids" {
   value = module.networking.private_data_subnet_ids
 }
 
-output "alb_sg_id" {
-  value = module.networking.alb_sg_id
-}
-
-output "ecs_sg_id" {
-  value = module.networking.ecs_sg_id
+output "lambda_sg_id" {
+  value = module.networking.lambda_sg_id
 }
 
 output "rds_sg_id" {
   value = module.networking.rds_sg_id
+}
+
+output "nat_instance_id" {
+  description = "EC2 instance ID of the stoppable NAT instance — set as GitHub secret EC2_INSTANCE_ID"
+  value       = module.networking.nat_instance_id
 }
 
 # ── ECR ───────────────────────────────────────────────────────────────────────
@@ -77,17 +78,13 @@ output "api_gateway_id" {
   value = module.api_gateway.api_id
 }
 
-output "vpc_link_id" {
-  value = module.api_gateway.vpc_link_id
+output "api_gateway_execution_arn" {
+  value = module.api_gateway.execution_arn
 }
 
 # ── IAM ───────────────────────────────────────────────────────────────────────
-output "ecs_task_execution_role_arn" {
-  value = aws_iam_role.ecs_task_execution.arn
-}
-
-output "ecs_task_role_arn" {
-  value = aws_iam_role.ecs_task.arn
+output "backend_lambda_role_arn" {
+  value = aws_iam_role.backend_lambda.arn
 }
 
 # ── Secrets Manager ───────────────────────────────────────────────────────────
@@ -117,6 +114,6 @@ output "frontend_bucket_name" {
 }
 
 # ── Monitoring ────────────────────────────────────────────────────────────────
-output "ecs_backend_log_group" {
-  value = module.monitoring.ecs_backend_log_group
+output "backend_lambda_log_group" {
+  value = module.monitoring.backend_lambda_log_group
 }

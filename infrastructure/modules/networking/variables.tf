@@ -33,3 +33,9 @@ variable "availability_zones" {
   description = "Availability zones to deploy into"
   type        = list(string)
 }
+
+variable "nat_instance_type" {
+  description = "EC2 instance type for the stoppable NAT instance (ARM Graviton for cost; t4g.micro is free-tier eligible, t4g.nano is not)"
+  type        = string
+  default     = "t4g.micro"
+}

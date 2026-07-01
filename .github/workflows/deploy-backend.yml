@@ -16,12 +16,11 @@ env:
   AWS_REGION: ap-south-1
   ECR_REGISTRY: 321613317660.dkr.ecr.ap-south-1.amazonaws.com
   ECR_REPOSITORY: clyro-backend
-  ECS_CLUSTER: clyro-prod-cluster
-  ECS_SERVICE: clyro-prod-backend-service
+  FUNCTION_NAME: clyro-prod-backend
 
 jobs:
   deploy:
-    name: Build, Push & Deploy to ECS
+    name: Build, Push & Deploy to Lambda
     runs-on: ubuntu-latest
 
     steps:
@@ -49,39 +48,59 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & push Docker image
+      - name: Build & push Lambda image
         working-directory: backend
         env:
           IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
+          docker build -f Dockerfile.lambda -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
           docker push "$IMAGE:$TAG"
           docker push "$IMAGE:latest"
           echo "✓ Pushed $IMAGE:$TAG"
 
-      - name: Force ECS service redeployment
+      - name: Update Lambda function code
+        env:
+          IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          aws ecs update-service \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --service ${{ env.ECS_SERVICE }} \
-            --force-new-deployment \
-            --output json \
-            --query 'service.{status: status, desiredCount: desiredCount}' \
-            | jq .
+          aws lambda update-function-code \
+            --function-name "${{ env.FUNCTION_NAME }}" \
+            --image-uri "$IMAGE:$TAG" \
+            --output json | jq '{FunctionName, LastUpdateStatus}'
+          aws lambda wait function-updated --function-name "${{ env.FUNCTION_NAME }}"
 
-      - name: Wait for ECS service to stabilise
+      - name: Switch Lambda to migration handler
         run: |
-          echo "Waiting for service to reach steady state (up to 10 min)…"
-          aws ecs wait services-stable \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }}
-          echo "✓ ECS service stable"
+          aws lambda update-function-configuration \
+            --function-name "${{ env.FUNCTION_NAME }}" \
+            --image-config '{"Command":["migrate_handler.handler"]}' \
+            --output json | jq '{FunctionName, LastUpdateStatus}'
+          aws lambda wait function-updated --function-name "${{ env.FUNCTION_NAME }}"
 
-      - name: Verify running task image
+      - name: Run migrations
         run: |
-          aws ecs describe-services \
-            --cluster ${{ env.ECS_CLUSTER }} \
-            --services ${{ env.ECS_SERVICE }} \
-            --query 'services[0].deployments[?status==`PRIMARY`].{image: taskDefinition, runningCount: runningCount}' \
-            --output json | jq .
+          aws lambda invoke \
+            --function-name "${{ env.FUNCTION_NAME }}" \
+            --payload '{}' \
+            --cli-binary-format raw-in-base64-out \
+            /tmp/migrate-result.json
+          cat /tmp/migrate-result.json
+          if grep -q '"errorMessage"' /tmp/migrate-result.json; then
+            echo "Migration invocation failed" >&2
+            exit 1
+          fi
+
+      - name: Revert Lambda to API handler
+        if: always()
+        run: |
+          aws lambda update-function-configuration \
+            --function-name "${{ env.FUNCTION_NAME }}" \
+            --image-config '{"Command":["lambda_handler.handler"]}' \
+            --output json | jq '{FunctionName, LastUpdateStatus}'
+          aws lambda wait function-updated --function-name "${{ env.FUNCTION_NAME }}"
+
+      - name: Verify deployed image
+        run: |
+          aws lambda get-function --function-name "${{ env.FUNCTION_NAME }}" \
+            --query 'Code.ImageUri' --output text

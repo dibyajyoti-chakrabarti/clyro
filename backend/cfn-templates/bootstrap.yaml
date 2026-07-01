@@ -27,13 +27,270 @@ Resources:
             Condition:
               StringEquals:
                 sts:ExternalId: !Ref ExternalId
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/PowerUserAccess
       Policies:
-        - PolicyName: ClyroIamProvisioning
+        - PolicyName: ClyroProvisioningPolicy
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              # Networking — VPC, subnets, security groups, gateways, route tables
+              - Effect: Allow
+                Action:
+                  - ec2:CreateVpc
+                  - ec2:DeleteVpc
+                  - ec2:DescribeVpcs
+                  - ec2:ModifyVpcAttribute
+                  - ec2:CreateSubnet
+                  - ec2:DeleteSubnet
+                  - ec2:DescribeSubnets
+                  - ec2:ModifySubnetAttribute
+                  - ec2:CreateInternetGateway
+                  - ec2:DeleteInternetGateway
+                  - ec2:DescribeInternetGateways
+                  - ec2:AttachInternetGateway
+                  - ec2:DetachInternetGateway
+                  - ec2:CreateNatGateway
+                  - ec2:DeleteNatGateway
+                  - ec2:DescribeNatGateways
+                  - ec2:AllocateAddress
+                  - ec2:ReleaseAddress
+                  - ec2:DescribeAddresses
+                  - ec2:CreateRouteTable
+                  - ec2:DeleteRouteTable
+                  - ec2:DescribeRouteTables
+                  - ec2:CreateRoute
+                  - ec2:DeleteRoute
+                  - ec2:AssociateRouteTable
+                  - ec2:DisassociateRouteTable
+                  - ec2:CreateSecurityGroup
+                  - ec2:DeleteSecurityGroup
+                  - ec2:DescribeSecurityGroups
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeAccountAttributes
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                  - ec2:DescribeTags
+                Resource: '*'
+              # Container compute — ECS clusters, services, task definitions
+              - Effect: Allow
+                Action:
+                  - ecs:CreateCluster
+                  - ecs:DeleteCluster
+                  - ecs:DescribeClusters
+                  - ecs:RegisterTaskDefinition
+                  - ecs:DeregisterTaskDefinition
+                  - ecs:DescribeTaskDefinition
+                  - ecs:CreateService
+                  - ecs:DeleteService
+                  - ecs:UpdateService
+                  - ecs:DescribeServices
+                  - ecs:ListTaskDefinitions
+                  - ecs:TagResource
+                  - ecs:UntagResource
+                Resource: '*'
+              # Container autoscaling
+              - Effect: Allow
+                Action:
+                  - application-autoscaling:RegisterScalableTarget
+                  - application-autoscaling:DeregisterScalableTarget
+                  - application-autoscaling:DescribeScalableTargets
+                  - application-autoscaling:PutScalingPolicy
+                  - application-autoscaling:DeleteScalingPolicy
+                  - application-autoscaling:DescribeScalingPolicies
+                Resource: '*'
+              # Container registry
+              - Effect: Allow
+                Action:
+                  - ecr:CreateRepository
+                  - ecr:DeleteRepository
+                  - ecr:DescribeRepositories
+                  - ecr:SetRepositoryPolicy
+                  - ecr:GetRepositoryPolicy
+                  - ecr:DeleteRepositoryPolicy
+                  - ecr:PutLifecyclePolicy
+                  - ecr:GetLifecyclePolicy
+                  - ecr:TagResource
+                Resource: '*'
+              # Database — RDS instances and Aurora clusters
+              - Effect: Allow
+                Action:
+                  - rds:CreateDBInstance
+                  - rds:DeleteDBInstance
+                  - rds:DescribeDBInstances
+                  - rds:ModifyDBInstance
+                  - rds:CreateDBCluster
+                  - rds:DeleteDBCluster
+                  - rds:DescribeDBClusters
+                  - rds:ModifyDBCluster
+                  - rds:CreateDBSubnetGroup
+                  - rds:DeleteDBSubnetGroup
+                  - rds:DescribeDBSubnetGroups
+                  - rds:CreateDBParameterGroup
+                  - rds:DeleteDBParameterGroup
+                  - rds:DescribeDBParameterGroups
+                  - rds:ModifyDBParameterGroup
+                  - rds:CreateDBClusterParameterGroup
+                  - rds:DeleteDBClusterParameterGroup
+                  - rds:DescribeDBClusterParameterGroups
+                  - rds:AddTagsToResource
+                  - rds:RemoveTagsFromResource
+                  - rds:ListTagsForResource
+                Resource: '*'
+              # Cache — ElastiCache clusters
+              - Effect: Allow
+                Action:
+                  - elasticache:CreateCacheCluster
+                  - elasticache:DeleteCacheCluster
+                  - elasticache:DescribeCacheClusters
+                  - elasticache:ModifyCacheCluster
+                  - elasticache:CreateReplicationGroup
+                  - elasticache:DeleteReplicationGroup
+                  - elasticache:DescribeReplicationGroups
+                  - elasticache:ModifyReplicationGroup
+                  - elasticache:CreateCacheSubnetGroup
+                  - elasticache:DeleteCacheSubnetGroup
+                  - elasticache:DescribeCacheSubnetGroups
+                  - elasticache:CreateCacheParameterGroup
+                  - elasticache:DeleteCacheParameterGroup
+                  - elasticache:DescribeCacheParameterGroups
+                  - elasticache:AddTagsToResource
+                  - elasticache:RemoveTagsFromResource
+                  - elasticache:ListTagsForResource
+                Resource: '*'
+              # Load balancing — ALB, target groups, listeners
+              - Effect: Allow
+                Action:
+                  - elasticloadbalancing:CreateLoadBalancer
+                  - elasticloadbalancing:DeleteLoadBalancer
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:ModifyLoadBalancerAttributes
+                  - elasticloadbalancing:CreateTargetGroup
+                  - elasticloadbalancing:DeleteTargetGroup
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:ModifyTargetGroup
+                  - elasticloadbalancing:CreateListener
+                  - elasticloadbalancing:DeleteListener
+                  - elasticloadbalancing:DescribeListeners
+                  - elasticloadbalancing:ModifyListener
+                  - elasticloadbalancing:CreateRule
+                  - elasticloadbalancing:DeleteRule
+                  - elasticloadbalancing:DescribeRules
+                  - elasticloadbalancing:AddTags
+                  - elasticloadbalancing:RemoveTags
+                  - elasticloadbalancing:DescribeTags
+                Resource: '*'
+              # TLS certificates
+              - Effect: Allow
+                Action:
+                  - acm:RequestCertificate
+                  - acm:DeleteCertificate
+                  - acm:DescribeCertificate
+                  - acm:ListCertificates
+                  - acm:AddTagsToCertificate
+                  - acm:RemoveTagsFromCertificate
+                Resource: '*'
+              # DNS validation for ACM certificates
+              - Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                  - route53:ListHostedZones
+                  - route53:GetChange
+                  - route53:ListResourceRecordSets
+                Resource: '*'
+              # Secrets storage for env vars
+              - Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:PutSecretValue
+                  - secretsmanager:UpdateSecret
+                  - secretsmanager:TagResource
+                  - secretsmanager:UntagResource
+                Resource: '*'
+              # CloudWatch logs for ECS tasks and RDS
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:DescribeLogGroups
+                  - logs:PutRetentionPolicy
+                  - logs:CreateLogStream
+                  - logs:DeleteLogStream
+                  - logs:DescribeLogStreams
+                  - logs:TagLogGroup
+                  - logs:TagResource
+                Resource: '*'
+              # S3 — static frontend assets and CF template staging
+              - Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:DeleteBucket
+                  - s3:GetBucketPolicy
+                  - s3:PutBucketPolicy
+                  - s3:DeleteBucketPolicy
+                  - s3:GetBucketAcl
+                  - s3:PutBucketAcl
+                  - s3:GetBucketCORS
+                  - s3:PutBucketCORS
+                  - s3:GetBucketWebsite
+                  - s3:PutBucketWebsite
+                  - s3:DeleteBucketWebsite
+                  - s3:GetBucketVersioning
+                  - s3:PutBucketVersioning
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:GetBucketPublicAccessBlock
+                  - s3:ListBucket
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:GetObjectAcl
+                  - s3:PutObjectAcl
+                  - s3:GetBucketTagging
+                  - s3:PutBucketTagging
+                Resource: '*'
+              # CloudFront for static frontends
+              - Effect: Allow
+                Action:
+                  - cloudfront:CreateDistribution
+                  - cloudfront:DeleteDistribution
+                  - cloudfront:GetDistribution
+                  - cloudfront:UpdateDistribution
+                  - cloudfront:CreateOriginAccessControl
+                  - cloudfront:DeleteOriginAccessControl
+                  - cloudfront:GetOriginAccessControl
+                  - cloudfront:CreateCloudFrontOriginAccessIdentity
+                  - cloudfront:DeleteCloudFrontOriginAccessIdentity
+                  - cloudfront:GetCloudFrontOriginAccessIdentity
+                  - cloudfront:TagResource
+                Resource: '*'
+              # SQS for task queues (Celery)
+              - Effect: Allow
+                Action:
+                  - sqs:CreateQueue
+                  - sqs:DeleteQueue
+                  - sqs:GetQueueAttributes
+                  - sqs:SetQueueAttributes
+                  - sqs:TagQueue
+                  - sqs:UntagQueue
+                  - sqs:ListQueues
+                Resource: '*'
+              # CloudFormation self-operations (the stack needs to describe itself)
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                  - cloudformation:ListStackResources
+                  - cloudformation:ValidateTemplate
+                Resource: '*'
+              # IAM — scoped to clyro-managed roles only (ECS task/execution roles)
               - Effect: Allow
                 Action:
                   - iam:CreateRole
@@ -55,7 +312,9 @@ Resources:
                   - iam:GetInstanceProfile
                   - iam:AddRoleToInstanceProfile
                   - iam:RemoveRoleFromInstanceProfile
-                Resource: '*'
+                Resource:
+                  - !Sub 'arn:aws:iam::*:role/clyro-*'
+                  - !Sub 'arn:aws:iam::*:instance-profile/clyro-*'
       Tags:
         - Key: ManagedBy
           Value: Clyro

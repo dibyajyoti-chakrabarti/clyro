@@ -111,7 +111,7 @@ GITHUB_APP_PRIVATE_KEY_PATH = (
 
 AWS_PROFILE = env('AWS_PROFILE', default='default')
 AWS_REGION = env('AWS_REGION', default='us-east-1')
-CLYRO_AWS_ACCOUNT_ID = env('CLYRO_AWS_ACCOUNT_ID', default='321613317660')
+CLYRO_AWS_ACCOUNT_ID = env('CLYRO_AWS_ACCOUNT_ID')
 
 # ── Step 3 (Canvas) ─────────────────────────────────────────────────────────
 # When set, a new canvas prompt is sent to the deployed Reasoning runtime; when
