@@ -104,6 +104,13 @@ def start(project: Project) -> dict[str, Any]:
     if cfn_events.is_rolled_back(existing):
         aws_client.delete_stack(creds, region, stack_name)  # clear it before recreating
 
+    # A retry reuses the same Deployment row (see _ready_deployment) — clear the
+    # previous attempt's log entries first, or the new attempt's feed would show old
+    # failed-attempt entries (e.g. a since-fixed error) mixed in with current ones,
+    # making a successful retry look like it's still hitting the old failure.
+    ProvisioningLogEntry.objects.filter(deployment=deployment).delete()
+    DeploymentStackOutput.objects.filter(deployment=deployment).delete()
+
     deployment.status = Deployment.Status.SUBMITTING
     deployment.save(update_fields=["status", "updated_at"])
     try:
