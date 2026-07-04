@@ -42,7 +42,8 @@ _SG_NODE_TYPES = frozenset({"service", "worker", "database", "cache"})
 _CFN_RESOURCES: dict[tuple[str, str], list[str]] = {
     ("service", "ecs_fargate"): [
         "AWS::ECS::Cluster", "AWS::ECS::TaskDefinition", "AWS::ECS::Service",
-        "AWS::IAM::Role", "AWS::Logs::LogGroup", "AWS::EC2::SecurityGroup",
+        "AWS::IAM::Role (execution)", "AWS::IAM::Role (task)",
+        "AWS::Logs::LogGroup", "AWS::EC2::SecurityGroup",
         "AWS::ElasticLoadBalancingV2::LoadBalancer",
         "AWS::ElasticLoadBalancingV2::TargetGroup",
         "AWS::ElasticLoadBalancingV2::Listener",
@@ -70,7 +71,8 @@ _CFN_RESOURCES: dict[tuple[str, str], list[str]] = {
         "AWS::EC2::SecurityGroup",
     ],
     ("worker", "ecs_fargate"): [
-        "AWS::ECS::TaskDefinition", "AWS::ECS::Service", "AWS::IAM::Role",
+        "AWS::ECS::TaskDefinition", "AWS::ECS::Service",
+        "AWS::IAM::Role (execution)", "AWS::IAM::Role (task)",
         "AWS::Logs::LogGroup", "AWS::EC2::SecurityGroup",
     ],
     ("queue", "sqs"): ["AWS::SQS::Queue", "AWS::SQS::QueuePolicy"],
@@ -150,7 +152,9 @@ def build_spec(
     task_placement = "public" if free_tier else "private"
 
     project = _slug(canvas.get("project"))
-    prefix = f"{project}-{_ENV_SHORT.get(environment, 'prod')}"
+    # Always start with "clyro-" so bootstrap.yaml's cross-account IAM policy can be
+    # scoped to arn:...:clyro-* resources instead of Resource: "*" (see Issue 2C).
+    prefix = f"clyro-{project}-{_ENV_SHORT.get(environment, 'prod')}"
     sizing = dict(FREE_TIER_SIZING if free_tier else SIZING_BY_SCALE.get(scale, SIZING_BY_SCALE["small"]))
 
     has_domain = (intent.get("domain_has") == "yes") and bool(intent.get("domain_name"))
