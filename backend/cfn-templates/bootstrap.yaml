@@ -298,15 +298,22 @@ Resources:
                 Action:
                   - sqs:ListQueues
                 Resource: '*'
-              # CloudFormation self-operations (the stack needs to describe itself)
+              # CloudFormation — create/update/delete the app stack this role provisions,
+              # scoped to clyro-* named stacks; describe/validate need no resource scoping.
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
+                Resource: !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/clyro-*/*'
               - Effect: Allow
                 Action:
                   - cloudformation:DescribeStacks
                   - cloudformation:DescribeStackEvents
                   - cloudformation:DescribeStackResource
                   - cloudformation:DescribeStackResources
-                  - cloudformation:GetTemplate
                   - cloudformation:ListStackResources
+                  - cloudformation:GetTemplate
                   - cloudformation:ValidateTemplate
                 Resource: '*'
               # IAM — scoped to clyro-managed roles only (ECS task/execution roles)
