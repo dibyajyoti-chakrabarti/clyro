@@ -82,6 +82,12 @@ AUTHORING RULES (from the build spec):
       selects a current supported default. Pinning a specific minor version (e.g.
       '16.3') triggers W3691 ("deprecated and cannot be used to create new RDS DB
       instances") and fails at deploy as versions age out.
+    * If account_type is "free_tier", set RDS `BackupRetentionPeriod: 1` (not the
+      commonly-used default of 7) — some AWS accounts enrolled in the free tier
+      hard-cap this below 7 and CreateDBInstance fails at deploy time with
+      "FreeTierRestrictionError: The specified backup retention period exceeds the
+      maximum available to free tier customers." 1 is safe; 7 is not, on those
+      accounts. Paid-tier accounts can use 7.
     * On every stateful data resource (RDS DBInstance/DBCluster, ElastiCache
       ReplicationGroup) set BOTH DeletionPolicy AND UpdateReplacePolicy (Snapshot for
       RDS/Aurora, Retain for ElastiCache). cfn-lint W3011 fires if only one is present.
