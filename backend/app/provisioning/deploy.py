@@ -75,11 +75,19 @@ def _stack_name(deployment: Deployment) -> str:
 
 # ── Submit / retry ─────────────────────────────────────────────────────────────
 
+_RETRYABLE_STATUSES = (
+    Deployment.Status.IAC_READY, Deployment.Status.FAILED, Deployment.Status.ROLLED_BACK,
+)
+
+
 def start(project: Project) -> dict[str, Any]:
     """Submit the template (CreateStack). Retry-safe: a rolled-back stack is deleted
-    first; a live stack is blocked."""
+    first; a live stack is blocked. A previous FAILED/ROLLED_BACK attempt is a valid
+    starting point too — the frontend's "Retry" button calls this directly, and the
+    template itself is presumably still fine (the failure was an AWS-side issue, not a
+    template defect); only require re-validating from scratch (GENERATING_IAC/PENDING)."""
     deployment = _ready_deployment(project)
-    if deployment.status != Deployment.Status.IAC_READY:
+    if deployment.status not in _RETRYABLE_STATUSES:
         raise DeployError("The template hasn't been validated yet — validate it, then provision.")
 
     creds, region = _assume(deployment)
