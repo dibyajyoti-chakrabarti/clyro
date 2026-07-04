@@ -275,6 +275,63 @@ _WILDCARD_PRINCIPAL_RE = re.compile(
 _SENSITIVE_IAM_ACTIONS = ("secretsmanager:", "s3:", "sqs:", "sns:")
 
 
+_BACKUP_RETENTION_RE = re.compile(r"BackupRetentionPeriod:\s*(\d+)")
+_FREE_TIER_MAX_BACKUP_RETENTION = 1
+
+_ECS_SERVICE_BLOCK_RE = re.compile(
+    r"^  (\w+):\n    Type: AWS::ECS::Service\b(.*?)(?=^  \w+:\n    Type:|\Z)", re.M | re.S
+)
+
+
+def check_ecs_network_reachability(template: str, spec: dict) -> list[dict[str, str]]:
+    """Found live: build_spec sets task_placement="public" (and creates no NAT gateway)
+    for free-tier deploys, and the authoring rule says every ECS::Service must use
+    public subnets + AssignPublicIp ENABLED — but the authoring LLM applied it to only
+    the primary service and left a worker service in a private subnet with no NAT, so
+    the worker had zero network path to ECR and never started
+    (ResourceInitializationError pulling registry auth). cfn-lint/cfn-guard don't check
+    this at all (it's schema-valid CFN); this is a coarse per-service regex check that
+    catches the specific defect deterministically. Only fires when task_placement is
+    "public" (i.e. there is no NAT gateway to fall back on)."""
+    if not template:
+        return []
+    networking = (spec or {}).get("networking") or {}
+    if networking.get("task_placement") != "public" or networking.get("nat_gateway"):
+        return []  # a NAT gateway (or private-tier deploys, which get one) covers this
+
+    findings = []
+    for m in _ECS_SERVICE_BLOCK_RE.finditer(template):
+        logical_id, body = m.group(1), m.group(2)
+        if "AssignPublicIp: ENABLED" not in body:
+            findings.append({
+                "severity": "blocker",
+                "message": f"ECS Service '{logical_id}' isn't placed in public subnets "
+                           "with AssignPublicIp ENABLED, but this deployment has no NAT "
+                           "gateway (free-tier) — it has no network path to ECR/"
+                           "CloudWatch Logs/Secrets Manager and will never start.",
+            })
+    return findings
+
+
+def enforce_free_tier_limits(template: str, spec: dict) -> str:
+    """Deterministically correct known free-tier-account limits, rather than trust
+    the authoring LLM to apply the corresponding _AUTHORING_RULES instruction every
+    time — it doesn't (observed live: a free_tier build spec still came back with
+    BackupRetentionPeriod: 7, which some free-tier-enrolled AWS accounts reject at
+    deploy time with FreeTierRestrictionError). Only touches the template when
+    account_type is free_tier and a value exceeds the safe cap; no-op otherwise."""
+    if not template or (spec or {}).get("account_type") != "free_tier":
+        return template
+
+    def _cap(match: "re.Match") -> str:
+        value = int(match.group(1))
+        if value > _FREE_TIER_MAX_BACKUP_RETENTION:
+            return f"BackupRetentionPeriod: {_FREE_TIER_MAX_BACKUP_RETENTION}"
+        return match.group(0)
+
+    return _BACKUP_RETENTION_RE.sub(_cap, template)
+
+
 def security_scan(template: str) -> list[dict[str, str]]:
     """Regex-level scan for the audit checklist's known failure modes. Returns a list
     of ``{severity, message}`` findings (empty if clean). Best-effort on raw YAML/JSON
@@ -346,6 +403,7 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
         raise IacError((resp or {})["error"])
     template = (resp or {}).get("template", "") or ""
     message = (resp or {}).get("message") or "Generated your CloudFormation template."
+    template = enforce_free_tier_limits(template, spec)
 
     region = deployment.aws_connection.aws_region or "us-east-1"
     validation = lint_template(template, region)
@@ -356,13 +414,15 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
             template, validation, spec=spec, project=project, model=model, region=region)
         if fix_msg:
             message = fix_msg
+        template = enforce_free_tier_limits(template, spec)
 
     deployment.cloudformation_template = template
     deployment.status = Deployment.Status.GENERATING_IAC
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
+    findings = security_scan(template) + check_ecs_network_reachability(template, spec)
     return {"template": template, "message": message, "validation": validation,
-            "status": deployment.status, "security_findings": security_scan(template)}
+            "status": deployment.status, "security_findings": findings}
 
 
 def refine(project: Project, instruction: str, history: list | None = None,
@@ -403,7 +463,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
         validation = lint_template(current, region) if current else None
         return {"outcome": "answer", "message": message, "template": current,
                 "validation": validation, "status": deployment.status,
-                "security_findings": security_scan(current)}
+                "security_findings": security_scan(current) + check_ecs_network_reachability(current, spec)}
 
     # Edit → the agent returns either search/replace blocks (preferred, cheap) or a
     # full template (escape hatch / old agent). Apply blocks deterministically; on any
@@ -429,6 +489,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
     else:
         new_template = (resp or {}).get("template", "") or current
 
+    new_template = enforce_free_tier_limits(new_template, spec)
     validation = lint_template(new_template, region)
 
     # Bounded corrective loop if the edit introduced cfn-lint ERRORS (warnings are
@@ -444,9 +505,10 @@ def refine(project: Project, instruction: str, history: list | None = None,
     deployment.status = Deployment.Status.GENERATING_IAC
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
+    findings = security_scan(new_template) + check_ecs_network_reachability(new_template, spec)
     return {"outcome": "edit", "template": new_template, "message": message,
             "validation": validation, "status": deployment.status,
-            "security_findings": security_scan(new_template)}
+            "security_findings": findings}
 
 
 def validate(project: Project, template: str) -> dict[str, Any]:
@@ -455,7 +517,8 @@ def validate(project: Project, template: str) -> dict[str, Any]:
     deployment = ensure_deployment(project)
     region = deployment.aws_connection.aws_region or "us-east-1"
     validation = lint_template(template, region)
-    findings = security_scan(template)
+    spec = _spec_for(deployment)
+    findings = security_scan(template) + check_ecs_network_reachability(template, spec)
     has_blocker = any(f["severity"] == "blocker" for f in findings)
 
     deployment.cloudformation_template = template
@@ -473,5 +536,8 @@ def get_current(project: Project) -> dict[str, Any]:
     deployment = ensure_deployment(project)
     template = deployment.cloudformation_template or ""
     validation = lint_template(template, deployment.aws_connection.aws_region or "us-east-1") if template else None
+    findings = []
+    if template:
+        findings = security_scan(template) + check_ecs_network_reachability(template, _spec_for(deployment))
     return {"template": template, "status": deployment.status, "validation": validation,
-            "security_findings": security_scan(template) if template else []}
+            "security_findings": findings}

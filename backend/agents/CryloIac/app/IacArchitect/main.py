@@ -23,7 +23,15 @@ AUTHORING RULES (from the build spec):
     * ECS task placement follows networking.task_placement. "private" (default) → run
       tasks in the private subnets with AssignPublicIp DISABLED. "public" → run tasks in
       the PUBLIC subnets with AssignPublicIp ENABLED, so they can pull images from ECR
-      without a NAT gateway.
+      without a NAT gateway. This applies to EVERY `AWS::ECS::Service` you create in
+      this template — the primary service AND any worker/background services — not
+      just the first one. When `nat_gateway` is false, a task left in a private subnet
+      has NO route to ECR/Secrets Manager/CloudWatch Logs at all and will never start
+      (ResourceInitializationError pulling registry auth) — this is a blocker, not a
+      warning, and it's easy to apply the placement to one service and forget the
+      other(s) when a template has multiple services. Double-check every
+      NetworkConfiguration.AwsvpcConfiguration block uses the SAME Subnets/AssignPublicIp
+      pairing before you finish.
     * NAT gateways: create them (one per AZ, each with an EIP, and a default route from
       the private route table) ONLY if networking.nat_gateway is true. If it is false,
       create NO NatGateway/EIP and give the private subnets no internet route — nothing
