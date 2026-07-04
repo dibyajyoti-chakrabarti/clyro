@@ -152,9 +152,24 @@ def build_spec(
     task_placement = "public" if free_tier else "private"
 
     project = _slug(canvas.get("project"))
-    # Always start with "clyro-" so bootstrap.yaml's cross-account IAM policy can be
-    # scoped to arn:...:clyro-* resources instead of Resource: "*" (see Issue 2C).
-    prefix = f"clyro-{project}-{_ENV_SHORT.get(environment, 'prod')}"
+    prefix = f"{project}-{_ENV_SHORT.get(environment, 'prod')}"
+    # Separate, longer prefix ONLY for the four resource types bootstrap.yaml's IAM
+    # policy actually scopes by name (IAM roles, S3 buckets, SQS queues, log groups —
+    # see Issue 2C). Using this everywhere (as an earlier version of this function did)
+    # broke resources with tight AWS length limits: ALB/Target Group names cap at 32
+    # chars, and "clyro-" + a real project-env prefix routinely blows past that. Every
+    # other resource type (ALB, Target Group, ECS Cluster/Service, RDS, ElastiCache)
+    # keeps the short `prefix` — bootstrap.yaml leaves those Resource: "*" anyway, so
+    # they never needed the "clyro-" marker for security scoping.
+    iam_scoped_prefix = f"clyro-{prefix}"
+    # Deterministic, pre-truncated prefix for ALB names and Target Group names — the
+    # tightest AWS limit in this template is 32 chars TOTAL including the suffix (e.g.
+    # "-backend-tg", 11 chars), and a real project name plus "-staging"/"-prod" alone
+    # can exceed that even without any extra prefix (e.g. "a-test-project-staging" is
+    # already 22 chars). Rather than trust the authoring LLM to notice and truncate
+    # this correctly every time, compute a safe prefix here: cap at 18 chars, which
+    # leaves room for the longest suffix used in this template ("-backend-tg").
+    short_prefix = prefix[:18].rstrip("-") or "app"
     sizing = dict(FREE_TIER_SIZING if free_tier else SIZING_BY_SCALE.get(scale, SIZING_BY_SCALE["small"]))
 
     has_domain = (intent.get("domain_has") == "yes") and bool(intent.get("domain_name"))
@@ -259,6 +274,14 @@ def build_spec(
         "environment": environment,
         "account_type": account_type,   # "paid" | "free_tier" (from Step 2)
         "naming_prefix": prefix,
+        # Use ONLY for IAM role names, S3 bucket names, SQS queue names, and
+        # CloudWatch Log Group names — required for bootstrap.yaml's cross-account
+        # IAM scoping. Every other resource name uses naming_prefix (see comment above).
+        "iam_scoped_prefix": iam_scoped_prefix,
+        # Use ONLY for the ALB name and Target Group name(s) — pre-truncated so the
+        # 32-char AWS limit on those two resource types can't be exceeded regardless
+        # of how long the project name is.
+        "short_prefix": short_prefix,
         "region": region,
         "sizing": {
             "scale": scale,
