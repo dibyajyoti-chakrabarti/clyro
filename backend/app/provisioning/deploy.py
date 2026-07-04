@@ -10,14 +10,19 @@ rolled-back stack is deleted so a fresh ``CreateStack`` (retry) can run.
 
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any
 
 from botocore.exceptions import ClientError
+from django.conf import settings
 from django.utils import timezone
 
 from core.models import Deployment, DeploymentStackOutput, Project, ProvisioningLogEntry
 
 from . import aws_client, cfn_events
+
+log = logging.getLogger(__name__)
 
 
 class DeployError(Exception):
@@ -156,14 +161,42 @@ def _serialize_log(deployment: Deployment) -> list[dict]:
     ]
 
 
+_ARN_ACCOUNT_RE = re.compile(r"arn:aws[a-z-]*:[a-z0-9-]*:[a-z0-9-]*:(\d{12}):")
+
+
+def _is_safe_output(deployment: Deployment, value: str) -> bool:
+    """Defense-in-depth: the stack template is authored fresh by an LLM on every
+    generation, so nothing deterministically guarantees it never references
+    Clyro's own account. Every provisioning call runs post-assume-role inside the
+    user's account, so this should never trip in practice — but if an Output ever
+    names Clyro's account ID, or an ARN scoped to some OTHER account (neither
+    Clyro's nor the user's own connected account), drop it rather than let it
+    reach the user's browser."""
+    clyro_account = getattr(settings, "CLYRO_AWS_ACCOUNT_ID", "")
+    if clyro_account and clyro_account in value:
+        return False
+    user_account = deployment.aws_connection.aws_account_id
+    for account in _ARN_ACCOUNT_RE.findall(value):
+        if account != user_account:
+            return False
+    return True
+
+
 def _save_outputs(deployment: Deployment, outputs: list[dict]) -> None:
     for o in outputs:
         if not o.get("output_key"):
             continue
+        value = o.get("output_value") or ""
+        if not _is_safe_output(deployment, value):
+            log.error(
+                "Dropping unsafe stack output %s for deployment %s: references an "
+                "unexpected AWS account", o["output_key"], deployment.id,
+            )
+            continue
         DeploymentStackOutput.objects.update_or_create(
             deployment=deployment,
             output_key=o["output_key"],
-            defaults={"output_value": o.get("output_value") or "", "description": o.get("description")},
+            defaults={"output_value": value, "description": o.get("description")},
         )
 
 
