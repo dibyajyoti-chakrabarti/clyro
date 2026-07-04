@@ -20,8 +20,13 @@ Parameters:
 # resource doesn't exist yet), so '*' is the only workable grant, not an oversight.
 # IAM, Secrets Manager, S3, SQS, and Logs actions below ARE scoped to
 # clyro-*-prefixed resources (see the per-statement comments), since those AWS APIs
-# do support resource-level ARN conditions and every resource this role creates is
-# guaranteed to carry the "clyro-" naming prefix (see build_spec.py naming_prefix).
+# do support resource-level ARN conditions and the IacArchitect authoring rules
+# require these four resource types specifically (IAM roles, S3 buckets, SQS queues,
+# log groups) to use build_spec.py's iam_scoped_prefix, which always starts with
+# "clyro-". Every OTHER resource type (ALB, Target Groups, ECS, RDS, ElastiCache) uses
+# the shorter naming_prefix instead — several of those have tight AWS name-length
+# limits (e.g. ALB/Target Group names cap at 32 chars) that a "clyro-"-prefixed name
+# routinely exceeds, which is exactly why those actions above stay Resource: "*".
 Resources:
   ClyroProvisioningRole:
     Type: AWS::IAM::Role

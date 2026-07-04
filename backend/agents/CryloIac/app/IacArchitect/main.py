@@ -35,7 +35,10 @@ AUTHORING RULES (from the build spec):
     * kind "alb": create the ALB security group (`alb_sg`), a listener on
       `listener_port`, a target group to the service on `target_port`, and an ingress
       rule on the service SG from the ALB SG. If `redirect_http` is true, add an
-      HTTP:80 listener that redirects to HTTPS:443.
+      HTTP:80 listener that redirects to HTTPS:443. Name the ALB and its Target
+      Group(s) using `short_prefix` (NOT `naming_prefix`) — these two resource types
+      have a hard 32-character AWS limit and `short_prefix` is already pre-truncated
+      to leave room for your suffix (e.g. `${short_prefix}-alb`, `${short_prefix}-tg`).
     * kind "none": add NO ingress rule (asynchronous / IAM-scoped access).
 - resources: for each entry in resources[], create exactly the AWS resource types in
   its `cfn_resources`. Apply sizing (Fargate vCPU/memory + desired task count; RDS/
@@ -82,7 +85,22 @@ AUTHORING RULES (from the build spec):
     * On every stateful data resource (RDS DBInstance/DBCluster, ElastiCache
       ReplicationGroup) set BOTH DeletionPolicy AND UpdateReplacePolicy (Snapshot for
       RDS/Aurora, Retain for ElastiCache). cfn-lint W3011 fires if only one is present.
-- naming: prefix every resource name with naming_prefix.
+- naming: three prefixes are provided — use the right one per resource type, they are
+  NOT interchangeable:
+    * `naming_prefix` — the default. Use it for everything not listed below.
+    * `iam_scoped_prefix` (`naming_prefix` with a "clyro-" marker) — IAM role names, S3
+      bucket names, SQS queue names, and CloudWatch Log Group names ONLY. Required so
+      bootstrap.yaml's cross-account IAM policy can scope those four resource types
+      instead of granting them `Resource: "*"`.
+    * `short_prefix` (pre-truncated to stay safe) — the ALB name and Target Group
+      name(s) ONLY. These two resource types cap at 32 characters TOTAL including your
+      suffix, and a real project name is often already close to or over that limit on
+      its own — do not use `naming_prefix` or `iam_scoped_prefix` for these, use
+      `short_prefix`.
+  Other AWS length limits to keep in mind (roomier, but still finite): ElastiCache
+  ReplicationGroupId 40 chars, RDS DBInstanceIdentifier/DBClusterIdentifier 63 chars,
+  S3 bucket name 63 chars total (you're also appending `-${AWS::AccountId}`, 12+ more
+  characters — account for it), IAM role name 64 chars, SQS queue name 80 chars.
 - secrets: reference each entry in secrets[] via a CloudFormation dynamic reference
   ({{resolve:secretsmanager:<arn>}}) injected as a container environment variable —
   NEVER inline a secret value.
