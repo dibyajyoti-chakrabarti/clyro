@@ -11,6 +11,7 @@ of record on ``Deployment.cloudformation_template``.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 from cfnlint import api as cfnlint_api
@@ -251,6 +252,82 @@ def lint_template(template: str, region: str = "us-east-1") -> dict[str, Any]:
     return {"is_valid": errors == 0, "errors": errors, "warnings": warnings, "diagnostics": diagnostics}
 
 
+# ── Deterministic static security scan (independent of cfn-lint/cfn-guard) ─────
+#
+# cfn-lint only checks schema/property correctness; cfn-guard is only reachable via
+# the agent's own MCP tool call mid-generation (it runs in a Lambda pinned to
+# Python 3.12 — see mcp/cfn/handler.py — and isn't invoked again once the agent
+# returns). Neither deterministically re-checks the specific failure modes below on
+# every template this backend persists, regardless of which model authored it or
+# whether the agent's own self-correction loop actually ran. This pass is Python-only,
+# cheap, and always runs — the audit's category A/B/C/D checks made permanent instead
+# of a one-off manual pass.
+
+_PLACEHOLDER_IMAGES = (
+    "nginx:latest", "nginx:alpine", "httpd:latest", "hello-world",
+    "alpine:latest", "busybox:latest",
+)
+_IMAGE_RE = re.compile(r"Image:\s*['\"]?([^\s'\"\n]+)")
+_EMPTY_CRED_RE = re.compile(r"://[^:@/\s]+:@|://:@")
+_WILDCARD_PRINCIPAL_RE = re.compile(
+    r"Principal:\s*(?:['\"]?\*['\"]?|\{\s*['\"]?AWS['\"]?:\s*['\"]?\*['\"]?\s*\})"
+)
+_SENSITIVE_IAM_ACTIONS = ("secretsmanager:", "s3:", "sqs:", "sns:")
+
+
+def security_scan(template: str) -> list[dict[str, str]]:
+    """Regex-level scan for the audit checklist's known failure modes. Returns a list
+    of ``{severity, message}`` findings (empty if clean). Best-effort on raw YAML/JSON
+    text — a coarse net, not a substitute for cfn-lint/cfn-guard, but it catches
+    classes of bug those tools don't check at all (placeholder images, empty
+    credentials, open resource policies)."""
+    findings: list[dict[str, str]] = []
+    if not (template or "").strip():
+        return findings
+
+    for image in _IMAGE_RE.findall(template):
+        lowered = image.lower()
+        if any(placeholder in lowered for placeholder in _PLACEHOLDER_IMAGES):
+            findings.append({
+                "severity": "blocker",
+                "message": f"Container image '{image}' looks like a generic placeholder, "
+                           "not the project's own ECR image — the stack would deploy "
+                           "successfully while never running the real app.",
+            })
+
+    if _EMPTY_CRED_RE.search(template):
+        findings.append({
+            "severity": "critical",
+            "message": "Found a connection string with an empty username or password "
+                       "(e.g. '://user:@' or '://:@') — a credential failed to interpolate.",
+        })
+
+    for match in _WILDCARD_PRINCIPAL_RE.finditer(template):
+        # Only a concern if there's no Condition scoping it — look at the next ~300
+        # chars of the same statement for a Condition block.
+        window = template[match.end():match.end() + 300]
+        if "Condition" not in window:
+            findings.append({
+                "severity": "critical",
+                "message": "A resource policy allows Principal '*' with no Condition "
+                           "scoping it (e.g. aws:SourceArn/aws:PrincipalOrgID) — this "
+                           "opens the resource to the public internet.",
+            })
+
+    for action in _SENSITIVE_IAM_ACTIONS:
+        for match in re.finditer(re.escape(action) + r"[A-Za-z*]+", template):
+            window = template[match.end():match.end() + 120]
+            if "Resource:" in window and re.search(r"Resource:\s*['\"]?\*['\"]?", window):
+                findings.append({
+                    "severity": "warning",
+                    "message": f"IAM action '{match.group(0)}' is granted with "
+                               "Resource: \"*\" — should be scoped to the specific ARN "
+                               "of the resource this template creates.",
+                })
+
+    return findings
+
+
 # ── Agent-backed generate / refine ─────────────────────────────────────────────
 
 def _invoke_iac(payload: dict, project: Project) -> dict[str, Any]:
@@ -285,7 +362,7 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
     return {"template": template, "message": message, "validation": validation,
-            "status": deployment.status}
+            "status": deployment.status, "security_findings": security_scan(template)}
 
 
 def refine(project: Project, instruction: str, history: list | None = None,
@@ -325,7 +402,8 @@ def refine(project: Project, instruction: str, history: list | None = None,
         message = (resp or {}).get("message") or ""
         validation = lint_template(current, region) if current else None
         return {"outcome": "answer", "message": message, "template": current,
-                "validation": validation, "status": deployment.status}
+                "validation": validation, "status": deployment.status,
+                "security_findings": security_scan(current)}
 
     # Edit → the agent returns either search/replace blocks (preferred, cheap) or a
     # full template (escape hatch / old agent). Apply blocks deterministically; on any
@@ -367,7 +445,8 @@ def refine(project: Project, instruction: str, history: list | None = None,
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
     return {"outcome": "edit", "template": new_template, "message": message,
-            "validation": validation, "status": deployment.status}
+            "validation": validation, "status": deployment.status,
+            "security_findings": security_scan(new_template)}
 
 
 def validate(project: Project, template: str) -> dict[str, Any]:
@@ -376,15 +455,17 @@ def validate(project: Project, template: str) -> dict[str, Any]:
     deployment = ensure_deployment(project)
     region = deployment.aws_connection.aws_region or "us-east-1"
     validation = lint_template(template, region)
+    findings = security_scan(template)
+    has_blocker = any(f["severity"] == "blocker" for f in findings)
 
     deployment.cloudformation_template = template
     deployment.status = (
-        Deployment.Status.IAC_READY if validation["is_valid"]
+        Deployment.Status.IAC_READY if validation["is_valid"] and not has_blocker
         else Deployment.Status.GENERATING_IAC
     )
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
-    return {"validation": validation, "status": deployment.status}
+    return {"validation": validation, "status": deployment.status, "security_findings": findings}
 
 
 def get_current(project: Project) -> dict[str, Any]:
@@ -392,4 +473,5 @@ def get_current(project: Project) -> dict[str, Any]:
     deployment = ensure_deployment(project)
     template = deployment.cloudformation_template or ""
     validation = lint_template(template, deployment.aws_connection.aws_region or "us-east-1") if template else None
-    return {"template": template, "status": deployment.status, "validation": validation}
+    return {"template": template, "status": deployment.status, "validation": validation,
+            "security_findings": security_scan(template) if template else []}

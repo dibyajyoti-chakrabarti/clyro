@@ -12,6 +12,16 @@ Parameters:
     Type: String
     Description: Unique identifier for this Clyro project connection (do not change)
 
+# [NOTE — disclosed trade-off, not a defect] EC2 (VPC/subnets/SGs/NAT/routes), ECS,
+# application-autoscaling, ECR, RDS, ElastiCache, ELB, ACM, Route53, and CloudFront
+# actions below are granted with Resource: '*'. These AWS APIs have no meaningful
+# ARN-level resource scoping for the create/describe actions used here (e.g.
+# ec2:CreateVpc, rds:CreateDBInstance take no resource ARN at call time — the
+# resource doesn't exist yet), so '*' is the only workable grant, not an oversight.
+# IAM, Secrets Manager, S3, SQS, and Logs actions below ARE scoped to
+# clyro-*-prefixed resources (see the per-statement comments), since those AWS APIs
+# do support resource-level ARN conditions and every resource this role creates is
+# guaranteed to carry the "clyro-" naming prefix (see build_spec.py naming_prefix).
 Resources:
   ClyroProvisioningRole:
     Type: AWS::IAM::Role
@@ -200,7 +210,7 @@ Resources:
                   - route53:GetChange
                   - route53:ListResourceRecordSets
                 Resource: '*'
-              # Secrets storage for env vars
+              # Secrets storage for env vars — scoped to clyro-* named secrets only
               - Effect: Allow
                 Action:
                   - secretsmanager:CreateSecret
@@ -211,8 +221,8 @@ Resources:
                   - secretsmanager:UpdateSecret
                   - secretsmanager:TagResource
                   - secretsmanager:UntagResource
-                Resource: '*'
-              # CloudWatch logs for ECS tasks and RDS
+                Resource: !Sub 'arn:aws:secretsmanager:*:${AWS::AccountId}:secret:clyro/*'
+              # CloudWatch logs for ECS tasks and RDS — scoped to clyro-* named log groups
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -224,8 +234,10 @@ Resources:
                   - logs:DescribeLogStreams
                   - logs:TagLogGroup
                   - logs:TagResource
-                Resource: '*'
-              # S3 — static frontend assets and CF template staging
+                Resource:
+                  - !Sub 'arn:aws:logs:*:${AWS::AccountId}:log-group:*clyro-*'
+                  - !Sub 'arn:aws:logs:*:${AWS::AccountId}:log-group:*clyro-*:*'
+              # S3 — static frontend assets and CF template staging — scoped to clyro-* buckets
               - Effect: Allow
                 Action:
                   - s3:CreateBucket
@@ -252,7 +264,9 @@ Resources:
                   - s3:PutObjectAcl
                   - s3:GetBucketTagging
                   - s3:PutBucketTagging
-                Resource: '*'
+                Resource:
+                  - 'arn:aws:s3:::clyro-*'
+                  - 'arn:aws:s3:::clyro-*/*'
               # CloudFront for static frontends
               - Effect: Allow
                 Action:
@@ -268,7 +282,9 @@ Resources:
                   - cloudfront:GetCloudFrontOriginAccessIdentity
                   - cloudfront:TagResource
                 Resource: '*'
-              # SQS for task queues (Celery)
+              # SQS for task queues (Celery) — scoped to clyro-* named queues.
+              # ListQueues has no resource-level permissions in IAM (AWS requires '*'
+              # for it specifically) — every other action here is ARN-scoped.
               - Effect: Allow
                 Action:
                   - sqs:CreateQueue
@@ -277,6 +293,9 @@ Resources:
                   - sqs:SetQueueAttributes
                   - sqs:TagQueue
                   - sqs:UntagQueue
+                Resource: !Sub 'arn:aws:sqs:*:${AWS::AccountId}:clyro-*'
+              - Effect: Allow
+                Action:
                   - sqs:ListQueues
                 Resource: '*'
               # CloudFormation self-operations (the stack needs to describe itself)

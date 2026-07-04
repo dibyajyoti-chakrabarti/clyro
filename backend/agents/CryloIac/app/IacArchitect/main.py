@@ -40,6 +40,39 @@ AUTHORING RULES (from the build spec):
 - resources: for each entry in resources[], create exactly the AWS resource types in
   its `cfn_resources`. Apply sizing (Fargate vCPU/memory + desired task count; RDS/
   Aurora instance_class + Multi-AZ; ElastiCache node_class + replicas).
+- container images: the `image` field is a placeholder ("ecr") standing in for the
+  project's own ECR repository — ALWAYS reference it as a parameter/`!Sub` built from
+  naming_prefix (e.g. an `AWS::ECR::Repository` you create, or
+  `${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${naming_prefix}-<node_id>:latest`).
+  NEVER emit a generic public image (nginx:latest, httpd:latest, alpine, hello-world,
+  etc.) in its place — a stack that "succeeds" while running the wrong image is a
+  silent failure, worse than one that fails to deploy.
+- IAM roles for ECS: every `AWS::ECS::TaskDefinition` needs TWO separate IAM roles,
+  never one shared role:
+    * ExecutionRoleArn — only what CFN/ECS needs to start the task: ECR image pull,
+      CloudWatch Logs write, and (if generate_env/secrets reference it) reading the
+      specific Secrets Manager ARNs injected as container secrets.
+    * TaskRoleArn — only what the APPLICATION calls at runtime. Cross-reference this
+      node's `generated_env` / sibling `resources[]` entries: if an SQS queue exists in
+      the spec, grant `sqs:SendMessage`/`ReceiveMessage`/`DeleteMessage`/
+      `GetQueueAttributes` scoped to that queue's ARN; if an S3 bucket exists, grant the
+      specific `s3:GetObject`/`PutObject` etc. scoped to that bucket's ARN. Grant NOTHING
+      the spec doesn't imply the app calls. Never put `Resource: "*"` on
+      secretsmanager/s3/sqs/sns actions — always scope to the ARN of the resource you
+      created in this same template.
+- security groups (continued): restrict egress explicitly per tier instead of the
+  CloudFormation default allow-all — a service/worker SG should egress only to the
+  ports it actually needs (DB port to the db SG, cache port to the cache SG, 443 for
+  ECR/Secrets Manager/general HTTPS), not 0.0.0.0/0 on all ports.
+- CloudFront managed policy IDs: if you reference an AWS-managed CachePolicy /
+  OriginRequestPolicy by Id (rather than creating your own), use ONLY these verified
+  IDs — do not invent or recall others from memory:
+    * CachingOptimized: 658327ea-f89d-4fab-a63d-7e88639e58f6
+    * CachingDisabled: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+    * AllViewerExceptHostHeader (origin request): b689b0a8-53d0-40ab-baf2-68738e2966ac
+  If the spec's needs don't clearly match one of these, create your own
+  `AWS::CloudFront::CachePolicy` / `OriginRequestPolicy` resource instead of guessing an
+  Id.
 - stateful-resource hygiene (avoids cfn-lint warnings that would otherwise need a fix
   round):
     * Do NOT set EngineVersion on RDS DBInstance / Aurora DBCluster — omit it so AWS
