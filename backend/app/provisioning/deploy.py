@@ -205,6 +205,12 @@ def poll(project: Project) -> dict[str, Any]:
     if deployment is None:
         raise DeployError("No active deployment to report on.")
 
+    # Pause/resume never touch the CFN stack itself (ECS/RDS only stay stopped —
+    # the stack remains CREATE_COMPLETE throughout), so the CFN-status-driven logic
+    # below would otherwise flip a PAUSED deployment straight back to COMPLETE.
+    if deployment.status == Deployment.Status.PAUSED:
+        return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": [], "error": None}
+
     creds, region = _assume(deployment)
     stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
 
@@ -213,11 +219,23 @@ def poll(project: Project) -> dict[str, Any]:
         events = aws_client.describe_stack_events(creds, region, stack_name)
     except ClientError as exc:
         if "does not exist" in exc.response["Error"]["Message"]:
-            # Stack was deleted (e.g. mid-retry cleanup) — report current state, keep polling.
+            if deployment.status == Deployment.Status.DELETING:
+                deployment.status = Deployment.Status.DELETED
+                deployment.completed_at = timezone.now()
+                deployment.save(update_fields=["status", "completed_at", "updated_at"])
+                project.status = Project.Status.DELETED
+                project.save(update_fields=["status", "updated_at"])
+            # Stack was deleted (e.g. mid-retry cleanup, or a completed teardown) —
+            # report current state, keep polling.
             return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": [], "error": None}
         raise DeployError(f"AWS error reading stack status: {exc.response['Error']['Message']}")
 
     _persist_new_events(deployment, events)
+
+    if deployment.status == Deployment.Status.DELETING:
+        # Stack still exists — deletion is in progress; don't let the CREATE_COMPLETE
+        # branch below resurrect the deployment to COMPLETE while it's tearing down.
+        return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": [], "error": None}
     stack_status = info["status"]
     error = None
 
@@ -252,6 +270,117 @@ def poll(project: Project) -> dict[str, Any]:
         for o in DeploymentStackOutput.objects.filter(deployment=deployment)
     ]
     return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": outputs, "error": error}
+
+
+# ── Pause / resume (reversible scale-to-zero) ───────────────────────────────────
+
+def _live_deployment(project: Project) -> Deployment:
+    deployment = _active_deployment(project)
+    if deployment is None or deployment.status not in (
+        Deployment.Status.COMPLETE, Deployment.Status.PAUSED,
+    ):
+        raise DeployError("This project has no live infrastructure to pause/resume.")
+    return deployment
+
+
+def pause(project: Project) -> dict[str, Any]:
+    """Reversible cost-saving pause: scale every ECS service in the stack to 0
+    desired tasks and stop every RDS instance/Aurora cluster. The CFN stack itself
+    is untouched — nothing is deleted, so ``resume`` can bring it back."""
+    deployment = _live_deployment(project)
+    if deployment.status == Deployment.Status.PAUSED:
+        return {"status": deployment.status}
+
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+    resources = aws_client.list_stack_resources(creds, region, stack_name)
+
+    ecs_state: list[dict[str, Any]] = []
+    for r in resources:
+        if r["resource_type"] != "AWS::ECS::Service" or not r["physical_id"]:
+            continue
+        parsed = aws_client.parse_ecs_service_arn(r["physical_id"])
+        if not parsed:
+            continue
+        cluster, service = parsed
+        desired = aws_client.get_ecs_service_desired_count(creds, region, cluster, service)
+        ecs_state.append({"cluster": cluster, "service": service, "desired": desired})
+        if desired:
+            aws_client.set_ecs_service_desired_count(creds, region, cluster, service, 0)
+
+    rds_clusters = [
+        r["physical_id"] for r in resources
+        if r["resource_type"] == "AWS::RDS::DBCluster" and r["physical_id"]
+    ]
+    for cluster_id in rds_clusters:
+        aws_client.stop_db_cluster(creds, region, cluster_id)
+
+    rds_instances = [
+        r["physical_id"] for r in resources
+        if r["resource_type"] == "AWS::RDS::DBInstance" and r["physical_id"]
+        and not aws_client.is_db_cluster_member(creds, region, r["physical_id"])
+    ]
+    for instance_id in rds_instances:
+        aws_client.stop_db_instance(creds, region, instance_id)
+
+    deployment.paused_state = {
+        "ecs": ecs_state, "rds_clusters": rds_clusters, "rds_instances": rds_instances,
+    }
+    deployment.status = Deployment.Status.PAUSED
+    deployment.save(update_fields=["paused_state", "status", "updated_at"])
+    project.status = Project.Status.PAUSED
+    project.save(update_fields=["status", "updated_at"])
+    return {"status": deployment.status}
+
+
+def resume(project: Project) -> dict[str, Any]:
+    """Undo ``pause``: restore each ECS service's prior desired count and start
+    the RDS instances/clusters back up."""
+    deployment = _live_deployment(project)
+    if deployment.status != Deployment.Status.PAUSED:
+        return {"status": deployment.status}
+
+    creds, region = _assume(deployment)
+    state = deployment.paused_state or {}
+
+    for entry in state.get("ecs", []):
+        aws_client.set_ecs_service_desired_count(
+            creds, region, entry["cluster"], entry["service"], entry["desired"])
+    for cluster_id in state.get("rds_clusters", []):
+        aws_client.start_db_cluster(creds, region, cluster_id)
+    for instance_id in state.get("rds_instances", []):
+        aws_client.start_db_instance(creds, region, instance_id)
+
+    deployment.paused_state = None
+    deployment.status = Deployment.Status.COMPLETE
+    deployment.save(update_fields=["paused_state", "status", "updated_at"])
+    project.status = Project.Status.LIVE
+    project.save(update_fields=["status", "updated_at"])
+    return {"status": deployment.status}
+
+
+# ── Teardown (full delete) ───────────────────────────────────────────────────────
+
+def teardown(project: Project) -> dict[str, Any]:
+    """Permanently delete the user's CFN stack. Irreversible — unlike ``pause``,
+    this destroys every resource the stack created. ``poll`` picks up the
+    DELETING -> DELETED transition once the stack disappears."""
+    deployment = _active_deployment(project)
+    if deployment is None:
+        raise DeployError("No provisioned infrastructure to delete.")
+    if deployment.status in (Deployment.Status.DELETING, Deployment.Status.DELETED):
+        return {"status": deployment.status}
+
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+    try:
+        aws_client.delete_stack(creds, region, stack_name)
+    except ClientError as exc:
+        raise DeployError(f"AWS error deleting the stack: {exc.response['Error']['Message']}")
+
+    deployment.status = Deployment.Status.DELETING
+    deployment.save(update_fields=["status", "updated_at"])
+    return {"status": deployment.status}
 
 
 def _root_failure(deployment: Deployment) -> str | None:

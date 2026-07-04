@@ -77,6 +77,8 @@ class Project(models.Model):
         PROVISIONING = 'provisioning'
         LIVE = 'live'
         FAILED = 'failed'
+        PAUSED = 'paused'
+        DELETED = 'deleted'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='projects')
@@ -299,6 +301,11 @@ class Deployment(models.Model):
         COMPLETE = 'complete'
         FAILED = 'failed'
         ROLLED_BACK = 'rolled_back'
+        PAUSING = 'pausing'
+        PAUSED = 'paused'
+        RESUMING = 'resuming'
+        DELETING = 'deleting'
+        DELETED = 'deleted'
 
     class Environment(models.TextChoices):
         PRODUCTION = 'production'
@@ -315,6 +322,7 @@ class Deployment(models.Model):
     cloudformation_stack_id = models.TextField(null=True, blank=True)
     cloudformation_stack_name = models.TextField(null=True, blank=True)
     cloudformation_template = models.TextField(null=True, blank=True)
+    paused_state = models.JSONField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

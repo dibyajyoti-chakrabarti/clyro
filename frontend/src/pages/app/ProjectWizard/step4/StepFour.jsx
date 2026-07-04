@@ -54,6 +54,10 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [stackOutputs, setStackOutputs] = useState([])
   const deployPollRef = useRef(null)
 
+  // infra lifecycle (pause / resume / delete) state
+  const [infraActionLoading, setInfraActionLoading] = useState(false)
+  const [infraActionError, setInfraActionError] = useState(null)
+
   // shared
   const [showTemplate, setShowTemplate] = useState(false)
   const [copiedKey, setCopiedKey] = useState('')
@@ -292,6 +296,50 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   // Stop polling if the panel unmounts mid-deploy.
   useEffect(() => () => stopDeployPoll(), [])
 
+  // ── Infra lifecycle: pause (reversible scale-to-zero) / resume / delete ────
+  const handlePause = async () => {
+    setInfraActionError(null)
+    setInfraActionLoading(true)
+    try {
+      const data = await api.pauseDeploy(projectId)
+      setDeployStatus(data.status)
+    } catch (err) {
+      setInfraActionError(err.data?.error || 'Failed to pause infrastructure.')
+    } finally {
+      setInfraActionLoading(false)
+    }
+  }
+
+  const handleResume = async () => {
+    setInfraActionError(null)
+    setInfraActionLoading(true)
+    try {
+      const data = await api.resumeDeploy(projectId)
+      setDeployStatus(data.status)
+    } catch (err) {
+      setInfraActionError(err.data?.error || 'Failed to resume infrastructure.')
+    } finally {
+      setInfraActionLoading(false)
+    }
+  }
+
+  const handleTeardown = async () => {
+    if (!window.confirm('This permanently deletes all provisioned infrastructure for this project. This cannot be undone. Continue?')) {
+      return
+    }
+    setInfraActionError(null)
+    setInfraActionLoading(true)
+    try {
+      const data = await api.teardownDeploy(projectId)
+      setDeployStatus(data.status)
+      startDeployPoll()
+    } catch (err) {
+      setInfraActionError(err.data?.error || 'Failed to delete infrastructure.')
+    } finally {
+      setInfraActionLoading(false)
+    }
+  }
+
   if (hydrating) {
     return (
       <div className='flex flex-1 flex-col items-center justify-center p-8'>
@@ -418,6 +466,12 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
           setStep4CanContinue(true)
           onAdvanceToStepFive()
         }}
+        deployStatus={deployStatus}
+        infraActionLoading={infraActionLoading}
+        infraActionError={infraActionError}
+        onPause={handlePause}
+        onResume={handleResume}
+        onTeardown={handleTeardown}
       />
     </div>
   )
