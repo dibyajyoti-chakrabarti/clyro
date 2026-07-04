@@ -68,6 +68,9 @@ export const api = {
   // Step 4.5 — provisioning (submit template + live feed)
   startDeploy: (id) => request('POST', `/api/projects/${id}/deploy/`),
   getDeployStatus: (id) => request('GET', `/api/projects/${id}/deploy/status/`),
+  pauseDeploy: (id) => request('POST', `/api/projects/${id}/deploy/pause/`),
+  resumeDeploy: (id) => request('POST', `/api/projects/${id}/deploy/resume/`),
+  teardownDeploy: (id) => request('POST', `/api/projects/${id}/deploy/teardown/`),
 
   // GitHub
   storeInstallation: (installation_id) =>

@@ -1,8 +1,14 @@
-import { ArrowRight, CheckCircle2, Copy } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Copy, Pause, Play, Trash2 } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
 import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPanel'
 
-function DeploymentSuccess({ stackOutputs = [], copiedKey, onCopy, onGoToDashboard }) {
+function DeploymentSuccess({
+  stackOutputs = [], copiedKey, onCopy, onGoToDashboard,
+  deployStatus, infraActionLoading, infraActionError, onPause, onResume, onTeardown,
+}) {
+  const isPaused = deployStatus === 'paused'
+  const isDeleting = deployStatus === 'deleting'
+  const isDeleted = deployStatus === 'deleted'
   return (
     <WizardPanel>
       <WizardCard width='lg' className='border-green-500/25'>
@@ -47,6 +53,43 @@ function DeploymentSuccess({ stackOutputs = [], copiedKey, onCopy, onGoToDashboa
             ))}
           </div>
         </div>
+
+        {!isDeleted && (
+          <div className='mt-6 rounded-lg border border-border bg-background/50 p-4'>
+            <h4 className='text-sm font-semibold'>Manage infrastructure</h4>
+            <p className='mt-1 text-xs text-text-muted'>
+              {isPaused
+                ? 'Infra is paused — ECS tasks are scaled to 0 and the database is stopped. Nothing is billed for compute while paused.'
+                : isDeleting
+                  ? 'Deleting all provisioned resources…'
+                  : 'Pause to stop billing without losing anything, or permanently delete the stack.'}
+            </p>
+            {infraActionError && (
+              <p className='mt-2 text-xs text-red-400'>{infraActionError}</p>
+            )}
+            <div className='mt-3 flex flex-wrap gap-2'>
+              {isPaused ? (
+                <Button variant='secondary' disabled={infraActionLoading} onClick={onResume}>
+                  <Play className='h-4 w-4' />
+                  Resume
+                </Button>
+              ) : (
+                <Button variant='secondary' disabled={infraActionLoading || isDeleting} onClick={onPause}>
+                  <Pause className='h-4 w-4' />
+                  Pause
+                </Button>
+              )}
+              <Button
+                variant='danger'
+                disabled={infraActionLoading || isDeleting}
+                onClick={onTeardown}
+              >
+                <Trash2 className='h-4 w-4' />
+                {isDeleting ? 'Deleting…' : 'Delete infrastructure'}
+              </Button>
+            </div>
+          </div>
+        )}
 
         <Button variant='primary' className='mt-6' onClick={onGoToDashboard}>
           Go to dashboard

@@ -146,6 +146,116 @@ def describe_stack_events(credentials: dict, region: str, stack_name: str) -> li
 
 
 def delete_stack(credentials: dict, region: str, stack_name: str) -> None:
-    """Delete a stack (used to clear a rolled-back stack before retrying)."""
+    """Delete a stack (used to clear a rolled-back stack before retrying, and for
+    a full teardown)."""
     cfn = _cfn_client(credentials, region)
     cfn.delete_stack(StackName=stack_name)
+
+
+def list_stack_resources(credentials: dict, region: str, stack_name: str) -> list[dict]:
+    """Return every resource in the stack as
+    ``{logical_id, physical_id, resource_type}`` — used to find the ECS
+    services / RDS instances-clusters to pause or resume."""
+    cfn = _cfn_client(credentials, region)
+    resources: list[dict] = []
+    paginator = cfn.get_paginator('list_stack_resources')
+    for page in paginator.paginate(StackName=stack_name):
+        for r in page.get('StackResourceSummaries', []):
+            resources.append({
+                'logical_id': r.get('LogicalResourceId'),
+                'physical_id': r.get('PhysicalResourceId'),
+                'resource_type': r.get('ResourceType'),
+            })
+    return resources
+
+
+# ── Pause / resume (ECS scale-to-zero + RDS stop) ───────────────────────────────
+
+def _ecs_client(credentials: dict, region: str):
+    return boto3.client(
+        'ecs',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def _rds_client(credentials: dict, region: str):
+    return boto3.client(
+        'rds',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def parse_ecs_service_arn(service_arn: str) -> tuple[str, str] | None:
+    """``arn:aws:ecs:region:account:service/cluster-name/service-name`` ->
+    ``(cluster_name, service_name)``. Returns ``None`` if the ARN doesn't match."""
+    parts = service_arn.split(':')
+    if len(parts) < 6 or not parts[5].startswith('service/'):
+        return None
+    resource_parts = parts[5].split('/')
+    if len(resource_parts) != 3:
+        return None
+    return resource_parts[1], resource_parts[2]
+
+
+def get_ecs_service_desired_count(credentials: dict, region: str, cluster: str, service: str) -> int:
+    ecs = _ecs_client(credentials, region)
+    resp = ecs.describe_services(cluster=cluster, services=[service])
+    services = resp.get('services') or []
+    return services[0]['desiredCount'] if services else 0
+
+
+def set_ecs_service_desired_count(credentials: dict, region: str, cluster: str, service: str, desired: int) -> None:
+    ecs = _ecs_client(credentials, region)
+    ecs.update_service(cluster=cluster, service=service, desiredCount=desired)
+
+
+def is_db_cluster_member(credentials: dict, region: str, db_instance_id: str) -> bool:
+    """True if ``db_instance_id`` belongs to an Aurora cluster — cluster members
+    can't be stopped/started individually, only via the cluster itself."""
+    rds = _rds_client(credentials, region)
+    resp = rds.describe_db_instances(DBInstanceIdentifier=db_instance_id)
+    instances = resp.get('DBInstances') or []
+    return bool(instances and instances[0].get('DBClusterIdentifier'))
+
+
+def stop_db_instance(credentials: dict, region: str, db_instance_id: str) -> None:
+    rds = _rds_client(credentials, region)
+    try:
+        rds.stop_db_instance(DBInstanceIdentifier=db_instance_id)
+    except ClientError as exc:
+        # Already stopped/stopping — not an error for a pause action.
+        if exc.response['Error']['Code'] not in ('InvalidDBInstanceState',):
+            raise
+
+
+def start_db_instance(credentials: dict, region: str, db_instance_id: str) -> None:
+    rds = _rds_client(credentials, region)
+    try:
+        rds.start_db_instance(DBInstanceIdentifier=db_instance_id)
+    except ClientError as exc:
+        if exc.response['Error']['Code'] not in ('InvalidDBInstanceState',):
+            raise
+
+
+def stop_db_cluster(credentials: dict, region: str, db_cluster_id: str) -> None:
+    rds = _rds_client(credentials, region)
+    try:
+        rds.stop_db_cluster(DBClusterIdentifier=db_cluster_id)
+    except ClientError as exc:
+        if exc.response['Error']['Code'] not in ('InvalidDBClusterStateFault',):
+            raise
+
+
+def start_db_cluster(credentials: dict, region: str, db_cluster_id: str) -> None:
+    rds = _rds_client(credentials, region)
+    try:
+        rds.start_db_cluster(DBClusterIdentifier=db_cluster_id)
+    except ClientError as exc:
+        if exc.response['Error']['Code'] not in ('InvalidDBClusterStateFault',):
+            raise

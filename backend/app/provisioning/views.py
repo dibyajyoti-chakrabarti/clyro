@@ -308,3 +308,42 @@ def deploy_status(request, pk):
         return Response(deploy.poll(project))
     except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_pause(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(deploy.pause(project))
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_resume(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(deploy.resume(project))
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_teardown(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(deploy.teardown(project))
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
