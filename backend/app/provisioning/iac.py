@@ -78,11 +78,18 @@ def _lint_fix_instruction(validation: dict[str, Any]) -> str:
 
 def _lint_fix_loop(template: str, validation: dict[str, Any], *, spec: dict, project: Project,
                    model: str | None, region: str, history: list | None = None,
-                   max_rounds: int = 3) -> tuple[str, dict[str, Any], str | None]:
+                   max_rounds: int = 2) -> tuple[str, dict[str, Any], str | None]:
     """Bounded server-side corrective loop: ask the agent (refine mode) to fix the
     cfn-lint ERRORS in ``template``, re-lint, and repeat until the template is clean or
     ``max_rounds`` is hit. This is the real enforcement on top of the agent's own
     in-prompt validation — it does not trust the model to police itself.
+
+    ``max_rounds`` was 3; trimmed to 2 (Phase 4 latency pass) after real X-Ray
+    baseline data showed each round costs ~25s and ~41K input tokens on average
+    (a full CFN template as context every time) — cfn-lint errors are usually
+    single-round fixable (the tool names the valid options directly in its
+    message), and the loop's own monotonic stop condition already cuts a
+    non-converging model off early regardless of the ceiling.
 
     The loop is condition-based (stops the moment ``errors == 0``) and strictly
     monotonic: a round is only accepted if it *reduces* the error count, so a model that
