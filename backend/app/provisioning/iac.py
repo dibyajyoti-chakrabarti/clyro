@@ -161,7 +161,7 @@ def _security_fix_loop(template: str, findings: list[dict[str, str]], *, spec: d
             fixed = fix_resp["template"]
         if not fixed:
             break
-        fixed_findings = security_scan(fixed) + check_ecs_network_reachability(fixed, spec)
+        fixed_findings = security_scan(fixed) + check_ecs_network_reachability(fixed, spec) + check_secret_interpolation(fixed, spec)
         fixed_blockers = [f for f in fixed_findings if f["severity"] == "blocker"]
         if len(fixed_blockers) >= len(blockers):
             break  # no improvement — keep the prior template, stop looping
@@ -401,6 +401,44 @@ def check_ecs_network_reachability(template: str, spec: dict) -> list[dict[str, 
     return findings
 
 
+_SECRET_JSON_KEY_RE = re.compile(r"\{\{resolve:secretsmanager:.*?:SecretString:(\w+)\}\}")
+# The only secret this pipeline creates as JSON is the RDS/Aurora generated
+# master-credentials secret (GenerateSecretString with a {"username", "password"}
+# template) — its dynamic reference correctly uses :SecretString:username/password.
+_JSON_SECRET_FIELDS = {"username", "password"}
+
+
+def check_secret_interpolation(template: str, spec: dict) -> list[dict[str, str]]:
+    """Found live: `secrets[]` entries are written to Secrets Manager as plain raw
+    strings (``write_secret()`` in aws_client.py — a bare ``SecretString=value``, not a
+    JSON document), but the agent referenced one as
+    ``{{resolve:secretsmanager:<arn>:SecretString:SECRET_KEY}}`` — the trailing
+    ``:SecretString:<key>`` segment tells AWS to JSON-parse the secret and extract that
+    field, which fails at deploy time ("Could not parse SecretString JSON") on a
+    plain-string secret. cfn-lint/cfn-guard can't catch this — it's schema-valid CFN
+    that only fails at the actual CreateTaskDefinition/CreateService call. Only the
+    RDS-generated master-credentials secret is genuinely JSON (username/password);
+    flag any other field name used in this form as a blocker."""
+    if not template:
+        return []
+    findings = []
+    for match in _SECRET_JSON_KEY_RE.finditer(template):
+        field = match.group(1)
+        if field in _JSON_SECRET_FIELDS:
+            continue  # the RDS master-credentials secret's genuine JSON fields
+        findings.append({
+            "severity": "blocker",
+            "message": f"A dynamic reference extracts a JSON field '{field}' via "
+                       f"`:SecretString:{field}` — but secrets[] entries are stored as "
+                       "plain strings, not JSON. This fails at deploy time with 'Could "
+                       "not parse SecretString JSON'. Use "
+                       "`{{resolve:secretsmanager:<arn>}}` or "
+                       "`{{resolve:secretsmanager:<arn>:SecretString}}` instead "
+                       "(no JSON-key suffix).",
+        })
+    return findings
+
+
 def enforce_free_tier_limits(template: str, spec: dict) -> str:
     """Deterministically correct known free-tier-account limits, rather than trust
     the authoring LLM to apply the corresponding _AUTHORING_RULES instruction every
@@ -566,7 +604,7 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
         template = enforce_free_tier_limits(template, spec)
         template = enforce_elasticache_deletion_policy(template)
 
-    findings = security_scan(template) + check_ecs_network_reachability(template, spec)
+    findings = security_scan(template) + check_ecs_network_reachability(template, spec) + check_secret_interpolation(template, spec)
     if any(f["severity"] == "blocker" for f in findings):
         template, findings, fix_msg = _security_fix_loop(
             template, findings, spec=spec, project=project, model=model, region=region)
@@ -622,7 +660,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
         validation = lint_template(current, region) if current else None
         return {"outcome": "answer", "message": message, "template": current,
                 "validation": validation, "status": deployment.status,
-                "security_findings": security_scan(current) + check_ecs_network_reachability(current, spec)}
+                "security_findings": security_scan(current) + check_ecs_network_reachability(current, spec) + check_secret_interpolation(current, spec)}
 
     # Edit → the agent returns either search/replace blocks (preferred, cheap) or a
     # full template (escape hatch / old agent). Apply blocks deterministically; on any
@@ -662,7 +700,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
             message = fix_msg
         new_template = enforce_elasticache_deletion_policy(new_template)
 
-    findings = security_scan(new_template) + check_ecs_network_reachability(new_template, spec)
+    findings = security_scan(new_template) + check_ecs_network_reachability(new_template, spec) + check_secret_interpolation(new_template, spec)
     if any(f["severity"] == "blocker" for f in findings):
         new_template, findings, fix_msg = _security_fix_loop(
             new_template, findings, spec=spec, project=project, model=model,
@@ -689,7 +727,7 @@ def validate(project: Project, template: str) -> dict[str, Any]:
     region = deployment.aws_connection.aws_region or "us-east-1"
     validation = lint_template(template, region)
     spec = _spec_for(deployment)
-    findings = security_scan(template) + check_ecs_network_reachability(template, spec)
+    findings = security_scan(template) + check_ecs_network_reachability(template, spec) + check_secret_interpolation(template, spec)
     has_blocker = any(f["severity"] == "blocker" for f in findings)
 
     deployment.cloudformation_template = template
@@ -709,6 +747,6 @@ def get_current(project: Project) -> dict[str, Any]:
     validation = lint_template(template, deployment.aws_connection.aws_region or "us-east-1") if template else None
     findings = []
     if template:
-        findings = security_scan(template) + check_ecs_network_reachability(template, _spec_for(deployment))
+        findings = security_scan(template) + check_ecs_network_reachability(template, _spec_for(deployment)) + check_secret_interpolation(template, _spec_for(deployment))
     return {"template": template, "status": deployment.status, "validation": validation,
             "security_findings": findings}
