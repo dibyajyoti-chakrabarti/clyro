@@ -3,14 +3,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import GitHubInstallation, IntentRecord, Project, ScanResult
+from core.models import AgentJob, GitHubInstallation, IntentRecord, Project, ScanResult
 from core.serializers import (
     GitHubInstallationSerializer, IntentRecordSerializer,
     ProjectSerializer, ScanResultSerializer, UserProfileSerializer,
 )
 from .auth import CognitoAuthentication
-from . import github_utils
-from .scanner import runner as scan_runner
+from . import github_utils, tasks
 
 _AUTH = [CognitoAuthentication]
 _PERMS = [IsAuthenticated]
@@ -117,9 +116,29 @@ def trigger_scan(request, pk):
     project.status = Project.Status.SCANNING
     project.save(update_fields=['status', 'updated_at'])
 
+    job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.SCAN)
+    tasks.run_scan_task.delay(str(job.id), str(project.id))
+    return Response({'job_id': str(job.id)}, status=status.HTTP_202_ACCEPTED)
 
-    scan = scan_runner.run_scan_for_project(project)
-    return Response(ScanResultSerializer(scan).data)
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def agent_job_status(request, pk, job_id):
+    """Generic poll endpoint for any AgentJob (scan/canvas_chat/iac_generate/
+    iac_refine/provision) — same shape for every kind so the frontend can reuse
+    one polling helper everywhere, mirroring the CFN deploy-status pattern."""
+    try:
+        job = AgentJob.objects.get(pk=job_id, project__pk=pk, project__user=request.user)
+    except AgentJob.DoesNotExist:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+    return Response({
+        'job_id': str(job.id),
+        'kind': job.kind,
+        'status': job.status,
+        'result': job.result,
+        'error': job.error,
+    })
 
 
 # ── User profile ──────────────────────────────────────────────────────────────

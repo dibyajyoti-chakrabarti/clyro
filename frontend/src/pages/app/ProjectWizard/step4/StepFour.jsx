@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../../../../api'
+import { api, pollJob } from '../../../../api'
 import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPanel'
 import AwsConnectCard from './AwsConnectCard'
 import DeploymentSuccess from './DeploymentSuccess'
@@ -173,7 +173,8 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     setIacGenerating(true)
     setIacError(null)
     try {
-      const data = await api.generateIac(projectId, { model: generateModel })
+      const { job_id: jobId } = await api.generateIac(projectId, { model: generateModel })
+      const data = await pollJob(projectId, jobId)
       if (!data.template) {
         setIacError('Generation returned an empty template — please try again.')
       } else {
@@ -208,7 +209,8 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     try {
       // Send the current editor content so the agent refines what the user sees
       // (manual edits included), not a stale server copy.
-      const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, model: chatModel })
+      const { job_id: jobId } = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, model: chatModel })
+      const data = await pollJob(projectId, jobId)
       if (data.outcome === 'answer') {
         // A question — the agent answered without touching the template.
         setIacFindings(data.security_findings || [])

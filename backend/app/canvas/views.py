@@ -6,9 +6,10 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.models import CanvasVersion, Project
+from core.models import AgentJob, CanvasVersion, Project
 
 from app.auth import CognitoAuthentication
+from app import tasks
 
 from . import services
 from .serializers import serialize_version, serialize_version_summary
@@ -44,10 +45,11 @@ def canvas_agent(request, pk):
     if confirm and not pending_operation:
         return Response({"error": "pending_operation is required to confirm"}, status=status.HTTP_400_BAD_REQUEST)
 
-    result = services.run_canvas_agent(
-        project, prompt, confirm=confirm, pending_operation=pending_operation, history=history
+    job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.CANVAS_CHAT)
+    tasks.run_canvas_agent_task.delay(
+        str(job.id), str(project.id), prompt, confirm, pending_operation, history
     )
-    return Response(result)
+    return Response({"job_id": str(job.id)}, status=status.HTTP_202_ACCEPTED)
 
 
 @api_view(["GET"])
