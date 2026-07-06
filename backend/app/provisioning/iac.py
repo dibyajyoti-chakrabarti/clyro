@@ -343,6 +343,29 @@ _VERIFIED_CF_POLICY_IDS = {
     "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",  # CachingDisabled
     "b689b0a8-53d0-40ab-baf2-68738e2966ac",  # AllViewerExceptHostHeader (origin request)
 }
+
+# A literal 12-digit account number in an IAM Resource/Principal ARN — scoped to
+# these two keys specifically (not any ARN anywhere) so it doesn't fire on a
+# pre-existing secret's real ARN used for value resolution ({{resolve:secretsmanager:
+# <arn>...}} / ECS Secrets[].ValueFrom), which legitimately must keep its exact literal
+# ARN (including the random name suffix AWS assigns) — those aren't Resource/Principal
+# grants and can't be reconstructed from pseudo-params anyway. An IAM grant's
+# Resource/Principal, by contrast, is always describing "this same deploying
+# account" and should use ${AWS::AccountId}/${AWS::Region} instead of a literal.
+_HARDCODED_ARN_RE = re.compile(
+    r"^\s*(?:-\s*)?(?:Resource|Principal):\s*['\"]?(arn:aws:[a-zA-Z0-9-]+:[a-z0-9-]*:(\d{12}):[^\s'\"\n]*)",
+    re.M,
+)
+
+# A connection-string credential segment that's a bare `${LogicalId}` Sub/Ref directly
+# before '@' — the correct form nests the ref inside a `{{resolve:secretsmanager:...}}`
+# dynamic reference, which always has `:SecretString:<key>}}` between the ref and the
+# next character, never `@` immediately after `${...}`.
+_BROKEN_CRED_REF_RE = re.compile(
+    r"(?:postgres(?:ql)?|mysql|redis|mongodb)(?:\+\w+)?://[^:@/\s]*:\$\{\w+\}@"
+)
+
+_PLACEHOLDER_TOKEN_RE = re.compile(r"<[^>]*>|PLACEHOLDER|REPLACE_ME|YOUR_IMAGE|TODO|CHANGE_?ME", re.I)
 _CF_POLICY_ID_RE = re.compile(
     r"(CachePolicyId|OriginRequestPolicyId):\s*['\"]?([0-9a-f-]{36})['\"]?"
 )
@@ -438,12 +461,39 @@ def security_scan(template: str) -> list[dict[str, str]]:
                            "not the project's own ECR image — the stack would deploy "
                            "successfully while never running the real app.",
             })
+        elif _PLACEHOLDER_TOKEN_RE.search(image):
+            findings.append({
+                "severity": "blocker",
+                "message": f"Container image '{image}' looks like an unfilled placeholder "
+                           "token, not a real image reference — ECS will reject it "
+                           "(invalid image reference) or, worse, silently fail to start.",
+            })
 
     if _EMPTY_CRED_RE.search(template):
         findings.append({
             "severity": "critical",
             "message": "Found a connection string with an empty username or password "
                        "(e.g. '://user:@' or '://:@') — a credential failed to interpolate.",
+        })
+
+    if _BROKEN_CRED_REF_RE.search(template):
+        findings.append({
+            "severity": "blocker",
+            "message": "A connection string interpolates a bare `${LogicalId}` directly as "
+                       "the credential (this resolves to that resource's ARN, not its actual "
+                       "value) instead of a `{{resolve:secretsmanager:<arn-or-ref>:"
+                       "SecretString:<key>}}` dynamic reference — the app would get the "
+                       "literal secret ARN as its password and fail to connect.",
+        })
+
+    for match in _HARDCODED_ARN_RE.finditer(template):
+        findings.append({
+            "severity": "blocker",
+            "message": f"An IAM Resource/Principal grant hardcodes a 12-digit AWS account ID "
+                       f"('{match.group(1)}') instead of using `${{AWS::AccountId}}`/"
+                       "`${AWS::Region}` — this won't resolve correctly if deployed into a "
+                       "different account, and silently references whatever account the "
+                       "number happens to belong to.",
         })
 
     for match in _WILDCARD_PRINCIPAL_RE.finditer(template):

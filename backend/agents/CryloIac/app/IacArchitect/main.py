@@ -57,7 +57,11 @@ AUTHORING RULES (from the build spec):
   `${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${naming_prefix}-<node_id>:latest`).
   NEVER emit a generic public image (nginx:latest, httpd:latest, alpine, hello-world,
   etc.) in its place — a stack that "succeeds" while running the wrong image is a
-  silent failure, worse than one that fails to deploy.
+  silent failure, worse than one that fails to deploy. NEVER emit a literal
+  placeholder token either (e.g. `<IMAGE_URL_PLACEHOLDER>`, `YOUR_IMAGE_HERE`,
+  `REPLACE_ME`) — ECS will reject it outright, and it's no more real than a generic
+  public image. The real `${AWS::AccountId}.dkr.ecr...}` reference above is always
+  constructible from the build spec; there is never a reason to leave a stand-in.
 - IAM roles for ECS: every `AWS::ECS::TaskDefinition` needs TWO separate IAM roles,
   never one shared role:
     * ExecutionRoleArn — only what CFN/ECS needs to start the task: ECR image pull,
@@ -71,6 +75,14 @@ AUTHORING RULES (from the build spec):
       the spec doesn't imply the app calls. Never put `Resource: "*"` on
       secretsmanager/s3/sqs/sns actions — always scope to the ARN of the resource you
       created in this same template.
+    * Every `Resource:`/`Principal:` ARN you write in an IAM policy statement must use
+      `${AWS::AccountId}`/`${AWS::Region}` pseudo-parameters, NEVER a literal 12-digit
+      account number or literal region string — an IAM grant is always describing "this
+      same deploying account", and a hardcoded account number breaks the template if
+      deployed anywhere else (and can coincidentally reference the wrong account
+      entirely). This does NOT apply to a pre-existing secret's real ARN used to
+      *resolve its value* (see `secrets:`/`generated_env` below) — that ARN is supplied
+      data, not something you construct, and must stay exactly as given.
 - security groups (continued): restrict egress explicitly per tier instead of the
   CloudFormation default allow-all — a service/worker SG should egress only to the
   ports it actually needs (DB port to the db SG, cache port to the cache SG, 443 for
@@ -128,7 +140,14 @@ AUTHORING RULES (from the build spec):
 - generated_env: synthesize each entry from the resources you create (e.g. DATABASE_URL
   from the RDS endpoint + its generated master-credentials secret, REDIS_URL from the
   ElastiCache primary endpoint, CELERY_BROKER_URL from the SQS queue URL) and inject it
-  as a container environment variable.
+  as a container environment variable. When a value embeds a generated secret's
+  password (e.g. RDS master password in DATABASE_URL), you MUST use the dynamic
+  reference `{{resolve:secretsmanager:${SecretLogicalId}:SecretString:password}}` —
+  e.g. `!Sub 'postgres://${DbUser}:{{resolve:secretsmanager:${DbSecret}:SecretString:
+  password}}@${DbInstance.Endpoint.Address}:5432/appdb'`. Do NOT write
+  `${SecretLogicalId}` directly as the credential (a plain Sub/Ref of an
+  `AWS::SecretsManager::Secret` resolves to that secret's ARN string, not its password
+  — the app would try to authenticate with the literal ARN text and fail every time).
 - domain: if domain.has_domain, add an ACM certificate (DNS validation) for
   domain.domain_name and an HTTPS:443 listener; otherwise an HTTP:80 listener only.
 - observability: enable Container Insights on the ECS cluster, give each task an
