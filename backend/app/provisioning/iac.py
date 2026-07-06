@@ -120,6 +120,56 @@ def _lint_fix_loop(template: str, validation: dict[str, Any], *, spec: dict, pro
     return template, validation, message
 
 
+def _security_fix_instruction(blockers: list[dict[str, str]]) -> str:
+    listed = "\n".join(f"- {f['message']}" for f in blockers)
+    return ("The current template has these deployment-blocking issues. Fix ONLY these, "
+            f"changing nothing else:\n{listed}")
+
+
+def _security_fix_loop(template: str, findings: list[dict[str, str]], *, spec: dict,
+                        project: Project, model: str | None, region: str,
+                        history: list | None = None, max_rounds: int = 2
+                        ) -> tuple[str, list[dict[str, str]], str | None]:
+    """Bounded corrective loop for `blocker`-severity findings (currently just
+    ``check_ecs_network_reachability``) — the same regression (WorkerService left in a
+    private subnet with no NAT path) has now recurred twice despite a strengthened
+    authoring rule, so don't just surface it and wait on the user to type a manual fix;
+    give the agent one or two bounded rounds to self-correct first, exactly like
+    ``_lint_fix_loop`` does for cfn-lint errors. Only `blocker` findings drive this loop —
+    `warning`/`critical` findings are left for the user to review, not auto-edited."""
+    message = None
+    rounds = 0
+    blockers = [f for f in findings if f["severity"] == "blocker"]
+    while blockers and rounds < max_rounds:
+        rounds += 1
+        fix_resp = _invoke_iac({
+            "mode": "refine", "template": template,
+            "instruction": _security_fix_instruction(blockers),
+            "build_spec": spec, "history": history or [], "model": model,
+        }, project)
+        if (fix_resp or {}).get("error"):
+            log.warning("security-fix round %d failed: %s", rounds, fix_resp["error"])
+            break
+        fixed = None
+        fix_edits = (fix_resp or {}).get("edits") or []
+        if fix_edits:
+            try:
+                fixed = _apply_edits(template, fix_edits)
+            except _EditApplyError:
+                fixed = None
+        elif (fix_resp or {}).get("template"):
+            fixed = fix_resp["template"]
+        if not fixed:
+            break
+        fixed_findings = security_scan(fixed) + check_ecs_network_reachability(fixed, spec)
+        fixed_blockers = [f for f in fixed_findings if f["severity"] == "blocker"]
+        if len(fixed_blockers) >= len(blockers):
+            break  # no improvement — keep the prior template, stop looping
+        template, findings, blockers = fixed, fixed_findings, fixed_blockers
+        message = (fix_resp or {}).get("message") or message
+    return template, findings, message
+
+
 # ── Preconditions + spec assembly ──────────────────────────────────────────────
 
 def _intent_for_spec(intent: IntentRecord | None) -> dict[str, Any]:
@@ -416,11 +466,19 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
             message = fix_msg
         template = enforce_free_tier_limits(template, spec)
 
+    findings = security_scan(template) + check_ecs_network_reachability(template, spec)
+    if any(f["severity"] == "blocker" for f in findings):
+        template, findings, fix_msg = _security_fix_loop(
+            template, findings, spec=spec, project=project, model=model, region=region)
+        if fix_msg:
+            message = fix_msg
+        template = enforce_free_tier_limits(template, spec)
+        validation = lint_template(template, region)
+
     deployment.cloudformation_template = template
     deployment.status = Deployment.Status.GENERATING_IAC
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
-    findings = security_scan(template) + check_ecs_network_reachability(template, spec)
     return {"template": template, "message": message, "validation": validation,
             "status": deployment.status, "security_findings": findings}
 
@@ -501,11 +559,20 @@ def refine(project: Project, instruction: str, history: list | None = None,
         if fix_msg:
             message = fix_msg
 
+    findings = security_scan(new_template) + check_ecs_network_reachability(new_template, spec)
+    if any(f["severity"] == "blocker" for f in findings):
+        new_template, findings, fix_msg = _security_fix_loop(
+            new_template, findings, spec=spec, project=project, model=model,
+            region=region, history=history)
+        if fix_msg:
+            message = fix_msg
+        new_template = enforce_free_tier_limits(new_template, spec)
+        validation = lint_template(new_template, region)
+
     deployment.cloudformation_template = new_template
     deployment.status = Deployment.Status.GENERATING_IAC
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
-    findings = security_scan(new_template) + check_ecs_network_reachability(new_template, spec)
     return {"outcome": "edit", "template": new_template, "message": message,
             "validation": validation, "status": deployment.status,
             "security_findings": findings}

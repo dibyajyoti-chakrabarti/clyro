@@ -102,6 +102,7 @@ export default function IacEditor({
   template,
   onTemplateChange,
   validation,
+  findings,
   generating,
   refining,
   validating,
@@ -123,6 +124,8 @@ export default function IacEditor({
   const errors = validation?.errors ?? 0
   const warnings = validation?.warnings ?? 0
   const isValid = validation?.is_valid
+  const blockers = (findings || []).filter((f) => f.severity === 'blocker')
+  const otherFindings = (findings || []).filter((f) => f.severity !== 'blocker')
 
   // ── Generation progress ────────────────────────────────────────────────────
 
@@ -345,10 +348,15 @@ export default function IacEditor({
               <div>
                 {validation == null ? (
                   <span className='text-xs text-text-muted'>Not validated yet</span>
-                ) : isValid ? (
+                ) : isValid && blockers.length === 0 ? (
                   <span className='flex items-center gap-1.5 text-xs text-success'>
                     <Check className='h-3.5 w-3.5' strokeWidth={3} />
                     Valid{warnings ? ` · ${warnings} warning${warnings > 1 ? 's' : ''}` : ''}
+                  </span>
+                ) : isValid && blockers.length > 0 ? (
+                  <span className='flex items-center gap-1.5 text-xs text-red-400'>
+                    <AlertTriangle className='h-3.5 w-3.5' />
+                    {blockers.length} security blocker{blockers.length > 1 ? 's' : ''} found
                   </span>
                 ) : (
                   <span className='flex items-center gap-1.5 text-xs text-red-400'>
@@ -497,6 +505,24 @@ export default function IacEditor({
         </div>
       )}
 
+      {/* ── Security findings ── */}
+      {template && (blockers.length > 0 || otherFindings.length > 0) && (
+        <div className='shrink-0 space-y-1.5 border-t border-white/[0.07] px-6 py-3'>
+          {blockers.map((f, i) => (
+            <div key={`blocker-${i}`} className='flex items-start gap-2 text-xs text-red-300'>
+              <AlertTriangle className='mt-0.5 h-3.5 w-3.5 shrink-0' />
+              <span>{f.message}</span>
+            </div>
+          ))}
+          {otherFindings.map((f, i) => (
+            <div key={`finding-${i}`} className='flex items-start gap-2 text-xs text-text-muted'>
+              <AlertTriangle className='mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500/70' />
+              <span>{f.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Footer ── */}
       <div className='flex shrink-0 items-center gap-4 border-t border-white/[0.07] px-6 py-3'>
         <button
@@ -512,7 +538,11 @@ export default function IacEditor({
           <ArrowRight className='h-4 w-4' />
         </Button>
         {!ready && template && !generating && !error && (
-          <span className='text-xs text-text-muted'>Validate the template to continue.</span>
+          <span className='text-xs text-text-muted'>
+            {blockers.length > 0
+              ? 'Resolve the security blocker(s) above to continue.'
+              : 'Validate the template to continue.'}
+          </span>
         )}
       </div>
 
