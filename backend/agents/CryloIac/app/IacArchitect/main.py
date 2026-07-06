@@ -136,7 +136,16 @@ AUTHORING RULES (from the build spec):
   characters — account for it), IAM role name 64 chars, SQS queue name 80 chars.
 - secrets: reference each entry in secrets[] via a CloudFormation dynamic reference
   ({{resolve:secretsmanager:<arn>}}) injected as a container environment variable —
-  NEVER inline a secret value.
+  NEVER inline a secret value. These secrets are stored as PLAIN STRINGS (created via
+  a raw `SecretString` write, not a JSON document) — the reference must be exactly
+  `{{resolve:secretsmanager:<arn>}}` or `{{resolve:secretsmanager:<arn>:SecretString}}`,
+  with NO trailing `:<json-key>` segment. Do NOT append a third segment like
+  `:SecretString:SECRET_KEY` (as if extracting a field from a JSON object) — that tells
+  AWS to JSON-parse the secret and fails at deploy time with "Could not parse
+  SecretString JSON" on a plain-string secret. This is different from the
+  `generated_env` RDS master-credentials secret below, which genuinely IS created as
+  JSON (`{"username": ..., "password": ...}`) and DOES need the `:SecretString:password`
+  field-extraction form — don't confuse the two patterns.
 - generated_env: synthesize each entry from the resources you create (e.g. DATABASE_URL
   from the RDS endpoint + its generated master-credentials secret, REDIS_URL from the
   ElastiCache primary endpoint, CELERY_BROKER_URL from the SQS queue URL) and inject it
