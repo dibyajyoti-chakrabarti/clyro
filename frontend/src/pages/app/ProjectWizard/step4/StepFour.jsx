@@ -34,6 +34,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   // iac phase state
   const [iacTemplate, setIacTemplate] = useState('')
   const [iacValidation, setIacValidation] = useState(null)
+  const [iacFindings, setIacFindings] = useState([])
   const [iacGenerating, setIacGenerating] = useState(false)
   const [iacRefining, setIacRefining] = useState(false)
   const [iacValidating, setIacValidating] = useState(false)
@@ -82,6 +83,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
         if (data.template) {
           setIacTemplate(data.template)
           setIacValidation(data.validation || null)
+          setIacFindings(data.security_findings || [])
           setIacReady(data.status === 'iac_ready')
           setPhase('iac')
         } else {
@@ -177,6 +179,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
       } else {
         setIacTemplate(data.template)
         setIacValidation(data.validation || null)
+        setIacFindings(data.security_findings || [])
         setIacReady(data.status === 'iac_ready')
         if (data.message) {
           setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message }])
@@ -208,10 +211,12 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
       const data = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, model: chatModel })
       if (data.outcome === 'answer') {
         // A question — the agent answered without touching the template.
+        setIacFindings(data.security_findings || [])
         setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || '' }])
       } else {
         setIacTemplate(data.template || '')
         setIacValidation(data.validation || null)
+        setIacFindings(data.security_findings || [])
         setIacReady(data.status === 'iac_ready')
         setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || 'Updated the template.' }])
       }
@@ -228,6 +233,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     try {
       const data = await api.validateIac(projectId, { template: iacTemplate })
       setIacValidation(data.validation || null)
+      setIacFindings(data.security_findings || [])
       setIacReady(data.status === 'iac_ready')
     } catch (err) {
       setIacError(err.data?.error || 'Validation failed — please try again.')
@@ -404,8 +410,9 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     return (
       <IacEditor
         template={iacTemplate}
-        onTemplateChange={(v) => { setIacTemplate(v); setIacReady(false) }}
+        onTemplateChange={(v) => { setIacTemplate(v); setIacReady(false); setIacFindings([]) }}
         validation={iacValidation}
+        findings={iacFindings}
         generating={iacGenerating}
         refining={iacRefining}
         validating={iacValidating}
