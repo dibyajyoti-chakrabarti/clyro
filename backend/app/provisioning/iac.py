@@ -332,6 +332,21 @@ _ECS_SERVICE_BLOCK_RE = re.compile(
     r"^  (\w+):\n    Type: AWS::ECS::Service\b(.*?)(?=^  \w+:\n    Type:|\Z)", re.M | re.S
 )
 
+_CACHE_REPL_GROUP_BLOCK_RE = re.compile(
+    r"^(  \w+:\n    Type: AWS::ElastiCache::ReplicationGroup\b.*?)(?=^  \w+:\n    Type:|\Z)",
+    re.M | re.S,
+)
+_RETAIN_POLICY_RE = re.compile(r"^(    UpdateReplacePolicy: |    DeletionPolicy: )Retain$", re.M)
+
+_VERIFIED_CF_POLICY_IDS = {
+    "658327ea-f89d-4fab-a63d-7e88639e58f6",  # CachingOptimized
+    "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",  # CachingDisabled
+    "b689b0a8-53d0-40ab-baf2-68738e2966ac",  # AllViewerExceptHostHeader (origin request)
+}
+_CF_POLICY_ID_RE = re.compile(
+    r"(CachePolicyId|OriginRequestPolicyId):\s*['\"]?([0-9a-f-]{36})['\"]?"
+)
+
 
 def check_ecs_network_reachability(template: str, spec: dict) -> list[dict[str, str]]:
     """Found live: build_spec sets task_placement="public" (and creates no NAT gateway)
@@ -380,6 +395,28 @@ def enforce_free_tier_limits(template: str, spec: dict) -> str:
         return match.group(0)
 
     return _BACKUP_RETENTION_RE.sub(_cap, template)
+
+
+def enforce_elasticache_deletion_policy(template: str) -> str:
+    """Found live: an authoring rule previously told the agent to use
+    DeletionPolicy/UpdateReplacePolicy: Retain on ElastiCache::ReplicationGroup as a
+    data-safety net — but Retain means CloudFormation never deletes the replication
+    group, and a retained cluster's ENI keeps its CacheSecurityGroup from being
+    released. The very first time any OTHER resource in the same stack failed and CFN
+    auto-rolled-back, the rollback got permanently stuck (ROLLBACK_FAILED) trying to
+    delete that security group, leaving the cache (and everything downstream of it)
+    running and billing with no clean retry path. Deterministically force Snapshot
+    instead — same final-snapshot safety net as RDS, but the resource still actually
+    deletes. Rewritten by function, not left to the authoring rule alone, because this
+    single template-wide setting fully determines whether every future rollback/delete
+    can ever complete."""
+    if not template:
+        return template
+
+    def _fix_block(match: "re.Match") -> str:
+        return _RETAIN_POLICY_RE.sub(lambda m: f"{m.group(1)}Snapshot", match.group(1))
+
+    return _CACHE_REPL_GROUP_BLOCK_RE.sub(_fix_block, template)
 
 
 def security_scan(template: str) -> list[dict[str, str]]:
@@ -432,6 +469,17 @@ def security_scan(template: str) -> list[dict[str, str]]:
                                "of the resource this template creates.",
                 })
 
+    for prop_name, policy_id in _CF_POLICY_ID_RE.findall(template):
+        if policy_id not in _VERIFIED_CF_POLICY_IDS:
+            findings.append({
+                "severity": "blocker",
+                "message": f"CloudFront {prop_name} '{policy_id}' isn't one of the "
+                           "verified AWS-managed policy IDs — it's either hallucinated "
+                           "or a policy ID that doesn't exist in this account/region, "
+                           "and CreateDistribution will fail with 'InvalidRequest: The "
+                           "specified origin request policy does not exist.'",
+            })
+
     return findings
 
 
@@ -454,6 +502,7 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
     template = (resp or {}).get("template", "") or ""
     message = (resp or {}).get("message") or "Generated your CloudFormation template."
     template = enforce_free_tier_limits(template, spec)
+    template = enforce_elasticache_deletion_policy(template)
 
     region = deployment.aws_connection.aws_region or "us-east-1"
     validation = lint_template(template, region)
@@ -465,6 +514,7 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
         if fix_msg:
             message = fix_msg
         template = enforce_free_tier_limits(template, spec)
+        template = enforce_elasticache_deletion_policy(template)
 
     findings = security_scan(template) + check_ecs_network_reachability(template, spec)
     if any(f["severity"] == "blocker" for f in findings):
@@ -473,6 +523,7 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
         if fix_msg:
             message = fix_msg
         template = enforce_free_tier_limits(template, spec)
+        template = enforce_elasticache_deletion_policy(template)
         validation = lint_template(template, region)
 
     deployment.cloudformation_template = template
@@ -548,6 +599,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
         new_template = (resp or {}).get("template", "") or current
 
     new_template = enforce_free_tier_limits(new_template, spec)
+    new_template = enforce_elasticache_deletion_policy(new_template)
     validation = lint_template(new_template, region)
 
     # Bounded corrective loop if the edit introduced cfn-lint ERRORS (warnings are
@@ -558,6 +610,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
             region=region, history=history)
         if fix_msg:
             message = fix_msg
+        new_template = enforce_elasticache_deletion_policy(new_template)
 
     findings = security_scan(new_template) + check_ecs_network_reachability(new_template, spec)
     if any(f["severity"] == "blocker" for f in findings):
@@ -567,6 +620,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
         if fix_msg:
             message = fix_msg
         new_template = enforce_free_tier_limits(new_template, spec)
+        new_template = enforce_elasticache_deletion_policy(new_template)
         validation = lint_template(new_template, region)
 
     deployment.cloudformation_template = new_template

@@ -97,8 +97,15 @@ AUTHORING RULES (from the build spec):
       maximum available to free tier customers." 1 is safe; 7 is not, on those
       accounts. Paid-tier accounts can use 7.
     * On every stateful data resource (RDS DBInstance/DBCluster, ElastiCache
-      ReplicationGroup) set BOTH DeletionPolicy AND UpdateReplacePolicy (Snapshot for
-      RDS/Aurora, Retain for ElastiCache). cfn-lint W3011 fires if only one is present.
+      ReplicationGroup) set BOTH DeletionPolicy AND UpdateReplacePolicy to Snapshot.
+      cfn-lint W3011 fires if only one is present. Do NOT use Retain on ElastiCache —
+      it was tried and breaks CloudFormation's own automatic rollback: if ANY other
+      resource in the stack fails after the cache finishes creating, CFN's rollback
+      can't delete the CacheSecurityGroup because the retained (never-deleted)
+      replication group's ENI still references it, permanently wedging the stack in
+      ROLLBACK_FAILED with the cache and its security group still running and billing.
+      Snapshot deletes the replication group (after taking a final snapshot) exactly
+      like RDS, so rollback/teardown can actually complete.
 - naming: three prefixes are provided — use the right one per resource type, they are
   NOT interchangeable:
     * `naming_prefix` — the default. Use it for everything not listed below.
