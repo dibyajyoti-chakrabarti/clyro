@@ -19,6 +19,18 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: clyro_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build: ./backend
     container_name: clyro_backend
@@ -27,15 +39,40 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgres://clyro:clyro@db:5432/clyro_db
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     env_file:
       - ./backend/.env.local
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./backend:/app
       - /app/venv
       # Local dev: give the container the host's AWS creds (for Bedrock AgentCore).
+      - ${HOME}/.aws:/root/.aws:ro
+
+  celery_worker:
+    build: ./backend
+    container_name: clyro_celery_worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://clyro:clyro@db:5432/clyro_db
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    env_file:
+      - ./backend/.env.local
+    command: celery -A config worker --loglevel=info
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/venv
       - ${HOME}/.aws:/root/.aws:ro
 
   frontend:
