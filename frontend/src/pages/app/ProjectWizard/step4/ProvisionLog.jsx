@@ -5,9 +5,12 @@ import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPan
 
 const VISIBLE_TAIL = 6
 
-function ProvisionLog({ provisioningLog, deployStatus, deployError, onRetry, onBack, onCancel, cancelLoading, cancelError }) {
+function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrecting, onRetry, onBack, onCancel, cancelLoading, cancelError }) {
   const [expanded, setExpanded] = useState(false)
-  const deployFailed = deployStatus === 'failed' || deployStatus === 'rolled_back'
+  const rawFailed = deployStatus === 'failed' || deployStatus === 'rolled_back'
+  // A raw failed/rolled_back status isn't necessarily terminal — the backend may
+  // still be mid its one-round auto-correction (real AWS error -> refine -> retry).
+  const deployFailed = rawFailed && !deployCorrecting
   const isCancelable = !deployFailed && deployStatus !== 'deleting' && deployStatus !== 'deleted'
 
   // Track only the latest event per resource — CFN emits both an IN_PROGRESS and a
@@ -40,10 +43,19 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, onRetry, onB
             <span className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
           )}
           <h3 className='text-lg font-semibold'>
-            {deployFailed ? 'Provisioning failed' : 'Provisioning infrastructure'}
+            {deployFailed
+              ? 'Provisioning failed'
+              : rawFailed && deployCorrecting
+                ? 'Deploy failed — retrying with a correction…'
+                : 'Provisioning infrastructure'}
           </h3>
         </div>
-        {!deployFailed ? (
+        {rawFailed && deployCorrecting ? (
+          <p className='mt-1 text-sm text-text-muted'>
+            The last attempt hit a real AWS error — automatically applying one correction and
+            retrying before giving up.
+          </p>
+        ) : !deployFailed ? (
           <p className='mt-1 text-sm text-text-muted'>This typically takes 8–12 minutes — you can keep this tab open.</p>
         ) : null}
 

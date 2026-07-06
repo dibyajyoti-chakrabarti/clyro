@@ -52,8 +52,10 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   const [provisioningLog, setProvisioningLog] = useState([])
   const [deployStatus, setDeployStatus] = useState(null)
   const [deployError, setDeployError] = useState(null)
+  const [deployCorrecting, setDeployCorrecting] = useState(false)
   const [stackOutputs, setStackOutputs] = useState([])
   const deployPollRef = useRef(null)
+  const provisionJobIdRef = useRef(null)
 
   // infra lifecycle (pause / resume / delete) state
   const [infraActionLoading, setInfraActionLoading] = useState(false)
@@ -269,11 +271,33 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
       setDeployStatus(data.status)
       setStackOutputs(data.outputs || [])
       if (data.error) setDeployError(data.error)
+
       if (data.status === 'complete') {
         stopDeployPoll()
         setPhase('success')
-      } else if (data.status === 'failed' || data.status === 'rolled_back') {
+        return
+      }
+
+      // A raw 'failed'/'rolled_back' CFN status isn't necessarily terminal —
+      // the backend's provision_with_feedback job may still be mid one-round
+      // auto-correction (real AWS error -> refine -> retry). Only stop polling
+      // once the SUPERVISING JOB itself reaches a terminal state; that's the
+      // actual authority on whether this attempt is really done.
+      if (data.status === 'failed' || data.status === 'rolled_back') {
+        if (!provisionJobIdRef.current) {
+          stopDeployPoll()  // no job to consult (shouldn't happen) — stop safely
+          return
+        }
+        const job = await api.getJobStatus(projectId, provisionJobIdRef.current)
+        if (job.status === 'running' || job.status === 'pending') {
+          setDeployCorrecting(true)  // still mid auto-correction — keep polling
+          return
+        }
+        setDeployCorrecting(false)
         stopDeployPoll()
+        if (job.status === 'failed') setDeployError(job.error || deployError)
+      } else {
+        setDeployCorrecting(false)
       }
     } catch (err) {
       setDeployError(err.data?.error || null)  // transient — keep polling
@@ -288,12 +312,14 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
 
   const handleProvision = async () => {
     setDeployError(null)
+    setDeployCorrecting(false)
     setProvisioningLog([])
     setStackOutputs([])
     setDeployStatus('submitting')
     setPhase('provisioning')
     try {
-      await api.startDeploy(projectId)
+      const { job_id: jobId } = await api.startDeploy(projectId)
+      provisionJobIdRef.current = jobId
       startDeployPoll()
     } catch (err) {
       setDeployError(err.data?.error || 'Failed to start provisioning.')
@@ -457,6 +483,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
           provisioningLog={provisioningLog}
           deployStatus={deployStatus}
           deployError={deployError}
+          deployCorrecting={deployCorrecting}
           onRetry={handleProvision}
           onBack={() => setPhase('review')}
           onCancel={handleTeardown}
