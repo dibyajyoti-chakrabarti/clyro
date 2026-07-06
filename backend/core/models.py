@@ -356,6 +356,46 @@ class DeploymentStackOutput(models.Model):
         return f"{self.output_key} = {self.output_value}"
 
 
+class AgentJob(models.Model):
+    """A single async invocation of one of the Bedrock AgentCore agents (scan,
+    Step-3 chat, IaC generate/refine, provisioning-with-feedback), run via Celery
+    instead of blocking the Django request/response cycle. One shared model for
+    every job kind rather than four bespoke tables — the frontend polls
+    `.../status/<id>/` the same way for all of them, mirroring the pattern already
+    proven for CloudFormation deploy status."""
+
+    class Kind(models.TextChoices):
+        SCAN = 'scan'
+        CANVAS_CHAT = 'canvas_chat'
+        IAC_GENERATE = 'iac_generate'
+        IAC_REFINE = 'iac_refine'
+        PROVISION = 'provision'
+
+    class Status(models.TextChoices):
+        PENDING = 'pending'
+        RUNNING = 'running'
+        DONE = 'done'
+        FAILED = 'failed'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='agent_jobs')
+    kind = models.TextField(choices=Kind.choices)
+    status = models.TextField(choices=Status.choices, default=Status.PENDING)
+    result = models.JSONField(null=True, blank=True)
+    error = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'agent_jobs'
+        indexes = [
+            models.Index(fields=['project', 'kind']),
+        ]
+
+    def __str__(self):
+        return f"AgentJob {self.id} ({self.kind}, {self.status})"
+
+
 class ProvisioningLogEntry(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name='log_entries')
