@@ -457,6 +457,9 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
           deployError={deployError}
           onRetry={handleProvision}
           onBack={() => setPhase('review')}
+          onCancel={handleTeardown}
+          cancelLoading={infraActionLoading}
+          cancelError={infraActionError}
         />
       </div>
     )
