@@ -8,11 +8,13 @@ logger = logging.getLogger(__name__)
 
 
 def get_mcp_client():
-    # IacArchitect connects to its OWN gateway (CryloIacGw), which exposes the full
-    # CloudFormation authoring toolset (validate + cfn-guard compliance + CFN doc
-    # search + pre-deploy instructions) plus docs/pricing. The Step 3 Reasoning
-    # gateway (CryloCanvasGw) deliberately exposes only validate, so those extra
-    # tools are scoped to this agent.
+    # IacArchitect connects to its OWN gateway (CryloIacGw), which exposes
+    # validate_cloudformation_template (cfn-lint) and search_documentation/
+    # read_documentation (AWS docs, for the narrow class of fact — CloudFront policy
+    # IDs, current RDS engine versions — that's a specific current VALUE rather than a
+    # schema question; see _AUTHORING_RULES/TOOLS in main.py). The Step 3 Reasoning
+    # gateway (CryloCanvasGw) deliberately exposes only validate, so the docs tool is
+    # scoped to this agent.
     url = os.environ.get("AGENTCORE_GATEWAY_CRYLOIACGW_URL")
     if not url:
         logger.warning(

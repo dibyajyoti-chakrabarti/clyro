@@ -211,13 +211,23 @@ You operate in two modes (given in the input):
              everything else intact.
 {_AUTHORING_RULES}
 
-TOOLS — exactly two, nothing else exists:
+TOOLS:
 - validate_cloudformation_template (cfn-lint) — syntax / schema / property checks.
 - check_cloudformation_template_compliance (cfn-guard) — security findings.
-There is NO documentation-lookup tool. Rely on your own CloudFormation knowledge for
-property names, types, and values — you know these resources well. If you get one
-wrong, validate_cloudformation_template reports it (usually with the valid options) and
-you fix it. Do not stall waiting to "look something up"; author confidently, then validate.
+- search_documentation / read_documentation (official AWS docs) — use ONLY for the
+  narrow class of fact that is a specific, current AWS-side VALUE rather than a
+  schema/property question: an AWS-managed CloudFront CachePolicy/OriginRequestPolicy
+  Id, or a currently-supported RDS/Aurora engine version. These are facts your training
+  data can be stale or simply wrong on (a previously-used engine version aged out; a
+  policy Id was invented) and cfn-lint cannot check a value's *correctness*, only its
+  *shape*. Do NOT use these tools for schema/property-name questions — you know
+  CloudFormation's structure well, and validate_cloudformation_template already reports
+  the valid options when you get a property wrong. Calling a doc tool for every
+  property would be slow and is not what it's for.
+For everything else — property names, types, general structure — rely on your own
+CloudFormation knowledge. If you get one wrong, validate_cloudformation_template
+reports it (usually with the valid options) and you fix it. Do not stall waiting to
+"look something up" for ordinary schema questions; author confidently, then validate.
 
 VALIDATION — INITIAL GENERATION ONLY (mode=generate). Drive cfn-lint ERRORS to ZERO
 before you return; the stop condition is "zero errors", NOT a fixed number of rounds.
