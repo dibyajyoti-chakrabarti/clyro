@@ -6,8 +6,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import AWSAccountConnection, EnvVarKey, Project
+from core.models import AgentJob, AWSAccountConnection, EnvVarKey, Project
 from app.auth import CognitoAuthentication
+from app import tasks
 from .aws_client import assume_role, get_account_id, write_secret
 from .cfn_bootstrap import generate_cfn_console_url
 from . import iac
@@ -239,10 +240,9 @@ def iac_generate(request, pk):
     project, err = _get_project_or_404(request, pk)
     if err:
         return err
-    try:
-        return Response(iac.generate(project, model=request.data.get('model')))
-    except iac.IacError as exc:
-        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.IAC_GENERATE)
+    tasks.run_iac_generate_task.delay(str(job.id), str(project.id), request.data.get('model'))
+    return Response({'job_id': str(job.id)}, status=status.HTTP_202_ACCEPTED)
 
 
 @api_view(['POST'])
@@ -255,15 +255,14 @@ def iac_refine(request, pk):
     instruction = (request.data.get('instruction') or '').strip()
     if not instruction:
         return Response({'error': 'instruction is required'}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        return Response(iac.refine(
-            project, instruction,
-            history=request.data.get('history') or [],
-            template=request.data.get('template'),
-            model=request.data.get('model'),
-        ))
-    except iac.IacError as exc:
-        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.IAC_REFINE)
+    tasks.run_iac_refine_task.delay(
+        str(job.id), str(project.id), instruction,
+        request.data.get('history') or [],
+        request.data.get('template'),
+        request.data.get('model'),
+    )
+    return Response({'job_id': str(job.id)}, status=status.HTTP_202_ACCEPTED)
 
 
 @api_view(['POST'])

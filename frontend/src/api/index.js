@@ -27,6 +27,20 @@ async function request(method, path, body) {
   return data
 }
 
+// Poll a submitted AgentJob until it reaches a terminal state (done/failed).
+// Shared by scan, Step-3 chat, and IaC generate/refine — all of which now
+// return {job_id} immediately instead of blocking on the agent call.
+export async function pollJob(projectId, jobId, { intervalMs = 3000 } = {}) {
+  for (;;) {
+    const data = await api.getJobStatus(projectId, jobId)
+    if (data.status === 'done') return data.result
+    if (data.status === 'failed') {
+      throw Object.assign(new Error(data.error || 'Job failed'), { data })
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+}
+
 export const api = {
   // User
   getMe: () => request('GET', '/api/users/me/'),
@@ -41,6 +55,10 @@ export const api = {
   triggerScan: (id) => request('POST', `/api/projects/${id}/scan/`),
   saveIntent: (id, payload) => request('POST', `/api/projects/${id}/intent/`, payload),
   getWizardState: (id) => request('GET', `/api/projects/${id}/wizard-state/`),
+
+  // Generic async-job polling (scan/canvas_chat/iac_generate/iac_refine all
+  // return {job_id} and are polled here instead of blocking on the request).
+  getJobStatus: (id, jobId) => request('GET', `/api/projects/${id}/jobs/${jobId}/`),
 
   // Canvas (Step 3)
   getCanvas: (id) => request('GET', `/api/projects/${id}/canvas/latest/`),

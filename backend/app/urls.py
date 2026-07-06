@@ -14,6 +14,7 @@ from .canvas.views import (
 )
 from .views import (
     hello,
+    agent_job_status,
     connect_repo,
     github_branches,
     github_installations,
@@ -49,6 +50,7 @@ urlpatterns = [
     path('projects/<uuid:pk>/', project_detail),
     path('projects/<uuid:pk>/connect-repo/', connect_repo),
     path('projects/<uuid:pk>/scan/', trigger_scan),
+    path('projects/<uuid:pk>/jobs/<uuid:job_id>/', agent_job_status),
     path('projects/<uuid:pk>/intent/', save_intent),
     path('projects/<uuid:pk>/wizard-state/', wizard_state),
     path('projects/<uuid:pk>/canvas/latest/', canvas_latest),

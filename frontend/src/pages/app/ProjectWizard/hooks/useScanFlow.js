@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api } from '../../../../api'
+import { api, pollJob } from '../../../../api'
 
 export default function useScanFlow({ projectId, projectData, setProjectData, setStep1CanContinue }) {
   const [searchParams] = useSearchParams()
@@ -116,7 +116,7 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
         setScanStep(i + 1)
       }
 
-      const scanPromise = api.triggerScan(projectId)
+      const scanPromise = api.triggerScan(projectId).then(({ job_id: jobId }) => pollJob(projectId, jobId))
 
       let animStep = 3
       animIntervalRef.current = setInterval(() => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api } from '../../../../api'
+import { api, pollJob } from '../../../../api'
 
 const CHAT_WELCOME = {
   role: 'agent',
@@ -86,12 +86,17 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
     }
   }
 
+  const submitAndPoll = async (payload) => {
+    const { job_id: jobId } = await api.canvasAgent(projectId, payload)
+    return pollJob(projectId, jobId)
+  }
+
   const handleAskAbout = async (message) => {
     const priorTurns = chatHistory.slice(-8)
     setChatHistory((prev) => [...prev, { role: 'user', text: message }])
     setAgentLoading(true)
     try {
-      const res = await api.canvasAgent(projectId, { prompt: message, history: priorTurns })
+      const res = await submitAndPoll({ prompt: message, history: priorTurns })
       applyResult(res)
     } catch {
       appendAgent('Something went wrong talking to the canvas agent.')
@@ -111,7 +116,7 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
     setChatInput('')
     setAgentLoading(true)
     try {
-      const res = await api.canvasAgent(projectId, { prompt: message, history: priorTurns })
+      const res = await submitAndPoll({ prompt: message, history: priorTurns })
       applyResult(res)
     } catch {
       appendAgent('Something went wrong talking to the canvas agent.')
@@ -126,7 +131,7 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
     }
     setAgentLoading(true)
     try {
-      const res = await api.canvasAgent(projectId, { confirm: true, pending_operation: pendingOp })
+      const res = await submitAndPoll({ confirm: true, pending_operation: pendingOp })
       applyResult(res)
     } catch {
       appendAgent('Could not apply the change.')
