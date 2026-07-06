@@ -291,9 +291,15 @@ def deploy_start(request, pk):
     if err:
         return err
     try:
-        return Response(deploy.start(project))
+        start_result = deploy.start(project)
     except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    # The actual multi-minute wait (poll to terminal + the one-round auto-
+    # correction on a real deploy failure) is supervised in the background —
+    # deploy_status keeps working exactly as before for the live log feed.
+    job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.PROVISION)
+    tasks.run_provision_task.delay(str(job.id), str(project.id))
+    return Response({**start_result, 'job_id': str(job.id)})
 
 
 @api_view(['GET'])

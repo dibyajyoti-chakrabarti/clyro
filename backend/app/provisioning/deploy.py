@@ -408,3 +408,94 @@ def _root_failure(deployment: Deployment) -> str | None:
         .first()
     )
     return first.plain_message if first else None
+
+
+# ── Provisioning feedback loop ───────────────────────────────────────────────
+#
+# No agent one-shots provisioning reliably — this session alone hit three
+# distinct real-AWS-only failures (a hallucinated CloudFront policy ID, an
+# ElastiCache Retain policy wedging rollback, a secret referenced as JSON that
+# was actually a plain string) that no amount of static analysis (cfn-lint/
+# cfn-guard/security_scan) could have caught ahead of time — each only surfaces
+# at the real CreateStack call. `provision_with_feedback` closes that gap: it
+# supervises a submit-and-poll attempt end-to-end, and on a real deploy
+# failure, feeds the actual AWS error back into ONE bounded `iac.refine()`
+# correction round (same shape as the existing lint-fix/security-fix loops in
+# iac.py) before retrying once. If the retry also fails, it stops and hands
+# the real error back to the user rather than compounding CFN churn further.
+
+_TERMINAL_STATUSES = (Deployment.Status.COMPLETE, Deployment.Status.FAILED, Deployment.Status.ROLLED_BACK)
+_POLL_INTERVAL_SECONDS = 8
+# 15 min per attempt — the UI's own copy says a healthy deploy typically takes
+# 8-12 min. This task supervises for one correction round, not indefinitely; if
+# a stack is still non-terminal past this ceiling (e.g. an ECS service that
+# never reaches steady state because the user's own image crash-loops), this
+# task simply stops watching and returns the current in-progress state — the
+# frontend's own deploy-status polling keeps reflecting real AWS state either
+# way. Two attempts at this ceiling plus one refine() round must fit inside
+# run_provision_task's soft_time_limit (app/tasks.py) with margin.
+_POLL_TIMEOUT_SECONDS = 900
+
+
+def _poll_to_terminal(project: Project) -> dict[str, Any]:
+    import time
+
+    elapsed = 0
+    result = poll(project)
+    while result["status"] not in _TERMINAL_STATUSES and elapsed < _POLL_TIMEOUT_SECONDS:
+        time.sleep(_POLL_INTERVAL_SECONDS)
+        elapsed += _POLL_INTERVAL_SECONDS
+        result = poll(project)
+    return result
+
+
+def _correction_instruction(root_cause: str) -> str:
+    return (
+        "The last deployment attempt failed with this real AWS error (not a static-"
+        "analysis finding — this happened during the actual CreateStack/UpdateStack "
+        f"call). Fix ONLY what's needed to resolve it, changing nothing else:\n{root_cause}"
+    )
+
+
+def provision_with_feedback(project: Project) -> dict[str, Any]:
+    """Assumes `start()` has already been submitted (the view does this
+    synchronously — it's a fast precondition-checked CreateStack call, not the
+    slow part). Poll to a terminal state, and — on a real deploy failure — make
+    ONE bounded attempt to self-correct from the actual AWS error before
+    handing control back to the user. Returns the final `poll()`-shaped dict."""
+    from . import iac
+
+    result = _poll_to_terminal(project)
+
+    if result["status"] in (Deployment.Status.FAILED, Deployment.Status.ROLLED_BACK):
+        deployment = _active_deployment(project)
+        root_cause = (deployment and _root_failure(deployment)) or result.get("error")
+        if root_cause:
+            try:
+                refine_result = iac.refine(project, _correction_instruction(root_cause))
+                # refine() leaves the deployment in GENERATING_IAC even on a clean
+                # fix — validate() is what promotes it to IAC_READY, the
+                # precondition start() requires before it will resubmit.
+                validate_result = iac.validate(project, refine_result["template"])
+            except iac.IacError:
+                return result  # couldn't even refine — surface the original failure
+            if validate_result["status"] != Deployment.Status.IAC_READY:
+                return result  # the correction didn't produce a clean template — stop here
+            # start()'s own rolled-back-stack cleanup issues delete_stack() but
+            # doesn't wait for it to finish before this resubmits — found live,
+            # this races and raises a transient DeployError ("Removing the
+            # previous failed stack...") exactly the way a human retrying too
+            # quickly would hit it. A person just clicks Provision again a few
+            # seconds later; do the same here, bounded.
+            import time
+            for attempt in range(3):
+                try:
+                    start(project)
+                    break
+                except DeployError:
+                    if attempt == 2:
+                        raise
+                    time.sleep(10)
+            result = _poll_to_terminal(project)
+
+    return result
