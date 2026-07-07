@@ -298,6 +298,8 @@ class Deployment(models.Model):
         IAC_READY = 'iac_ready'
         SUBMITTING = 'submitting'
         IN_PROGRESS = 'in_progress'
+        BUILDING = 'building'
+        BUILD_FAILED = 'build_failed'
         COMPLETE = 'complete'
         FAILED = 'failed'
         ROLLED_BACK = 'rolled_back'
@@ -370,6 +372,7 @@ class AgentJob(models.Model):
         IAC_GENERATE = 'iac_generate'
         IAC_REFINE = 'iac_refine'
         PROVISION = 'provision'
+        BUILD = 'build'
 
     class Status(models.TextChoices):
         PENDING = 'pending'

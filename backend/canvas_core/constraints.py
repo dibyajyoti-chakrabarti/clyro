@@ -198,6 +198,16 @@ def check_operation(canvas: Canvas, operation: Operation) -> ConstraintResult:
                     "always ship as a container image to ECR, so this can't change."
                 ),
             )
+        for locked_field in ("path", "dockerfile_generated"):
+            if locked_field in params and params.get(locked_field) != node.get(locked_field):
+                return ConstraintResult(
+                    ok=False,
+                    reason=(
+                        "The build path is derived from your repository scan — editing it here "
+                        "without re-scanning would silently break the build. Re-run the scan if "
+                        "your code moved."
+                    ),
+                )
         new_service = params.get("aws_service")
         if new_service is None:
             return ConstraintResult(ok=True)

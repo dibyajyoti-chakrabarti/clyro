@@ -75,6 +75,8 @@ def build_canvas_from_detection(detected: dict[str, Any], intent: dict[str, Any]
             "aws_service": intent.get("compute_choice") or _DEFAULT_COMPUTE,
             "image": "ecr",
             "port": 8000,
+            "path": backend.get("path") or ".",
+            "dockerfile_generated": bool(backend.get("dockerfile_generated")),
         })
     if frontend:
         nodes.append({
@@ -82,6 +84,7 @@ def build_canvas_from_detection(detected: dict[str, Any], intent: dict[str, Any]
             "label": _titleize(frontend.get("framework"), _FRAMEWORK_LABELS, "Frontend"),
             "type": "static",
             "aws_service": "s3_cloudfront",
+            "path": frontend.get("path") or ".",
         })
     if database:
         nodes.append({
@@ -98,12 +101,18 @@ def build_canvas_from_detection(detected: dict[str, Any], intent: dict[str, Any]
             "aws_service": "elasticache",
         })
     if worker:
+        # RepoRecon's schema has no `path` on `worker` — a Celery worker is
+        # essentially always co-located with the Django backend in the patterns
+        # this scanner targets, so reuse the backend's build path/Dockerfile
+        # rather than extending RepoRecon's detection contract for this.
         nodes.append({
             "id": "worker",
             "label": _WORKER_LABELS.get(worker.get("type"), "Worker"),
             "type": "worker",
             "aws_service": intent.get("worker_compute_choice") or _DEFAULT_COMPUTE,
             "image": "ecr",
+            "path": backend.get("path") or ".",
+            "dockerfile_generated": bool(backend.get("dockerfile_generated")),
         })
     if queue:
         nodes.append({

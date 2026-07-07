@@ -29,6 +29,7 @@ from core.models import (
 
 from app import agentcore
 
+from . import codebuild_spec
 from .build_spec import build_spec
 
 log = logging.getLogger(__name__)
@@ -566,6 +567,50 @@ def enforce_rds_deletion_policy(template: str) -> str:
     return _DB_INSTANCE_BLOCK_RE.sub(_fix_block, template)
 
 
+_CLOUDFRONT_DIST_RE = re.compile(
+    r"^  (\w+):\n    Type: AWS::CloudFront::Distribution\b", re.M
+)
+_OUTPUTS_SECTION_RE = re.compile(r"^Outputs:", re.M)
+
+
+def enforce_codebuild_projects(template: str, spec: dict) -> str:
+    """Splice in a CodeBuild::Project (+ IAM role) per buildable node — found
+    live: infrastructure was provisioning cleanly (CREATE_COMPLETE, a real
+    CloudFront distribution in the outputs) but was completely unusable, because
+    nothing anywhere ever builds the customer's code and gets it into the ECR
+    repos / S3 bucket IacArchitect creates. ECS retries CannotPullContainerError
+    forever, and the CloudFront URL 403s on an empty bucket. See
+    codebuild_spec.py's module docstring for the full design rationale — this is
+    deterministically generated, not LLM-authored, following the same enforce_*
+    philosophy as every other corrector in this file. Must run after the LLM's
+    own ECS/ECR/S3/CloudFront resources exist, since the frontend project needs
+    the CloudFront distribution's actual logical ID (the one genuinely
+    unpredictable piece — everything else is derived from ${NamingPrefix}/
+    ${IamScopedPrefix} deterministically, matching IacArchitect's own rules)."""
+    if not template:
+        return template
+    if "BuildArchiveBucket:" in template:
+        # Idempotency guard: refine() re-runs this corrector on a template that
+        # already went through generate() once — without this check, every
+        # refine() call would duplicate the CodeBuild resources (this function
+        # has no way to know they're already there otherwise, since it only
+        # ever inserts, never diffs against what's already present).
+        return template
+
+    cf_match = _CLOUDFRONT_DIST_RE.search(template)
+    cloudfront_logical_id = cf_match.group(1) if cf_match else None
+
+    fragment = codebuild_spec.generate_codebuild_resources(spec, cloudfront_logical_id)
+    if not fragment:
+        return template
+
+    out_match = _OUTPUTS_SECTION_RE.search(template)
+    if out_match:
+        insert_at = out_match.start()
+        return template[:insert_at] + fragment + "\n" + template[insert_at:]
+    return template.rstrip("\n") + "\n" + fragment
+
+
 def security_scan(template: str) -> list[dict[str, str]]:
     """Regex-level scan for the audit checklist's known failure modes. Returns a list
     of ``{severity, message}`` findings (empty if clean). Best-effort on raw YAML/JSON
@@ -709,6 +754,13 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
         template = enforce_sg_description_charset(template)
         validation = lint_template(template, region)
 
+    # Runs last, once, after every LLM-facing fix loop is done — not before,
+    # because feeding this back through _lint_fix_loop/_security_fix_loop would
+    # let the LLM "fix" resources it was never told about and doesn't
+    # understand, risking corruption of the deterministic build pipeline.
+    template = enforce_codebuild_projects(template, spec)
+    validation = lint_template(template, region)
+
     deployment.cloudformation_template = template
     deployment.status = Deployment.Status.GENERATING_IAC
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
@@ -826,6 +878,9 @@ def refine(project: Project, instruction: str, history: list | None = None,
         new_template = enforce_log_group_naming(new_template)
         new_template = enforce_sg_description_charset(new_template)
         validation = lint_template(new_template, region)
+
+    new_template = enforce_codebuild_projects(new_template, spec)
+    validation = lint_template(new_template, region)
 
     deployment.cloudformation_template = new_template
     deployment.status = Deployment.Status.GENERATING_IAC

@@ -200,6 +200,10 @@ def build_spec(
                 "fargate_gb": sizing["fargate_gb"],
                 "tasks": sizing["tasks"] if node_type == "service" else 1,
             }
+            entry["build_path"] = node.get("path") or "."
+            entry["dockerfile_generated"] = bool(node.get("dockerfile_generated"))
+        elif node_type == "static":
+            entry["build_path"] = node.get("path") or "."
         elif node_type == "database":
             entry["instance_class"] = (
                 sizing["aurora_class"] if aws_service == "aurora_postgres" else sizing["rds_class"]

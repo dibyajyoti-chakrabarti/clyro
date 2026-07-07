@@ -259,3 +259,55 @@ def start_db_cluster(credentials: dict, region: str, db_cluster_id: str) -> None
     except ClientError as exc:
         if exc.response['Error']['Code'] not in ('InvalidDBClusterStateFault',):
             raise
+
+
+# ── Build step (CodeBuild + the S3 staging bucket its source archive lives in) ──
+
+def _s3_client(credentials: dict, region: str):
+    return boto3.client(
+        's3',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def _codebuild_client(credentials: dict, region: str):
+    return boto3.client(
+        'codebuild',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def put_object(credentials: dict, region: str, bucket: str, key: str, body: bytes) -> None:
+    """Upload the downloaded repo archive to the customer account's own staging
+    bucket (created alongside the CodeBuild projects) using the assumed-role
+    credentials — CodeBuild reads its build source from here via
+    ``sourceLocationOverride``, refreshed per build rather than baked into the
+    CFN template."""
+    s3 = _s3_client(credentials, region)
+    s3.put_object(Bucket=bucket, Key=key, Body=body)
+
+
+def start_codebuild(credentials: dict, region: str, project_name: str, source_location: str) -> str:
+    """Start a build, overriding the CFN-time placeholder Source.Location with
+    the freshly-uploaded archive key. Returns the build id."""
+    codebuild = _codebuild_client(credentials, region)
+    response = codebuild.start_build(
+        projectName=project_name,
+        sourceTypeOverride='S3',
+        sourceLocationOverride=source_location,
+    )
+    return response['build']['id']
+
+
+def batch_get_builds(credentials: dict, region: str, build_ids: list[str]) -> list[dict]:
+    """Return CodeBuild's own build summaries (``buildStatus``, ``phases``,
+    ``logs``, etc.) for the given build ids."""
+    codebuild = _codebuild_client(credentials, region)
+    response = codebuild.batch_get_builds(ids=build_ids)
+    return response.get('builds') or []

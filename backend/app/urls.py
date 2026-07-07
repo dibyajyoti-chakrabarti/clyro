@@ -40,6 +40,7 @@ from .provisioning.views import (
     deploy_pause,
     deploy_resume,
     deploy_teardown,
+    deploy_retry_build,
 )
 
 urlpatterns = [
@@ -74,6 +75,7 @@ urlpatterns = [
     path('projects/<uuid:pk>/deploy/pause/', deploy_pause),
     path('projects/<uuid:pk>/deploy/resume/', deploy_resume),
     path('projects/<uuid:pk>/deploy/teardown/', deploy_teardown),
+    path('projects/<uuid:pk>/deploy/retry-build/', deploy_retry_build),
     path('github/installations/', github_installations),
     path('github/repos/', github_repos),
     path('github/branches/', github_branches),

@@ -352,3 +352,19 @@ def deploy_teardown(request, pk):
         return Response(deploy.teardown(project))
     except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_retry_build(request, pk):
+    """Retry just the build step after Deployment.Status.BUILD_FAILED —
+    deliberately separate from deploy_start: the CFN stack is already
+    CREATE_COMPLETE and must not be resubmitted, only the build needs to run
+    again. Uses deploy_status (the same polling endpoint) to watch progress."""
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.BUILD)
+    tasks.run_build_task.delay(str(job.id), str(project.id))
+    return Response({'job_id': str(job.id)})

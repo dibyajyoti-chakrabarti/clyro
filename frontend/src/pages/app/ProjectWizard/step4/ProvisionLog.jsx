@@ -5,13 +5,19 @@ import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPan
 
 const VISIBLE_TAIL = 6
 
-function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrecting, onRetry, onBack, onCancel, cancelLoading, cancelError }) {
+function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrecting, onRetry, onRetryBuild, onBack, onCancel, cancelLoading, cancelError }) {
   const [expanded, setExpanded] = useState(false)
   const rawFailed = deployStatus === 'failed' || deployStatus === 'rolled_back'
   // A raw failed/rolled_back status isn't necessarily terminal — the backend may
   // still be mid its one-round auto-correction (real AWS error -> refine -> retry).
   const deployFailed = rawFailed && !deployCorrecting
-  const isCancelable = !deployFailed && deployStatus !== 'deleting' && deployStatus !== 'deleted'
+  // The infrastructure itself is up (CFN CREATE_COMPLETE) but the build step
+  // that gets the customer's code into it failed — a distinct state from
+  // deployFailed: the stack is genuinely live and must not be resubmitted,
+  // only the build needs retrying (see StepFour.jsx's handleRetryBuild).
+  const building = deployStatus === 'building'
+  const buildFailed = deployStatus === 'build_failed'
+  const isCancelable = !deployFailed && !buildFailed && deployStatus !== 'deleting' && deployStatus !== 'deleted'
 
   // Track only the latest event per resource — CFN emits both an IN_PROGRESS and a
   // COMPLETE/FAILED event per resource, so counting raw log rows overstates the total.
@@ -37,7 +43,7 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
     <WizardPanel>
       <WizardCard width='lg'>
         <div className='flex items-center gap-2'>
-          {deployFailed ? (
+          {deployFailed || buildFailed ? (
             <XCircle className='h-5 w-5 text-red-400' />
           ) : (
             <span className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
@@ -45,15 +51,29 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
           <h3 className='text-lg font-semibold'>
             {deployFailed
               ? 'Provisioning failed'
-              : rawFailed && deployCorrecting
-                ? 'Deploy failed — retrying with a correction…'
-                : 'Provisioning infrastructure'}
+              : buildFailed
+                ? 'Build failed'
+                : rawFailed && deployCorrecting
+                  ? 'Deploy failed — retrying with a correction…'
+                  : building
+                    ? 'Building your application…'
+                    : 'Provisioning infrastructure'}
           </h3>
         </div>
         {rawFailed && deployCorrecting ? (
           <p className='mt-1 text-sm text-text-muted'>
             The last attempt hit a real AWS error — automatically applying one correction and
             retrying before giving up.
+          </p>
+        ) : building ? (
+          <p className='mt-1 text-sm text-text-muted'>
+            Your infrastructure is up — compiling and pushing your code to it now. This
+            usually takes 2–5 minutes.
+          </p>
+        ) : buildFailed ? (
+          <p className='mt-1 text-sm text-text-muted'>
+            Your infrastructure is live, but the build didn't complete — check the error below,
+            fix it in your repo, and retry the build (no need to re-provision).
           </p>
         ) : !deployFailed ? (
           <p className='mt-1 text-sm text-text-muted'>This typically takes 8–12 minutes — you can keep this tab open.</p>
@@ -172,6 +192,40 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
               >
                 <Trash2 className='h-3.5 w-3.5' />
                 {cancelLoading ? 'Cleaning up…' : 'Delete leftover infrastructure'}
+              </button>
+            </div>
+          </div>
+        ) : buildFailed ? (
+          <div className='mt-5'>
+            {deployError ? (
+              <p className='flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300'>
+                <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
+                {deployError}
+              </p>
+            ) : null}
+            <div className='mt-4 flex items-center gap-4'>
+              <button
+                type='button'
+                className='inline-flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-text-primary'
+                onClick={onBack}
+              >
+                <ArrowLeft className='h-4 w-4' />
+                Back
+              </button>
+              <Button variant='primary' onClick={onRetryBuild}>
+                Retry build
+                <ArrowRight className='h-4 w-4' />
+              </Button>
+              <button
+                type='button'
+                onClick={onCancel}
+                disabled={cancelLoading}
+                className='flex items-center gap-1.5 text-xs text-text-muted transition-colors hover:text-red-300 disabled:opacity-50'
+              >
+                <Trash2 className='h-3.5 w-3.5' />
+                {/* No "leftover" here — unlike deployFailed, the stack is genuinely
+                    live and working, just missing application code. */}
+                {cancelLoading ? 'Cleaning up…' : 'Delete infrastructure'}
               </button>
             </div>
           </div>
