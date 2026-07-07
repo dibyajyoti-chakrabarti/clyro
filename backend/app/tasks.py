@@ -95,11 +95,27 @@ def run_iac_refine_task(job_id: str, project_id: str, instruction: str, history:
 def run_provision_task(job_id: str, project_id: str):
     # Needs far more headroom than the 900s global default (config/settings.py) —
     # up to two full CFN create/rollback cycles (each up to _POLL_TIMEOUT_SECONDS)
-    # plus one iac.refine() round in between.
+    # plus one iac.refine() round in between, plus (now) the build step that
+    # runs once CFN itself is live — see deploy.provision_with_feedback.
     from app.provisioning import deploy
 
     def _do():
         project = Project.objects.get(id=project_id)
         return deploy.provision_with_feedback(project)
+
+    _run(job_id, _do)
+
+
+@shared_task(soft_time_limit=1200, time_limit=1500)
+def run_build_task(job_id: str, project_id: str):
+    # A "Retry build" click after Deployment.Status.BUILD_FAILED — deliberately
+    # does NOT go through provision_with_feedback (which would re-poll/retry
+    # the CFN stack); the stack is already CREATE_COMPLETE and untouched, only
+    # the build step needs to run again.
+    from app.provisioning import build
+
+    def _do():
+        project = Project.objects.get(id=project_id)
+        return build.build_with_feedback(project)
 
     _run(job_id, _do)

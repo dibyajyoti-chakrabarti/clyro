@@ -283,13 +283,19 @@ def poll(project: Project) -> dict[str, Any]:
 
     if cfn_events.is_live(stack_status):
         _save_outputs(deployment, info["outputs"])
-        if deployment.status != Deployment.Status.COMPLETE:
-            deployment.status = Deployment.Status.COMPLETE
-            deployment.completed_at = timezone.now()
-            deployment.save(update_fields=["status", "completed_at", "updated_at"])
-        if project.status != Project.Status.LIVE:
-            project.status = Project.Status.LIVE
-            project.save(update_fields=["status", "updated_at"])
+        # The stack itself is up, but nothing has built the customer's code into
+        # it yet (see build.py) — BUILDING is the signal for
+        # provision_with_feedback to hand off to the build step next; poll()
+        # itself never promotes straight to COMPLETE/LIVE anymore, since a
+        # CREATE_COMPLETE stack with empty ECR repos / an empty S3 bucket isn't
+        # actually usable. A deployment already past BUILDING (COMPLETE,
+        # BUILD_FAILED, etc.) is left alone here — this branch only fires the
+        # first time CFN goes live.
+        if deployment.status not in (
+            Deployment.Status.BUILDING, Deployment.Status.BUILD_FAILED, Deployment.Status.COMPLETE,
+        ):
+            deployment.status = Deployment.Status.BUILDING
+            deployment.save(update_fields=["status", "updated_at"])
     elif cfn_events.is_terminal(stack_status) and cfn_events.is_failure(stack_status):
         new_status = (
             Deployment.Status.ROLLED_BACK if "ROLLBACK" in stack_status else Deployment.Status.FAILED
@@ -451,7 +457,14 @@ def _root_failure(deployment: Deployment) -> str | None:
 # iac.py) before retrying once. If the retry also fails, it stops and hands
 # the real error back to the user rather than compounding CFN churn further.
 
-_TERMINAL_STATUSES = (Deployment.Status.COMPLETE, Deployment.Status.FAILED, Deployment.Status.ROLLED_BACK)
+_TERMINAL_STATUSES = (
+    Deployment.Status.COMPLETE, Deployment.Status.FAILED, Deployment.Status.ROLLED_BACK,
+    # BUILDING is "CFN-terminal," not "deployment-terminal" — it's the signal
+    # that CFN's own lifecycle is done and provision_with_feedback should hand
+    # off to build.build_with_feedback() next. _poll_to_terminal only watches
+    # the CFN stack; it has no reason to keep polling CFN once this is reached.
+    Deployment.Status.BUILDING,
+)
 _POLL_INTERVAL_SECONDS = 8
 # 15 min per attempt — the UI's own copy says a healthy deploy typically takes
 # 8-12 min. This task supervises for one correction round, not indefinitely; if
@@ -487,8 +500,11 @@ def provision_with_feedback(project: Project) -> dict[str, Any]:
     synchronously — it's a fast precondition-checked CreateStack call, not the
     slow part). Poll to a terminal state, and — on a real deploy failure — make
     ONE bounded attempt to self-correct from the actual AWS error before
-    handing control back to the user. Returns the final `poll()`-shaped dict."""
-    from . import iac
+    handing control back to the user. Once CFN itself is live, hand off to the
+    build step (build.build_with_feedback) — a CREATE_COMPLETE stack with no
+    application code in it isn't actually done from the user's perspective.
+    Returns the final `poll()`-shaped dict."""
+    from . import build, iac
 
     result = _poll_to_terminal(project)
 
@@ -511,5 +527,12 @@ def provision_with_feedback(project: Project) -> dict[str, Any]:
             # that here.
             start(project)
             result = _poll_to_terminal(project)
+
+    if result["status"] == Deployment.Status.BUILDING:
+        # Not a CFN-error-correction problem (a broken Dockerfile/build command
+        # isn't something iac.refine() can fix) — build.build_with_feedback
+        # handles its own failure path and does not call back into this
+        # function or retry CFN.
+        result = build.build_with_feedback(project)
 
     return result

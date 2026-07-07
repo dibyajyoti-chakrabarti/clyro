@@ -87,7 +87,32 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
           setIacValidation(data.validation || null)
           setIacFindings(data.security_findings || [])
           setIacReady(data.status === 'iac_ready')
-          setPhase('iac')
+
+          // A submitted/live/build-failed deployment must resume into the
+          // provisioning/success screen, not fall back to the IaC editor —
+          // found live: a fresh page load always showed the editor even when
+          // the deployment had already reached e.g. build_failed, silently
+          // discarding the "Retry build" screen the user needed to see.
+          let deployData = null
+          try {
+            deployData = await api.getDeployStatus(projectId)
+          } catch { /* no submitted deployment yet — fall through to iac */ }
+          if (!cancelled && deployData && deployData.status && deployData.status !== 'iac_ready') {
+            setProvisioningLog(deployData.log || [])
+            setDeployStatus(deployData.status)
+            setStackOutputs(deployData.outputs || [])
+            if (deployData.error) setDeployError(deployData.error)
+            if (deployData.status === 'complete') {
+              setPhase('success')
+            } else {
+              setPhase('provisioning')
+              if (['submitting', 'in_progress', 'building'].includes(deployData.status)) {
+                startDeployPoll()
+              }
+            }
+          } else if (!cancelled) {
+            setPhase('iac')
+          }
         } else {
           // Connected but nothing authored yet — skip to iac (pre-generate screen)
           // only if the secrets were already saved; otherwise resume at env_vars.
@@ -278,6 +303,16 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
         return
       }
 
+      // The infrastructure itself came up clean, but nothing has built the
+      // customer's code into it yet — keep polling (same job_id, same
+      // endpoint) through the build phase; ProvisionLog.jsx shows a distinct
+      // "Building your application…" state for this, not the success screen.
+      if (data.status === 'build_failed') {
+        setDeployCorrecting(false)
+        stopDeployPoll()
+        return
+      }
+
       // A raw 'failed'/'rolled_back' CFN status isn't necessarily terminal —
       // the backend's provision_with_feedback job may still be mid one-round
       // auto-correction (real AWS error -> refine -> retry). Only stop polling
@@ -324,6 +359,21 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     } catch (err) {
       setDeployError(err.data?.error || 'Failed to start provisioning.')
       setDeployStatus('failed')
+    }
+  }
+
+  const handleRetryBuild = async () => {
+    // Deliberately does NOT call handleProvision — the CFN stack is already
+    // CREATE_COMPLETE and must not be resubmitted, only the build step needs
+    // to run again (deploy_retry_build on the backend, not deploy_start).
+    setDeployError(null)
+    setPhase('provisioning')
+    try {
+      const { job_id: jobId } = await api.retryBuild(projectId)
+      provisionJobIdRef.current = jobId
+      startDeployPoll()
+    } catch (err) {
+      setDeployError(err.data?.error || 'Failed to retry the build.')
     }
   }
 
@@ -485,6 +535,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
           deployError={deployError}
           deployCorrecting={deployCorrecting}
           onRetry={handleProvision}
+          onRetryBuild={handleRetryBuild}
           onBack={() => setPhase('review')}
           onCancel={handleTeardown}
           cancelLoading={infraActionLoading}
