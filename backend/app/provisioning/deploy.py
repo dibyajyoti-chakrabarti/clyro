@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from typing import Any
 
 from botocore.exceptions import ClientError
@@ -113,10 +114,28 @@ def start(project: Project) -> dict[str, Any]:
 
     deployment.status = Deployment.Status.SUBMITTING
     deployment.save(update_fields=["status", "updated_at"])
-    try:
-        stack_id = aws_client.create_stack(creds, region, stack_name, deployment.cloudformation_template)
-    except ClientError as exc:
-        msg = exc.response["Error"]["Message"]
+    # Found live: the delete_stack() above is fire-and-forget (CFN deletes
+    # asynchronously) — create_stack moments later can race it and fail with
+    # "already exists"/"_IN_PROGRESS" even though the delete is genuinely still
+    # in flight, not stuck. A human clicking Provision again a few seconds later
+    # just works; do the same automatically, bounded, rather than surfacing a
+    # transient race as a hard failure to both the manual Retry button and the
+    # automated correction path in provision_with_feedback.
+    stack_id = None
+    last_exc = None
+    for attempt in range(4):
+        try:
+            stack_id = aws_client.create_stack(creds, region, stack_name, deployment.cloudformation_template)
+            last_exc = None
+            break
+        except ClientError as exc:
+            last_exc = exc
+            msg = exc.response["Error"]["Message"]
+            if not ("already exists" in msg or "_IN_PROGRESS" in msg) or attempt == 3:
+                break
+            time.sleep(5)
+    if last_exc is not None:
+        msg = last_exc.response["Error"]["Message"]
         deployment.status = Deployment.Status.IAC_READY  # not submitted; allow another try
         deployment.save(update_fields=["status", "updated_at"])
         if "already exists" in msg or "_IN_PROGRESS" in msg:
@@ -160,7 +179,15 @@ def _persist_new_events(deployment: Deployment, events: list[dict]) -> None:
         seen.add(event.get("EventId"))
         seq += 1
     if rows:
-        ProvisioningLogEntry.objects.bulk_create(rows)
+        # Found live: with provisioning now supervised by a background Celery task
+        # (provision_with_feedback's own _poll_to_terminal) while the frontend is
+        # ALSO still polling deploy_status directly for the live log feed, two
+        # concurrent poll() calls can both read the same existing.count() and race
+        # to insert the same (deployment, sequence) pair, violating the unique
+        # constraint. ignore_conflicts makes the losing writer a no-op instead of a
+        # crash — the winning writer's row is equivalent, and the next poll() call
+        # re-reads a consistent count from the DB regardless of which one won.
+        ProvisioningLogEntry.objects.bulk_create(rows, ignore_conflicts=True)
 
 
 def _serialize_log(deployment: Deployment) -> list[dict]:
@@ -438,8 +465,6 @@ _POLL_TIMEOUT_SECONDS = 900
 
 
 def _poll_to_terminal(project: Project) -> dict[str, Any]:
-    import time
-
     elapsed = 0
     result = poll(project)
     while result["status"] not in _TERMINAL_STATUSES and elapsed < _POLL_TIMEOUT_SECONDS:
@@ -481,21 +506,10 @@ def provision_with_feedback(project: Project) -> dict[str, Any]:
                 return result  # couldn't even refine — surface the original failure
             if validate_result["status"] != Deployment.Status.IAC_READY:
                 return result  # the correction didn't produce a clean template — stop here
-            # start()'s own rolled-back-stack cleanup issues delete_stack() but
-            # doesn't wait for it to finish before this resubmits — found live,
-            # this races and raises a transient DeployError ("Removing the
-            # previous failed stack...") exactly the way a human retrying too
-            # quickly would hit it. A person just clicks Provision again a few
-            # seconds later; do the same here, bounded.
-            import time
-            for attempt in range(3):
-                try:
-                    start(project)
-                    break
-                except DeployError:
-                    if attempt == 2:
-                        raise
-                    time.sleep(10)
+            # start() itself now retries the rolled-back-stack delete/recreate
+            # race internally (see its own docstring) — no need to duplicate
+            # that here.
+            start(project)
             result = _poll_to_terminal(project)
 
     return result

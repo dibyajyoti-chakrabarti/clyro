@@ -88,6 +88,11 @@ Resources:
                   - ec2:CreateTags
                   - ec2:DeleteTags
                   - ec2:DescribeTags
+                  # Found live: ALB creation calls this internally to resolve the
+                  # security groups attached to the target VPC — missing entirely,
+                  # so ApplicationLoadBalancer creation failed with AccessDenied
+                  # despite every other ec2:Describe* action already being granted.
+                  - ec2:GetSecurityGroupsForVpc
                 Resource: '*'
               # Container compute — ECS clusters, services, task definitions
               - Effect: Allow
@@ -153,6 +158,13 @@ Resources:
                   - rds:AddTagsToResource
                   - rds:RemoveTagsFromResource
                   - rds:ListTagsForResource
+                  # Found live: same shape as the ElastiCache CreateSnapshot gap —
+                  # DeleteDBInstance takes a final snapshot unless explicitly
+                  # skipped, requiring this even though DeleteDBInstance itself is
+                  # already granted.
+                  - rds:CreateDBSnapshot
+                  - rds:DeleteDBSnapshot
+                  - rds:DescribeDBSnapshots
                 Resource: '*'
               # Cache — ElastiCache clusters
               - Effect: Allow
@@ -174,7 +186,40 @@ Resources:
                   - elasticache:AddTagsToResource
                   - elasticache:RemoveTagsFromResource
                   - elasticache:ListTagsForResource
+                  # Found live: a replication group with SnapshotRetentionLimit > 0
+                  # takes a final snapshot on delete regardless of the CFN
+                  # DeletionPolicy — without this, DeleteReplicationGroup itself
+                  # fails with AccessDenied, leaving the stack DELETE_FAILED.
+                  - elasticache:CreateSnapshot
+                  - elasticache:DeleteSnapshot
+                  - elasticache:DescribeSnapshots
                 Resource: '*'
+              # Found live (twice, for two different services): the FIRST time a
+              # given AWS service is used in an account, it needs its own service-
+              # linked role, which the service creates on your behalf on first use —
+              # but doing so requires the caller to hold iam:CreateServiceLinkedRole
+              # for that specific role. Without it, e.g. CreateReplicationGroup or
+              # ApplicationLoadBalancer creation fails with "insufficient
+              # permissions... create new role using IAM API
+              # CreateServiceLinkedRole" even though every other service-specific
+              # action is already granted. Granting all the services this pipeline
+              # actually provisions up front, rather than hitting each one in a
+              # separate live failure.
+              - Effect: Allow
+                Action:
+                  - iam:CreateServiceLinkedRole
+                Resource:
+                  - 'arn:aws:iam::*:role/aws-service-role/elasticache.amazonaws.com/AWSServiceRoleForElastiCache'
+                  - 'arn:aws:iam::*:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing'
+                  - 'arn:aws:iam::*:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS'
+                  - 'arn:aws:iam::*:role/aws-service-role/rds.amazonaws.com/AWSServiceRoleForRDS'
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName:
+                      - elasticache.amazonaws.com
+                      - elasticloadbalancing.amazonaws.com
+                      - ecs.amazonaws.com
+                      - rds.amazonaws.com
               # Load balancing — ALB, target groups, listeners
               - Effect: Allow
                 Action:
@@ -196,6 +241,11 @@ Resources:
                   - elasticloadbalancing:AddTags
                   - elasticloadbalancing:RemoveTags
                   - elasticloadbalancing:DescribeTags
+                  # Found live: a CloudWatch Alarm on ALB target group response
+                  # time calls these internally to resolve the target group's full
+                  # name for the metric dimension.
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:DescribeTargetGroupAttributes
                 Resource: '*'
               # TLS certificates
               - Effect: Allow
@@ -215,7 +265,14 @@ Resources:
                   - route53:GetChange
                   - route53:ListResourceRecordSets
                 Resource: '*'
-              # Secrets storage for env vars — scoped to clyro-* named secrets only
+              # Secrets storage — two DIFFERENT naming conventions both need to match
+              # here: write_secret() (backend/app/provisioning/aws_client.py, Step 4
+              # user-supplied env vars) names secrets `clyro/{project_slug}/{key}`
+              # (slash-style); CloudFormation-created secrets (e.g. the RDS master
+              # password, using build_spec.py's iam_scoped_prefix) name them
+              # `clyro-{project}-{env}/...` (hyphen-style). Found live: only the
+              # slash pattern was granted, so every template-created secret failed
+              # with AccessDenied on CreateSecret at real deploy time.
               - Effect: Allow
                 Action:
                   - secretsmanager:CreateSecret
@@ -226,7 +283,20 @@ Resources:
                   - secretsmanager:UpdateSecret
                   - secretsmanager:TagResource
                   - secretsmanager:UntagResource
-                Resource: !Sub 'arn:aws:secretsmanager:*:${AWS::AccountId}:secret:clyro/*'
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:*:${AWS::AccountId}:secret:clyro/*'
+                  - !Sub 'arn:aws:secretsmanager:*:${AWS::AccountId}:secret:clyro-*'
+              # GetRandomPassword is a stateless utility call (not tied to any secret
+              # ARN — AWS does not support resource-level scoping for it at all), needed
+              # by every AWS::SecretsManager::Secret using GenerateSecretString (e.g. the
+              # RDS master password). Found live: templates without this grant fail at
+              # deploy time with "not authorized to perform: secretsmanager:
+              # GetRandomPassword" on DbSecret, immediately cascading into a full
+              # rollback.
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetRandomPassword
+                Resource: '*'
               # CloudWatch logs for ECS tasks and RDS — scoped to clyro-* named log groups
               - Effect: Allow
                 Action:
@@ -242,6 +312,22 @@ Resources:
                 Resource:
                   - !Sub 'arn:aws:logs:*:${AWS::AccountId}:log-group:*clyro-*'
                   - !Sub 'arn:aws:logs:*:${AWS::AccountId}:log-group:*clyro-*:*'
+              # Found live: an entire missing category — the generated template
+              # consistently creates CloudWatch Alarms (backend service running
+              # count, RDS CPU/storage, ElastiCache evictions, SQS message age,
+              # ALB 5xx) but bootstrap.yaml never granted cloudwatch:* at all.
+              # Alarms are named from NamingPrefix (e.g. "taskboard-staging-..."),
+              # not IamScopedPrefix — unlike log groups, there's no "clyro-"
+              # substring to scope on, so this is Resource: '*' like the other
+              # non-clyro-prefixed services (RDS, ALB, ElastiCache) above.
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DeleteAlarms
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:TagResource
+                  - cloudwatch:UntagResource
+                Resource: '*'
               # S3 — static frontend assets and CF template staging — scoped to clyro-* buckets
               - Effect: Allow
                 Action:
@@ -269,6 +355,14 @@ Resources:
                   - s3:PutObjectAcl
                   - s3:GetBucketTagging
                   - s3:PutBucketTagging
+                  # Found live: missing entirely, so every FrontendBucket with
+                  # BucketEncryption failed at deploy time with AccessDenied.
+                  - s3:GetEncryptionConfiguration
+                  - s3:PutEncryptionConfiguration
+                  # Some generated buckets also set OwnershipControls — grant it
+                  # proactively rather than wait for the next live failure.
+                  - s3:GetBucketOwnershipControls
+                  - s3:PutBucketOwnershipControls
                 Resource:
                   - 'arn:aws:s3:::clyro-*'
                   - 'arn:aws:s3:::clyro-*/*'

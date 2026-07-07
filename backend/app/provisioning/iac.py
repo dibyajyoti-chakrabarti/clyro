@@ -345,6 +345,12 @@ _CACHE_REPL_GROUP_BLOCK_RE = re.compile(
 )
 _RETAIN_POLICY_RE = re.compile(r"^(    UpdateReplacePolicy: |    DeletionPolicy: )Retain$", re.M)
 
+_DB_INSTANCE_BLOCK_RE = re.compile(
+    r"^(  \w+:\n    Type: AWS::RDS::DBInstance\b.*?)(?=^  \w+:\n    Type:|\Z)",
+    re.M | re.S,
+)
+_SNAPSHOT_POLICY_RE = re.compile(r"^(    UpdateReplacePolicy: |    DeletionPolicy: )Snapshot$", re.M)
+
 _VERIFIED_CF_POLICY_IDS = {
     "658327ea-f89d-4fab-a63d-7e88639e58f6",  # CachingOptimized
     "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",  # CachingDisabled
@@ -465,6 +471,55 @@ def enforce_free_tier_limits(template: str, spec: dict) -> str:
     return _BACKUP_RETENTION_RE.sub(_cap, template)
 
 
+_LOG_GROUP_NAME_RE = re.compile(r"(LogGroupName:.*?)\$\{NamingPrefix\}")
+
+
+def enforce_log_group_naming(template: str) -> str:
+    """Deterministically force CloudWatch Log Group names onto iam_scoped_prefix,
+    rather than trust the authoring rule alone — found live (jan-saathi account
+    test): the agent used naming_prefix for LogGroupName (`/ecs/${NamingPrefix}-
+    backend`) despite the explicit rule that Log Groups are one of the four
+    resource types required to use iam_scoped_prefix. bootstrap.yaml's IAM policy
+    scopes logs:* actions to `*clyro-*` named log groups specifically so it doesn't
+    need `Resource: "*"` — a log group named without that prefix has no matching
+    grant at all, and CreateLogGroup/DeleteLogGroup (and therefore rollback) fails
+    with AccessDenied at deploy time. This is the third naming-rule regression this
+    session (after ECS network placement and ElastiCache DeletionPolicy) despite an
+    already-correct prompt rule — prompt strength alone isn't enough here either."""
+    if not template:
+        return template
+    return _LOG_GROUP_NAME_RE.sub(lambda m: f"{m.group(1)}${{IamScopedPrefix}}", template)
+
+
+# AWS's real allowed charset for EC2 SecurityGroup Group/Ingress/Egress
+# descriptions (from the live "Invalid rule description" error message):
+# a-zA-Z0-9. _-:/()#,@[]+=&;{}!$*  — notably NO apostrophe, em-dash, or other
+# "smart" punctuation, which is exactly what English prose (and this codebase's
+# own comments) casually uses.
+_SG_DESCRIPTION_RE = re.compile(r"^(\s*(?:Group)?Description:\s*)(.*)$", re.M)
+_SG_DESC_DISALLOWED_RE = re.compile(r"[^a-zA-Z0-9. _\-:/()#,@\[\]+=&;{}!$*]")
+
+
+def enforce_sg_description_charset(template: str) -> str:
+    """Strip characters AWS's EC2 SecurityGroup Description/GroupDescription
+    fields don't allow — found live: "Egress to nowhere (database doesn't need
+    outbound)" failed at real deploy time with "Invalid rule description" because
+    of the apostrophe in "doesn't". cfn-lint doesn't check this (it's a runtime
+    EC2 API validation, not a CFN schema rule), so it only surfaces at the actual
+    CreateSecurityGroup/AuthorizeSecurityGroupIngress call. Applies broadly to any
+    `Description:`/`GroupDescription:` line (a no-op on ones that are already
+    clean, e.g. Output/Parameter descriptions have no such restriction but
+    stripping is harmless there too)."""
+    if not template:
+        return template
+
+    def _clean(match: "re.Match") -> str:
+        prefix, value = match.group(1), match.group(2)
+        return f"{prefix}{_SG_DESC_DISALLOWED_RE.sub('', value)}"
+
+    return _SG_DESCRIPTION_RE.sub(_clean, template)
+
+
 def enforce_elasticache_deletion_policy(template: str) -> str:
     """Found live: an authoring rule previously told the agent to use
     DeletionPolicy/UpdateReplacePolicy: Retain on ElastiCache::ReplicationGroup as a
@@ -485,6 +540,30 @@ def enforce_elasticache_deletion_policy(template: str) -> str:
         return _RETAIN_POLICY_RE.sub(lambda m: f"{m.group(1)}Snapshot", match.group(1))
 
     return _CACHE_REPL_GROUP_BLOCK_RE.sub(_fix_block, template)
+
+
+def enforce_rds_deletion_policy(template: str) -> str:
+    """Found live, repeatedly: DeletionPolicy: Snapshot on RDS::DBInstance requires
+    the instance to be in the `available` state to take its final snapshot — but a
+    rollback triggered by ANY other resource failing while the DB is still
+    `creating`/`backing-up` (the common case: most real deploy failures surface
+    within the first few minutes, well before RDS finishes its ~5-10 min creation)
+    hits "Cannot create a snapshot because the database instance ... is not
+    currently in the available state" and the whole stack gets stuck
+    ROLLBACK_FAILED — the exact failure mode the auto-correction retry loop
+    (provision_with_feedback) depends on NOT happening, since it can't retry until
+    rollback actually completes. Unlike ElastiCache (where Retain was the actual
+    problem and Snapshot was the fix), here Snapshot itself is the problem with no
+    safe variant that still protects data — so for this free-tier/staging-focused
+    pipeline, deterministically force Delete (no final snapshot) instead, trading
+    the snapshot safety net for a rollback path that reliably completes."""
+    if not template:
+        return template
+
+    def _fix_block(match: "re.Match") -> str:
+        return _SNAPSHOT_POLICY_RE.sub(lambda m: f"{m.group(1)}Delete", match.group(1))
+
+    return _DB_INSTANCE_BLOCK_RE.sub(_fix_block, template)
 
 
 def security_scan(template: str) -> list[dict[str, str]]:
@@ -598,6 +677,9 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
     message = (resp or {}).get("message") or "Generated your CloudFormation template."
     template = enforce_free_tier_limits(template, spec)
     template = enforce_elasticache_deletion_policy(template)
+    template = enforce_rds_deletion_policy(template)
+    template = enforce_log_group_naming(template)
+    template = enforce_sg_description_charset(template)
 
     region = deployment.aws_connection.aws_region or "us-east-1"
     validation = lint_template(template, region)
@@ -610,6 +692,9 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
             message = fix_msg
         template = enforce_free_tier_limits(template, spec)
         template = enforce_elasticache_deletion_policy(template)
+        template = enforce_rds_deletion_policy(template)
+        template = enforce_log_group_naming(template)
+        template = enforce_sg_description_charset(template)
 
     findings = security_scan(template) + check_ecs_network_reachability(template, spec) + check_secret_interpolation(template, spec)
     if any(f["severity"] == "blocker" for f in findings):
@@ -619,6 +704,9 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
             message = fix_msg
         template = enforce_free_tier_limits(template, spec)
         template = enforce_elasticache_deletion_policy(template)
+        template = enforce_rds_deletion_policy(template)
+        template = enforce_log_group_naming(template)
+        template = enforce_sg_description_charset(template)
         validation = lint_template(template, region)
 
     deployment.cloudformation_template = template
@@ -693,8 +781,23 @@ def refine(project: Project, instruction: str, history: list | None = None,
     else:
         new_template = (resp or {}).get("template", "") or current
 
+    # Found live: when the agent's response is malformed (wrong/missing `outcome`
+    # tag alongside prose in the `template` field — e.g. diagnosing an IAM
+    # permission issue outside the template's scope, but not tagged as an
+    # "answer"), this would otherwise persist that prose as the deployment's
+    # template, corrupting it. A real CFN template always has a top-level
+    # `Resources:` key; if it's missing, treat this the same as an unusable edit
+    # and keep the working template instead of overwriting it with garbage.
+    if "Resources:" not in new_template:
+        log.warning("refine: agent response didn't look like a CFN template; keeping current")
+        new_template = current
+        message = "Couldn't apply that change — the response wasn't a valid template edit."
+
     new_template = enforce_free_tier_limits(new_template, spec)
     new_template = enforce_elasticache_deletion_policy(new_template)
+    new_template = enforce_rds_deletion_policy(new_template)
+    new_template = enforce_log_group_naming(new_template)
+    new_template = enforce_sg_description_charset(new_template)
     validation = lint_template(new_template, region)
 
     # Bounded corrective loop if the edit introduced cfn-lint ERRORS (warnings are
@@ -706,6 +809,9 @@ def refine(project: Project, instruction: str, history: list | None = None,
         if fix_msg:
             message = fix_msg
         new_template = enforce_elasticache_deletion_policy(new_template)
+        new_template = enforce_rds_deletion_policy(new_template)
+        new_template = enforce_log_group_naming(new_template)
+        new_template = enforce_sg_description_charset(new_template)
 
     findings = security_scan(new_template) + check_ecs_network_reachability(new_template, spec) + check_secret_interpolation(new_template, spec)
     if any(f["severity"] == "blocker" for f in findings):
@@ -716,6 +822,9 @@ def refine(project: Project, instruction: str, history: list | None = None,
             message = fix_msg
         new_template = enforce_free_tier_limits(new_template, spec)
         new_template = enforce_elasticache_deletion_policy(new_template)
+        new_template = enforce_rds_deletion_policy(new_template)
+        new_template = enforce_log_group_naming(new_template)
+        new_template = enforce_sg_description_charset(new_template)
         validation = lint_template(new_template, region)
 
     deployment.cloudformation_template = new_template
