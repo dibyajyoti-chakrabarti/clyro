@@ -409,6 +409,26 @@ def resume(project: Project) -> dict[str, Any]:
 
 # ── Teardown (full delete) ───────────────────────────────────────────────────────
 
+def _empty_undeletable_resources(creds: dict, region: str, stack_name: str) -> None:
+    """CloudFormation refuses to delete a non-empty S3 bucket or ECR
+    repository — found live: a real teardown hit DELETE_FAILED on both the
+    frontend and build-archive buckets, requiring a manual `aws s3 rm
+    --recursive` before the delete would go through. Empty every bucket/repo
+    in the stack first so a single Provision-page "Delete infrastructure"
+    click actually completes, instead of leaving the user with a half-deleted
+    stack and a support ticket. Best-effort per-resource — one bucket/repo
+    that fails to empty (e.g. already gone) shouldn't block emptying the
+    rest, and delete_stack() below will still surface any real problem."""
+    for resource in aws_client.list_stack_resources(creds, region, stack_name):
+        try:
+            if resource["resource_type"] == "AWS::S3::Bucket" and resource["physical_id"]:
+                aws_client.empty_s3_bucket(creds, region, resource["physical_id"])
+            elif resource["resource_type"] == "AWS::ECR::Repository" and resource["physical_id"]:
+                aws_client.empty_ecr_repository(creds, region, resource["physical_id"])
+        except ClientError:
+            pass
+
+
 def teardown(project: Project) -> dict[str, Any]:
     """Permanently delete the user's CFN stack. Irreversible — unlike ``pause``,
     this destroys every resource the stack created. ``poll`` picks up the
@@ -421,6 +441,7 @@ def teardown(project: Project) -> dict[str, Any]:
 
     creds, region = _assume(deployment)
     stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+    _empty_undeletable_resources(creds, region, stack_name)
     try:
         aws_client.delete_stack(creds, region, stack_name)
     except ClientError as exc:
