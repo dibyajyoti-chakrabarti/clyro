@@ -16,9 +16,20 @@ class ProjectSerializer(serializers.ModelSerializer):
 
 
 class ScanResultSerializer(serializers.ModelSerializer):
+    compliance_prompt = serializers.SerializerMethodField()
+
+    def get_compliance_prompt(self, obj):
+        from app.scanner.compliance import build_agent_prompt
+        if not obj.compliance_findings:
+            return None
+        return build_agent_prompt(obj.project.repo_full_name, obj.project.repo_branch, obj.compliance_findings)
+
     class Meta:
         model = ScanResult
-        fields = ['id', 'status', 'block_reason', 'detected_resources', 'env_vars', 'draft_canvas_yaml', 'scan_timestamp']
+        fields = [
+            'id', 'status', 'block_reason', 'detected_resources', 'env_vars', 'draft_canvas_yaml',
+            'scan_timestamp', 'compliance_findings', 'compliance_prompt',
+        ]
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

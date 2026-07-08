@@ -912,8 +912,18 @@ def validate(project: Project, template: str) -> dict[str, Any]:
 
 
 def get_current(project: Project) -> dict[str, Any]:
-    """Return the current template + status + fresh diagnostics for reload."""
-    deployment = ensure_deployment(project)
+    """Return the current template + status + fresh diagnostics for reload.
+
+    Read-only on purpose — unlike ensure_deployment() (used by generate/
+    validate/refine), this must NOT exclude a SUBMITTING/IN_PROGRESS/COMPLETE
+    deployment and spawn a fresh empty row in its place. Found live: every
+    page load during real provisioning did exactly that, so StepFour's
+    resume-into-provisioning-screen hydration always saw an empty template
+    and fell back to the IaC editor instead of the live log.
+    """
+    deployment = Deployment.objects.filter(project=project).order_by("-created_at").first()
+    if deployment is None:
+        raise IacError("Generate a CloudFormation template before reviewing it.")
     template = deployment.cloudformation_template or ""
     validation = lint_template(template, deployment.aws_connection.aws_region or "us-east-1") if template else None
     findings = []

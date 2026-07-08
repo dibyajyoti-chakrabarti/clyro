@@ -32,6 +32,8 @@ export default function StepOnePanel({ projectId, projectData, setProjectData, s
     generated,
     userSecrets,
     optional,
+    complianceFindings,
+    compliancePrompt,
   } = useScanFlow({ projectId, projectData, setProjectData, setStep1CanContinue })
 
   if (phase === 'connect') {
@@ -50,5 +52,5 @@ export default function StepOnePanel({ projectId, projectData, setProjectData, s
     return <ScanBlocked blockReason={blockReason} setPhase={setPhase} />
   }
 
-  return <ScanResults selectedRepo={selectedRepo} selectedBranch={selectedBranch} isMonorepo={isMonorepo} detectedServices={detectedServices} detectedInfra={detectedInfra} generated={generated} userSecrets={userSecrets} optional={optional} />
+  return <ScanResults selectedRepo={selectedRepo} selectedBranch={selectedBranch} isMonorepo={isMonorepo} detectedServices={detectedServices} detectedInfra={detectedInfra} generated={generated} userSecrets={userSecrets} optional={optional} complianceFindings={complianceFindings} compliancePrompt={compliancePrompt} />
 }

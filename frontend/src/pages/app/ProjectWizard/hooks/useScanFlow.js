@@ -178,6 +178,9 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
   const generated = envVars.filter((v) => v.classification === 'generated')
   const optional = envVars.filter((v) => v.classification === 'optional')
 
+  const complianceFindings = scanResult?.compliance_findings || []
+  const compliancePrompt = scanResult?.compliance_prompt || null
+
   return {
     phase,
     setPhase,
@@ -204,5 +207,7 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
     generated,
     userSecrets,
     optional,
+    complianceFindings,
+    compliancePrompt,
   }
 }

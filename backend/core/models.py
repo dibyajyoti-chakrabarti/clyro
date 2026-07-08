@@ -122,6 +122,7 @@ class ScanResult(models.Model):
     env_vars = models.JSONField(null=True, blank=True)
     draft_canvas_yaml = models.TextField(null=True, blank=True)
     raw_file_tree = models.JSONField(null=True, blank=True)
+    compliance_findings = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

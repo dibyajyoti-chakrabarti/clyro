@@ -1,6 +1,7 @@
 from core.models import EnvVarKey, Project, ScanResult
 from app import agentcore
 from app.github_utils import get_installation_access_token
+from . import compliance
 
 
 def _run_scan_agent(token: str, project: Project) -> dict:
@@ -51,7 +52,22 @@ def run_scan_for_project(project: Project) -> ScanResult:
         scan.detected_resources = result.get("detected_resources")
         scan.env_vars = result.get("env_vars")
         scan.draft_canvas_yaml = result.get("draft_canvas_yaml")
-        scan.save(update_fields=["status", "detected_resources", "env_vars", "draft_canvas_yaml"])
+
+        # Deterministic, static "Cloud Compliance" checks — separate from the
+        # RepoRecon agent's own detection above. A failure here (e.g. a bad
+        # GitHub API call) must not take down a scan that otherwise succeeded,
+        # so it's best-effort and never raises past this point.
+        try:
+            scan.compliance_findings = compliance.run_compliance_checks(
+                token, project.repo_full_name, project.repo_branch,
+                scan.detected_resources, scan.env_vars or [],
+            )
+        except Exception:
+            scan.compliance_findings = None
+
+        scan.save(update_fields=[
+            "status", "detected_resources", "env_vars", "draft_canvas_yaml", "compliance_findings",
+        ])
 
         _save_env_var_keys(project, scan, result.get("env_vars") or [])
 
