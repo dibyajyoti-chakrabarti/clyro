@@ -1,4 +1,7 @@
 import {
+  CheckCircle2,
+  Copy,
+  XCircle,
   GitBranch,
   Layers3,
   Globe,
@@ -9,8 +12,103 @@ import {
   HardDrive,
   MessageSquare,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import GitHubLogo from '../../../../components/common/GitHubLogo'
+
+const SEVERITY_LABEL = { blocker: 'Blocks deploy', warning: 'Will misbehave', info: 'Info' }
+
+function ComplianceRow({ finding }) {
+  const Icon = finding.passed ? CheckCircle2 : XCircle
+  return (
+    <div className='flex items-start gap-3 border-b border-white/[0.05] py-3 last:border-b-0'>
+      <Icon
+        className={`mt-0.5 h-4 w-4 shrink-0 ${finding.passed ? 'text-emerald-400' : 'text-red-400'}`}
+        strokeWidth={2}
+      />
+      <div className='min-w-0 flex-1'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <p className='text-[14px] font-medium text-white/85'>{finding.title}</p>
+          {!finding.passed && (
+            <span className='rounded-full border border-red-400/25 bg-red-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-300'>
+              {SEVERITY_LABEL[finding.severity] || finding.severity}
+            </span>
+          )}
+        </div>
+        <p className='mt-0.5 text-[12.5px] leading-snug text-white/45'>{finding.detail}</p>
+      </div>
+    </div>
+  )
+}
+
+function CompliancePanel({ complianceFindings, compliancePrompt }) {
+  const [copied, setCopied] = useState(false)
+  if (!complianceFindings || complianceFindings.length === 0) return null
+
+  const failedCount = complianceFindings.filter((f) => !f.passed).length
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(compliancePrompt)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* clipboard unavailable — user can still select the text manually */
+    }
+  }
+
+  return (
+    <div
+      className='w-full rounded-[22px] border border-white/[0.06] bg-[rgba(255,255,255,0.015)] px-8 py-5'
+      style={{ animation: 'cardIn 360ms ease-out 380ms both' }}
+    >
+      <div className='mb-4 flex items-center justify-between'>
+        <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-white/28'>
+          Cloud Compliance Checklist
+        </p>
+        <span
+          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+            failedCount === 0
+              ? 'bg-emerald-400/10 text-emerald-300'
+              : 'bg-red-400/10 text-red-300'
+          }`}
+        >
+          {failedCount === 0 ? 'All checks passed' : `${failedCount} issue${failedCount === 1 ? '' : 's'} found`}
+        </span>
+      </div>
+
+      <div>
+        {complianceFindings.map((f) => (
+          <ComplianceRow key={f.id} finding={f} />
+        ))}
+      </div>
+
+      {compliancePrompt && (
+        <div className='mt-5'>
+          <div className='mb-2 flex items-center justify-between'>
+            <p className='text-[12.5px] font-medium text-white/60'>
+              Paste this into an AI coding agent (Claude Code, Cursor, etc.) to fix your repo
+            </p>
+            <button
+              type='button'
+              onClick={handleCopy}
+              className='inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-white/75 hover:bg-white/[0.08]'
+            >
+              <Copy className='h-3.5 w-3.5' strokeWidth={2} />
+              {copied ? 'Copied!' : 'Copy prompt'}
+            </button>
+          </div>
+          <textarea
+            readOnly
+            value={compliancePrompt}
+            rows={6}
+            className='w-full resize-none rounded-xl border border-white/[0.08] bg-black/40 p-3 font-mono text-[12px] leading-relaxed text-white/70'
+            onFocus={(e) => e.target.select()}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
 
 function StackPill({ children }) {
   return (
@@ -117,6 +215,8 @@ export default function ScanResults({
   detectedServices,
   detectedInfra,
   onContinue,
+  complianceFindings,
+  compliancePrompt,
 }) {
   const stackSummary = useMemo(() => {
     const inferred = [...detectedServices, ...detectedInfra].slice(0, 7)
@@ -460,6 +560,8 @@ export default function ScanResults({
         </div>
       </div>
 
+      {/* Section E — Cloud Compliance Checklist */}
+      <CompliancePanel complianceFindings={complianceFindings} compliancePrompt={compliancePrompt} />
     </div>
   )
 }
