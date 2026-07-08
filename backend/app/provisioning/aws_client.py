@@ -305,6 +305,44 @@ def start_codebuild(credentials: dict, region: str, project_name: str, source_lo
     return response['build']['id']
 
 
+def empty_s3_bucket(credentials: dict, region: str, bucket: str) -> None:
+    """Delete every object (and, for a versioned bucket, every version and
+    delete marker) in a bucket the stack is about to delete. CloudFormation
+    can't delete a non-empty bucket — found live: a real teardown attempt hit
+    DELETE_FAILED on both the frontend and build-archive buckets because
+    nothing ever did this first."""
+    s3 = _s3_client(credentials, region)
+    paginator = s3.get_paginator('list_object_versions')
+    for page in paginator.paginate(Bucket=bucket):
+        to_delete = [
+            {'Key': v['Key'], 'VersionId': v['VersionId']}
+            for v in page.get('Versions', []) + page.get('DeleteMarkers', [])
+        ]
+        if to_delete:
+            s3.delete_objects(Bucket=bucket, Delete={'Objects': to_delete})
+
+
+def _ecr_client(credentials: dict, region: str):
+    return boto3.client(
+        'ecr',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def empty_ecr_repository(credentials: dict, region: str, repository_name: str) -> None:
+    """Delete every image in a repository the stack is about to delete —
+    same DELETE_FAILED problem as empty_s3_bucket, for ECR instead of S3."""
+    ecr = _ecr_client(credentials, region)
+    paginator = ecr.get_paginator('list_images')
+    for page in paginator.paginate(repositoryName=repository_name):
+        image_ids = page.get('imageIds', [])
+        if image_ids:
+            ecr.batch_delete_image(repositoryName=repository_name, imageIds=image_ids)
+
+
 def batch_get_builds(credentials: dict, region: str, build_ids: list[str]) -> list[dict]:
     """Return CodeBuild's own build summaries (``buildStatus``, ``phases``,
     ``logs``, etc.) for the given build ids."""
