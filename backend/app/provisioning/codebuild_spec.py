@@ -78,6 +78,11 @@ def _frontend_buildspec(build_path: str) -> str:
     # No detection for the bundler's actual output directory today — dist
     # (Vite) and build (CRA) cover the overwhelming majority of React/Vue
     # scaffolds; fall back between them rather than hardcoding one.
+    #
+    # The `cd` is repeated in post_build on purpose: CodeBuild resets the
+    # working directory to $CODEBUILD_SRC_DIR between phases, so the `cd` in
+    # `build` does not carry over. Without it OUT_DIR resolves against the repo
+    # root, where neither dist/ nor build/ exists, and `aws s3 sync` exits 1.
     return (
         "version: 0.2\n"
         "phases:\n"
@@ -88,6 +93,7 @@ def _frontend_buildspec(build_path: str) -> str:
         "      - npm run build\n"
         "  post_build:\n"
         "    commands:\n"
+        f"      - cd {build_path}\n"
         "      - OUT_DIR=dist; [ -d \"$OUT_DIR\" ] || OUT_DIR=build\n"
         "      - aws s3 sync \"$OUT_DIR\" s3://$BUCKET_NAME --delete\n"
         "      - aws cloudfront create-invalidation --distribution-id "
