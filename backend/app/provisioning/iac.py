@@ -170,7 +170,7 @@ def _security_fix_loop(template: str, findings: list[dict[str, str]], *, spec: d
             fixed = fix_resp["template"]
         if not fixed:
             break
-        fixed_findings = security_scan(fixed) + check_ecs_network_reachability(fixed, spec) + check_secret_interpolation(fixed, spec)
+        fixed_findings = _collect_findings(fixed, spec)
         fixed_blockers = [f for f in fixed_findings if f["severity"] == "blocker"]
         if len(fixed_blockers) >= len(blockers):
             break  # no improvement — keep the prior template, stop looping
@@ -1013,7 +1013,6 @@ def enforce_codebuild_projects(template: str, spec: dict) -> str:
 
     cf_match = _CLOUDFRONT_DIST_RE.search(template)
     cloudfront_logical_id = cf_match.group(1) if cf_match else None
-
     bucket_logical_id = _cloudfront_origin_bucket(template)
 
     fragment = codebuild_spec.generate_codebuild_resources(
@@ -1146,7 +1145,168 @@ def _apply_enforcers(template: str, spec: dict) -> str:
 def _collect_findings(template: str, spec: dict) -> list[dict[str, str]]:
     return (security_scan(template)
             + check_ecs_network_reachability(template, spec)
-            + check_secret_interpolation(template, spec))
+            + check_secret_interpolation(template, spec)
+            + check_spec_conformance(template, spec))
+
+
+# ── Layer 2: does the template actually realize the build spec? ───────────────
+#
+# cfn-lint and cfn-guard answer "is this well-formed infrastructure?". Neither
+# answers "does this match what the user asked for, and will the app run on it?".
+# Every defect that survived a clean generate — the missing ALB ingress, the ARN as a
+# broker URL, a frontend build syncing to a bucket that doesn't exist — is schema-valid
+# CFN. Each costs a real deploy to discover: an ECS service that can't stabilize burns
+# ~3h before CloudFormation times out. These predicates cost milliseconds and are all
+# derivable from the spec, so run them before provisioning ever starts.
+#
+# The enforce_* passes run first and should make most of these unsatisfiable, so a
+# blocker here usually means a hand-edit in the Monaco editor (validate()) undid one.
+_ECR_IMAGE_RE = re.compile(r"\.dkr\.ecr\.[^/]+/([^:\s'\"]+)")
+_ARN_VALUE_RE = re.compile(r"arn:aws:|\$\{[\w:]+\.Arn\}")
+_URL_KEY_RE = re.compile(r"(_URL$|BROKER)", re.I)
+
+
+def _container_envs(resources: dict) -> list[tuple[str, str, Any]]:
+    """(task-def logical id, env key, env value) for every ECS container env entry."""
+    out = []
+    for logical_id, res in resources.items():
+        if not isinstance(res, dict) or res.get("Type") != "AWS::ECS::TaskDefinition":
+            continue
+        for container in (res.get("Properties") or {}).get("ContainerDefinitions") or []:
+            for env in container.get("Environment") or []:
+                if isinstance(env, dict) and env.get("Name"):
+                    out.append((logical_id, env["Name"], env.get("Value")))
+    return out
+
+
+def check_spec_conformance(template: str, spec: dict) -> list[dict[str, str]]:
+    """Assert the template realizes the build spec. Findings use the same
+    ``{severity, message}`` shape as ``security_scan`` — ``blocker`` gates IAC_READY
+    through ``validate()``."""
+    if not template or not spec:
+        return []
+    try:
+        doc = cfn_yaml.loads(template)
+    except Exception:
+        return []  # cfn-lint reports parse failures far better than we can
+    resources = (doc or {}).get("Resources")
+    if not isinstance(resources, dict):
+        return []
+
+    findings: list[dict[str, str]] = []
+    by_name, by_stem = _index_security_groups(resources, spec)
+
+    # 1. Every declared connection has the security-group rule that makes it possible.
+    for edge in spec.get("network_edges") or []:
+        kind, desc = edge.get("kind"), edge.get("description") or ""
+        if kind == "sg_ingress":
+            source = _find_sg(edge.get("from_sg"), by_name, by_stem)
+            target = _find_sg(edge.get("to_sg"), by_name, by_stem)
+            port, protocol = edge.get("port"), edge.get("protocol") or "tcp"
+            if not source or not target:
+                findings.append({"severity": "blocker", "message": (
+                    f"Connection '{desc}' needs security groups "
+                    f"'{edge.get('from_sg')}' and '{edge.get('to_sg')}', but the template "
+                    "doesn't define both.")})
+            elif not _has_rule(resources, True, target, port, protocol, source, None):
+                findings.append({"severity": "blocker", "message": (
+                    f"Connection '{desc}' has no security-group ingress: {target} does not "
+                    f"allow {protocol}/{port} from {source}, so the connection is refused "
+                    "at deploy time.")})
+        elif kind == "alb":
+            alb = _find_sg(edge.get("alb_sg"), by_name, by_stem)
+            target = _find_sg(edge.get("target_sg"), by_name, by_stem)
+            listener_port, target_port = edge.get("listener_port"), edge.get("target_port")
+            if not alb or not target:
+                findings.append({"severity": "blocker", "message": (
+                    f"Connection '{desc}' needs an ALB security group and a target "
+                    "security group, but the template doesn't define both.")})
+                continue
+            if not _has_rule(resources, True, target, target_port, "tcp", alb, None):
+                findings.append({"severity": "blocker", "message": (
+                    f"{target} has no ingress rule allowing tcp/{target_port} from the load "
+                    f"balancer's security group {alb}. The target group's health check will "
+                    "time out (Target.Timeout) and the ECS service will never stabilize.")})
+            if not _has_rule(resources, True, alb, listener_port, "tcp", None, _INTERNET_CIDR):
+                findings.append({"severity": "blocker", "message": (
+                    f"{alb} has no ingress rule allowing tcp/{listener_port} from "
+                    f"{_INTERNET_CIDR}, so the load balancer is unreachable from the internet.")})
+
+    # 2. A connection URL is never a raw ARN. (An SQS ARN as CELERY_BROKER_URL made
+    #    kombu fall through to pyamqp and crash-loop the worker on an idna error.)
+    for task_def, key, value in _container_envs(resources):
+        if not _URL_KEY_RE.search(key):
+            continue
+        text = _value_text(value)
+        if text and _ARN_VALUE_RE.search(text):
+            findings.append({"severity": "blocker", "message": (
+                f"{task_def} sets {key} to an ARN ({text[:60]}), not a connection URL. "
+                "Clients parse this value as a URL; an ARN has no scheme and the container "
+                "will fail at startup. Use the resource's endpoint with a real scheme.")})
+
+    # 3. Every ECR image an ECS task pulls is one the build pipeline actually pushes.
+    buildable = set(codebuild_spec.buildable_node_ids(spec))
+    prefix = spec.get("naming_prefix") or ""
+    expected_repos = {f"{prefix}-{node_id}" for node_id in buildable}
+    for logical_id, res in resources.items():
+        if not isinstance(res, dict) or res.get("Type") != "AWS::ECS::TaskDefinition":
+            continue
+        for container in (res.get("Properties") or {}).get("ContainerDefinitions") or []:
+            image = _resolve_sub(container.get("Image"), spec) or ""
+            match = _ECR_IMAGE_RE.search(image)
+            if match and match.group(1) not in expected_repos:
+                findings.append({"severity": "blocker", "message": (
+                    f"{logical_id} pulls the ECR image '{match.group(1)}', but no CodeBuild "
+                    f"project builds it (the build pipeline produces: "
+                    f"{', '.join(sorted(expected_repos)) or 'nothing'}). ECS will retry "
+                    "CannotPullContainerError forever.")})
+
+    # 4. The frontend build syncs to a bucket this template creates. Skipped until
+    #    enforce_codebuild_projects has spliced the projects in. The bucket may be
+    #    named literally or referenced by logical id (!Ref) — accept either.
+    bucket_ids = {lid for lid, res in resources.items()
+                  if isinstance(res, dict) and res.get("Type") == "AWS::S3::Bucket"}
+    bucket_names = {
+        _resolve_sub((res.get("Properties") or {}).get("BucketName"), spec)
+        for lid, res in resources.items() if lid in bucket_ids
+    }
+    for logical_id, res in resources.items():
+        if not isinstance(res, dict) or res.get("Type") != "AWS::CodeBuild::Project":
+            continue
+        env = (res.get("Properties") or {}).get("Environment") or {}
+        for var in env.get("EnvironmentVariables") or []:
+            if var.get("Name") != "BUCKET_NAME":
+                continue
+            value = var.get("Value")
+            referenced = _ref_id(value)
+            if referenced:
+                if referenced not in bucket_ids:
+                    findings.append({"severity": "blocker", "message": (
+                        f"{logical_id} publishes the frontend to '{referenced}', which is not "
+                        "an S3 bucket in this template. The build will fail on `aws s3 sync`.")})
+                continue
+            target = _resolve_sub(value, spec)
+            if target and target not in bucket_names:
+                findings.append({"severity": "blocker", "message": (
+                    f"{logical_id} publishes the frontend to bucket '{target}', which this "
+                    "template never creates. The build will fail on `aws s3 sync` and the "
+                    "site will never be deployed.")})
+
+    # 5. The chosen broker needs application-side configuration Clyro cannot inject.
+    #    Not a blocker: it's a contract with the customer's repo, not a template defect,
+    #    so gating IAC_READY on it would wedge the project permanently.
+    broker = spec.get("broker") or {}
+    if broker.get("requires_app_config") and any(
+            _URL_KEY_RE.search(key) and "BROKER" in key.upper()
+            for _, key, _ in _container_envs(resources)):
+        findings.append({"severity": "critical", "message": (
+            f"The task broker resolves to {broker.get('transport')}, which Celery cannot "
+            "point at this template's queue from the broker URL alone. The application must "
+            "set `broker_transport_options={'predefined_queues': ...}` and "
+            "`task_default_queue`; otherwise kombu falls back to a queue named 'celery' that "
+            "this stack neither creates nor grants access to, and the worker will crash-loop.")})
+
+    return findings
 
 
 # ── Agent-backed generate / refine ─────────────────────────────────────────────
@@ -1195,6 +1355,9 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
     # understand, risking corruption of the deterministic build pipeline.
     template = enforce_codebuild_projects(template, spec)
     validation = lint_template(template, region)
+    # Re-run against the final template: the build pipeline only exists now, so the
+    # frontend-bucket conformance check couldn't have run above.
+    findings = _collect_findings(template, spec)
 
     deployment.cloudformation_template = template
     deployment.status = Deployment.Status.GENERATING_IAC
@@ -1305,6 +1468,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
 
     new_template = enforce_codebuild_projects(new_template, spec)
     validation = lint_template(new_template, region)
+    findings = _collect_findings(new_template, spec)
 
     deployment.cloudformation_template = new_template
     deployment.status = Deployment.Status.GENERATING_IAC
