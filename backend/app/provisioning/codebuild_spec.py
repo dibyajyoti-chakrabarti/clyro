@@ -39,6 +39,12 @@ CodeBuild project synced to a bucket that did not exist and its IAM policy
 scoped to the wrong ARN — `aws s3 sync` exited 1 and the site never deployed.
 Bucket *names* are LLM-chosen, so reference the bucket by logical ID via
 ``!Ref``/``!GetAtt`` instead of guessing what it was called.
+
+Also found live, and worth writing down because it is the opposite of what is
+commonly assumed: CodeBuild **does** carry the working directory across phases.
+A `cd` in `build` is still in effect in `post_build`. Paths that must survive a
+phase boundary are therefore anchored on ``$CODEBUILD_SRC_DIR``, which is correct
+either way, rather than on a repeated `cd` or a bare relative path.
 """
 
 from __future__ import annotations
@@ -82,15 +88,24 @@ def _docker_buildspec(build_path: str, ecr_uri: str) -> str:
     )
 
 
+def _abs_build_dir(build_path: str) -> str:
+    """`./frontend` -> `$CODEBUILD_SRC_DIR/frontend`; `.` -> `$CODEBUILD_SRC_DIR`."""
+    rel = build_path[2:] if build_path.startswith("./") else build_path
+    rel = rel.strip("/")
+    return "$CODEBUILD_SRC_DIR" if rel in ("", ".") else f"$CODEBUILD_SRC_DIR/{rel}"
+
+
 def _frontend_buildspec(build_path: str) -> str:
     # No detection for the bundler's actual output directory today — dist
     # (Vite) and build (CRA) cover the overwhelming majority of React/Vue
     # scaffolds; fall back between them rather than hardcoding one.
     #
-    # The `cd` is repeated in post_build on purpose: CodeBuild resets the
-    # working directory to $CODEBUILD_SRC_DIR between phases, so the `cd` in
-    # `build` does not carry over. Without it OUT_DIR resolves against the repo
-    # root, where neither dist/ nor build/ exists, and `aws s3 sync` exits 1.
+    # OUT_DIR is absolute rather than relative, so it resolves correctly no matter
+    # what the working directory is when post_build starts. Found live: CodeBuild
+    # *does* carry the working directory across phases — a `cd {build_path}` repeated
+    # in post_build failed with "can't cd to ./frontend" because `build` had already
+    # left us inside it. Anchoring on $CODEBUILD_SRC_DIR depends on neither behaviour.
+    out_dir = _abs_build_dir(build_path)
     return (
         "version: 0.2\n"
         "phases:\n"
@@ -101,8 +116,8 @@ def _frontend_buildspec(build_path: str) -> str:
         "      - npm run build\n"
         "  post_build:\n"
         "    commands:\n"
-        f"      - cd {build_path}\n"
-        "      - OUT_DIR=dist; [ -d \"$OUT_DIR\" ] || OUT_DIR=build\n"
+        f"      - OUT_DIR=\"{out_dir}/dist\"; [ -d \"$OUT_DIR\" ] || "
+        f"OUT_DIR=\"{out_dir}/build\"\n"
         "      - aws s3 sync \"$OUT_DIR\" s3://$BUCKET_NAME --delete\n"
         "      - aws cloudfront create-invalidation --distribution-id "
         "$DISTRIBUTION_ID --paths \"/*\"\n"
