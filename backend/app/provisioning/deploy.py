@@ -649,25 +649,8 @@ def provision_with_feedback(project: Project) -> dict[str, Any]:
         # isn't something iac.refine() can fix) — build.build_with_feedback
         # handles its own failure path and does not call back into this
         # function or retry CFN.
+        # build_with_feedback also scales the cold-started services up to the spec's
+        # task count once the image exists — see its own comment for why it owns that.
         result = build.build_with_feedback(project)
-
-        # The services were authored DesiredCount: 0 so CFN could complete without
-        # an image (iac.enforce_ecs_desired_count). Now that one exists, bring them
-        # up to the spec's task count — until this runs, the stack is live but empty.
-        if result["status"] == Deployment.Status.COMPLETE:
-            try:
-                scale = scale_services_to_spec(project)
-            except Exception as exc:  # noqa: BLE001 — a scale failure is a deploy failure
-                log.exception("scale_services_to_spec failed for project %s", project.id)
-                scale = {"steady": False, "error": str(exc)}
-            if not scale["steady"]:
-                deployment = _active_deployment(project)
-                if deployment:
-                    deployment.status = Deployment.Status.FAILED
-                    deployment.save(update_fields=["status", "updated_at"])
-                project.status = Project.Status.FAILED
-                project.save(update_fields=["status", "updated_at"])
-                result["status"] = Deployment.Status.FAILED
-                result["error"] = scale["error"]
 
     return result

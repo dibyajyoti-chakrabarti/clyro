@@ -37,7 +37,7 @@ from core.models import Deployment, DeploymentStackOutput, Project, Provisioning
 from app import github_utils
 
 from . import aws_client, codebuild_spec, iac
-from .deploy import DeployError, _active_deployment, _assume, _serialize_log
+from .deploy import DeployError, _active_deployment, _assume, _serialize_log, scale_services_to_spec
 
 log = logging.getLogger(__name__)
 
@@ -236,6 +236,21 @@ def build_with_feedback(project: Project) -> dict[str, Any]:
         deployment.status = Deployment.Status.BUILD_FAILED
         deployment.save(update_fields=["status", "updated_at"])
         return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": _outputs(), "error": str(exc)}
+
+    # The services were authored DesiredCount: 0 so CloudFormation could complete
+    # without an image to pull (iac.enforce_ecs_desired_count). Now that the build
+    # has pushed one, scale them to the spec's task count — until this runs the stack
+    # is live but empty. This lives here, not in provision_with_feedback, because the
+    # "Retry build" path (tasks.run_build_task) calls this function directly and would
+    # otherwise report COMPLETE while every service still ran zero tasks.
+    if result["status"] == Deployment.Status.COMPLETE:
+        try:
+            scale = scale_services_to_spec(project)
+        except Exception as exc:  # noqa: BLE001 — a scale failure is a deploy failure
+            log.exception("scale_services_to_spec failed for project %s", project.id)
+            scale = {"steady": False, "error": str(exc)}
+        if not scale["steady"]:
+            result = {"status": Deployment.Status.FAILED, "error": scale["error"]}
 
     deployment.status = result["status"]
     deployment.completed_at = timezone.now()
