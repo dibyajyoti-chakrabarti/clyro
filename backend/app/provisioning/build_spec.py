@@ -103,6 +103,29 @@ def _cfn_resources(node_type: str, aws_service: str) -> list[str]:
     return []
 
 
+def _broker_for(resources: list[dict[str, Any]]) -> dict[str, Any]:
+    """Which provisioned resource backs the task queue's message broker.
+
+    Nothing upstream detects this today — RepoRecon (Step 1) is the right place to
+    read it off the app's deps + Celery config, and until it does, this is the
+    fallback. Precedence is deliberate: prefer a transport the app can use with **no
+    application-side configuration**. Redis needs only a URL. SQS does not: kombu
+    resolves the queue from Celery's own queue name (`celery`), not from the queue
+    this template provisions, so pointing an app at a named SQS queue requires
+    `broker_transport_options={"predefined_queues": ...}` in the app's settings —
+    which Clyro cannot inject, since Celery reads Django settings, not the
+    environment. `requires_app_config` carries that contract forward so the template
+    checks can fail loudly instead of shipping a worker that crash-loops.
+    """
+    cache = next((r for r in resources if r.get("type") == "cache"), None)
+    if cache:
+        return {"transport": "redis", "node_id": cache["node_id"], "requires_app_config": False}
+    queue = next((r for r in resources if r.get("type") == "queue"), None)
+    if queue:
+        return {"transport": "sqs", "node_id": queue["node_id"], "requires_app_config": True}
+    return {"transport": None, "node_id": None, "requires_app_config": False}
+
+
 def _public_service_ids(nodes: list[dict], connections: list[dict]) -> set[str]:
     """Service nodes targeted by a static (frontend) node are public-facing and
     front an ALB — same rule the cost engine uses."""
@@ -318,4 +341,7 @@ def build_spec(
         "network_edges": network_edges,
         "secrets": secrets,
         "generated_env": generated_env,
+        # Which provisioned resource backs the Celery/task broker. Read by
+        # iac.enforce_env_values to render a valid transport URL.
+        "broker": _broker_for(resources),
     }

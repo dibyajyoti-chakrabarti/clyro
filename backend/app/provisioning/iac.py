@@ -777,6 +777,114 @@ def enforce_security_group_rules(template: str, spec: dict) -> str:
     return template.rstrip("\n") + "\n" + fragment
 
 
+# ── Generated env values, derived from the provisioned resources ──────────────
+#
+# Found live: CELERY_BROKER_URL was authored as `!Sub ${TaskQueue.Arn}` — an SQS ARN
+# is never a valid broker URL, so kombu fell through to pyamqp and the worker
+# crash-looped on `UnicodeError: encoding with 'idna' codec failed`. spec's
+# `generated_env` ships only `{key_name, hint}` with no value, so the LLM invents one
+# and nothing checks that it is semantically usable.
+#
+# These values are fully determined by the resources the template provisions, so
+# derive them here rather than hope. Note this also reads each resource's *configuration*,
+# not just its endpoint: a transit-encrypted ElastiCache group is TLS-only, so
+# `redis://` cannot connect to it and the scheme must be `rediss://`. That defect was
+# latent in every template we generated — it never surfaced because the backend never
+# got past the ALB health check to open a cache connection.
+_BROKER_KEY_RE = re.compile(r"BROKER", re.I)
+_REDIS_SCHEME_RE = re.compile(r"\bredis://")
+_ENV_VALUE_RE_TMPL = r"^(?P<ind>[ ]*)- Name: {key}\n(?P=ind)[ ]{{2}}Value: (?P<val>.*)$"
+
+
+def _cache_endpoint(resources: dict) -> dict | None:
+    """Locate the Redis node and how to address it. `Port` defaults to 6379; the
+    GetAtt attribute differs between a ReplicationGroup and a single CacheCluster."""
+    for logical_id, res in resources.items():
+        if not isinstance(res, dict):
+            continue
+        props = res.get("Properties") or {}
+        if res.get("Type") == "AWS::ElastiCache::ReplicationGroup":
+            attr = ("ConfigurationEndPoint.Address"
+                    if props.get("ClusterMode") == "enabled" or props.get("NumNodeGroups")
+                    else "PrimaryEndPoint.Address")
+        elif res.get("Type") == "AWS::ElastiCache::CacheCluster":
+            attr = "RedisEndpoint.Address"
+        else:
+            continue
+        return {
+            "logical_id": logical_id,
+            "attr": attr,
+            "tls": bool(props.get("TransitEncryptionEnabled")),
+            "port": props.get("Port") or 6379,
+        }
+    return None
+
+
+def _redis_url(cache: dict, *, for_kombu: bool) -> str:
+    scheme = "rediss" if cache["tls"] else "redis"
+    url = f"{scheme}://${{{cache['logical_id']}.{cache['attr']}}}:{cache['port']}/0"
+    # kombu defaults a rediss:// connection to CERT_NONE (encrypted but unverified);
+    # ask for real verification. redis-py (django-redis) already defaults to required.
+    if cache["tls"] and for_kombu:
+        url += "?ssl_cert_reqs=required"
+    return f"!Sub '{url}'"
+
+
+def _replace_env_value(template: str, key: str, new_value: str) -> str:
+    """Rewrite the `Value:` line of every `- Name: <key>` container env entry.
+    Anchored on the key name, so CloudWatch alarm `Dimensions` (which are also
+    Name/Value pairs) are never touched — no generated_env key collides with one."""
+    pattern = re.compile(_ENV_VALUE_RE_TMPL.format(key=re.escape(key)), re.M)
+
+    def _sub(match: "re.Match") -> str:
+        if match.group("val").strip() == new_value:
+            return match.group(0)
+        return f"{match.group('ind')}- Name: {key}\n{match.group('ind')}  Value: {new_value}"
+
+    return pattern.sub(_sub, template)
+
+
+def enforce_env_values(template: str, spec: dict) -> str:
+    """Render the generated_env values the spec fully determines. Idempotent: the
+    desired value is a pure function of the template's own resources."""
+    generated = (spec or {}).get("generated_env") or []
+    if not template or not generated:
+        return template
+    try:
+        doc = cfn_yaml.loads(template)
+    except Exception as exc:
+        log.warning("enforce_env_values: could not parse template (%s)", exc)
+        return template
+    resources = (doc or {}).get("Resources")
+    if not isinstance(resources, dict):
+        return template
+
+    cache = _cache_endpoint(resources)
+    broker = (spec or {}).get("broker") or {}
+
+    for entry in generated:
+        key = entry.get("key_name") or ""
+        if not key:
+            continue
+        if _BROKER_KEY_RE.search(key):
+            if broker.get("transport") == "redis" and cache:
+                template = _replace_env_value(template, key, _redis_url(cache, for_kombu=True))
+            elif broker.get("transport") == "sqs":
+                # kombu's IAM-auth SQS transport form. The queue it actually binds to
+                # comes from the app's Celery config, not from this URL — see
+                # build_spec._broker_for and the spec-conformance check.
+                template = _replace_env_value(template, key, "sqs://")
+        elif cache and cache["tls"]:
+            # A plaintext redis:// URL cannot connect to a transit-encrypted group.
+            pattern = re.compile(_ENV_VALUE_RE_TMPL.format(key=re.escape(key)), re.M)
+            match = pattern.search(template)
+            if match and _REDIS_SCHEME_RE.search(match.group("val")):
+                fixed = _REDIS_SCHEME_RE.sub("rediss://", match.group("val"))
+                template = _replace_env_value(template, key, fixed)
+
+    return template
+
+
 def enforce_elasticache_deletion_policy(template: str) -> str:
     """Found live: an authoring rule previously told the agent to use
     DeletionPolicy/UpdateReplacePolicy: Retain on ElastiCache::ReplicationGroup as a
@@ -977,6 +1085,7 @@ def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_rds_deletion_policy(template)
     template = enforce_log_group_naming(template)
     template = enforce_security_group_rules(template, spec)
+    template = enforce_env_values(template, spec)
     template = enforce_sg_description_charset(template)
     return template
 
