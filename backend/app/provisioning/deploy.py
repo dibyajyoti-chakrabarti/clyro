@@ -322,6 +322,101 @@ def poll(project: Project) -> dict[str, Any]:
 
 # ── Pause / resume (reversible scale-to-zero) ───────────────────────────────────
 
+# ── Cold-start scale-up (the other half of iac.enforce_ecs_desired_count) ─────
+
+_STEADY_POLL_SECONDS = 10
+# ECS pulls the image, starts the task, and (for the ALB-fronted service) waits out
+# the target group's health checks before it counts as running. Well under the ~3h
+# CFN would have burned; long enough for a cold Fargate pull plus health checks.
+_STEADY_TIMEOUT_SECONDS = 480
+
+
+_SERVICE_NAME_SUFFIXES = ("-service", "-svc", "-ecs")
+
+
+def _desired_for_service(service_name: str, counts_by_node: dict[str, int]) -> int:
+    """Match an ECS service's *name* back to its canvas node. Service names are
+    LLM-chosen, but every one observed ends with the node id it runs
+    (`taskboard-prod-backend`). Anchor on that suffix rather than any substring:
+    `taskboard-prod-backend-worker` contains "backend" but *is* the worker."""
+    name = service_name.lower()
+    for suffix in _SERVICE_NAME_SUFFIXES:
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+    ends_with = [node for node in counts_by_node if name.endswith(node)]
+    if ends_with:
+        return counts_by_node[max(ends_with, key=len)]
+    contains = [node for node in counts_by_node if node in name]
+    if contains:
+        return counts_by_node[max(contains, key=len)]
+    log.warning("scale: ECS service %r matched no canvas node; defaulting to 1 task",
+                service_name)
+    return 1
+
+
+def _stack_ecs_services(creds: dict, region: str, stack_name: str) -> list[tuple[str, str]]:
+    services = []
+    for resource in aws_client.list_stack_resources(creds, region, stack_name):
+        if resource["resource_type"] != "AWS::ECS::Service" or not resource["physical_id"]:
+            continue
+        parsed = aws_client.parse_ecs_service_arn(resource["physical_id"])
+        if parsed:
+            services.append(parsed)
+    return services
+
+
+def scale_services_to_spec(project: Project) -> dict[str, Any]:
+    """Scale every ECS service from its cold-start 0 up to the spec's task count,
+    then wait for the tasks to actually run. Called once the build has pushed a real
+    image; before that there is nothing for ECS to pull.
+
+    Returns ``{scaled: [...], steady: bool, error: str|None}``. `steady` is False when
+    a service never reached its desired count — the image starts and immediately dies,
+    or the ALB never marks it healthy — which means the stack is up but the app is not.
+    """
+    from . import iac
+
+    deployment = _active_deployment(project)
+    if deployment is None:
+        raise DeployError("No active deployment to scale.")
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+
+    counts_by_node = iac.desired_counts_by_node(iac._spec_for(deployment))
+    services = _stack_ecs_services(creds, region, stack_name)
+    if not services:
+        return {"scaled": [], "steady": True, "error": None}
+
+    scaled = []
+    for cluster, service in services:
+        target = _desired_for_service(service, counts_by_node)
+        aws_client.set_ecs_service_desired_count(creds, region, cluster, service, target)
+        scaled.append({"cluster": cluster, "service": service, "desired": target})
+        log.info("scale_services_to_spec: %s -> %d task(s)", service, target)
+
+    elapsed = 0
+    pending = list(scaled)
+    while pending and elapsed < _STEADY_TIMEOUT_SECONDS:
+        time.sleep(_STEADY_POLL_SECONDS)
+        elapsed += _STEADY_POLL_SECONDS
+        still = []
+        for entry in pending:
+            counts = aws_client.get_ecs_service_counts(
+                creds, region, entry["cluster"], entry["service"])
+            if counts["running"] < entry["desired"]:
+                still.append(entry)
+        pending = still
+
+    if pending:
+        stuck = ", ".join(e["service"] for e in pending)
+        return {"scaled": scaled, "steady": False,
+                "error": f"ECS service(s) never reached the desired task count: {stuck}. "
+                         "The image was pushed, so this is a runtime failure (the container "
+                         "exits on start, or the load balancer never marks it healthy)."}
+    return {"scaled": scaled, "steady": True, "error": None}
+
+
 def _live_deployment(project: Project) -> Deployment:
     deployment = _active_deployment(project)
     if deployment is None or deployment.status not in (
@@ -555,5 +650,24 @@ def provision_with_feedback(project: Project) -> dict[str, Any]:
         # handles its own failure path and does not call back into this
         # function or retry CFN.
         result = build.build_with_feedback(project)
+
+        # The services were authored DesiredCount: 0 so CFN could complete without
+        # an image (iac.enforce_ecs_desired_count). Now that one exists, bring them
+        # up to the spec's task count — until this runs, the stack is live but empty.
+        if result["status"] == Deployment.Status.COMPLETE:
+            try:
+                scale = scale_services_to_spec(project)
+            except Exception as exc:  # noqa: BLE001 — a scale failure is a deploy failure
+                log.exception("scale_services_to_spec failed for project %s", project.id)
+                scale = {"steady": False, "error": str(exc)}
+            if not scale["steady"]:
+                deployment = _active_deployment(project)
+                if deployment:
+                    deployment.status = Deployment.Status.FAILED
+                    deployment.save(update_fields=["status", "updated_at"])
+                project.status = Project.Status.FAILED
+                project.save(update_fields=["status", "updated_at"])
+                result["status"] = Deployment.Status.FAILED
+                result["error"] = scale["error"]
 
     return result

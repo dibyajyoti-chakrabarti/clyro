@@ -215,6 +215,22 @@ def set_ecs_service_desired_count(credentials: dict, region: str, cluster: str, 
     ecs.update_service(cluster=cluster, service=service, desiredCount=desired)
 
 
+def get_ecs_service_counts(credentials: dict, region: str, cluster: str, service: str) -> dict:
+    """``{running, pending, desired}`` for one service — used to tell "scaled up and
+    actually serving" from "scaled up and crash-looping"."""
+    ecs = _ecs_client(credentials, region)
+    resp = ecs.describe_services(cluster=cluster, services=[service])
+    services = resp.get('services') or []
+    if not services:
+        return {'running': 0, 'pending': 0, 'desired': 0}
+    svc = services[0]
+    return {
+        'running': svc.get('runningCount', 0),
+        'pending': svc.get('pendingCount', 0),
+        'desired': svc.get('desiredCount', 0),
+    }
+
+
 def is_db_cluster_member(credentials: dict, region: str, db_instance_id: str) -> bool:
     """True if ``db_instance_id`` belongs to an Aurora cluster — cluster members
     can't be stopped/started individually, only via the cluster itself."""
