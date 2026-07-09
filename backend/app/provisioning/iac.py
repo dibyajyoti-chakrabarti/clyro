@@ -605,6 +605,25 @@ def _ref_id(value: Any) -> str | None:
     return None
 
 
+def _value_text(value: Any) -> str:
+    """Flatten a property value to the text a human would read, so an intrinsic like
+    !Sub/!GetAtt can be pattern-matched (e.g. a raw ARN hiding inside a !Sub)."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        if "Fn::Sub" in value:
+            sub = value["Fn::Sub"]
+            if isinstance(sub, list):
+                sub = sub[0] if sub else ""
+            return sub if isinstance(sub, str) else ""
+        att = value.get("Fn::GetAtt")
+        if isinstance(att, list):
+            return "${%s}" % ".".join(str(a) for a in att)
+        if isinstance(att, str):
+            return "${%s}" % att
+    return ""
+
+
 def _index_security_groups(resources: dict, spec: dict) -> tuple[dict, dict]:
     by_name: dict[str, str] = {}
     by_stem: dict[str, str] = {}
@@ -937,6 +956,37 @@ _CLOUDFRONT_DIST_RE = re.compile(
 _OUTPUTS_SECTION_RE = re.compile(r"^Outputs:", re.M)
 
 
+def _cloudfront_origin_bucket(template: str) -> str | None:
+    """Logical ID of the S3 bucket CloudFront serves — i.e. the bucket the frontend
+    build must publish to. Its *name* is LLM-chosen and cannot be reconstructed from
+    the spec (found live: `${IamScopedPrefix}-${AWS::AccountId}`, with no node-id
+    segment), so identify it structurally: it is the distribution's origin."""
+    try:
+        doc = cfn_yaml.loads(template)
+    except Exception as exc:
+        log.warning("_cloudfront_origin_bucket: could not parse template (%s)", exc)
+        return None
+    resources = (doc or {}).get("Resources")
+    if not isinstance(resources, dict):
+        return None
+    buckets = {lid for lid, res in resources.items()
+               if isinstance(res, dict) and res.get("Type") == "AWS::S3::Bucket"}
+    for res in resources.values():
+        if not isinstance(res, dict) or res.get("Type") != "AWS::CloudFront::Distribution":
+            continue
+        config = (res.get("Properties") or {}).get("DistributionConfig") or {}
+        for origin in config.get("Origins") or []:
+            domain = (origin or {}).get("DomainName")
+            direct = _ref_id(domain)
+            if direct in buckets:
+                return direct
+            for match in _SUB_VAR_RE.finditer(_value_text(domain)):
+                token = match.group(1).split(".")[0]
+                if token in buckets:
+                    return token
+    return None
+
+
 def enforce_codebuild_projects(template: str, spec: dict) -> str:
     """Splice in a CodeBuild::Project (+ IAM role) per buildable node — found
     live: infrastructure was provisioning cleanly (CREATE_COMPLETE, a real
@@ -964,7 +1014,10 @@ def enforce_codebuild_projects(template: str, spec: dict) -> str:
     cf_match = _CLOUDFRONT_DIST_RE.search(template)
     cloudfront_logical_id = cf_match.group(1) if cf_match else None
 
-    fragment = codebuild_spec.generate_codebuild_resources(spec, cloudfront_logical_id)
+    bucket_logical_id = _cloudfront_origin_bucket(template)
+
+    fragment = codebuild_spec.generate_codebuild_resources(
+        spec, cloudfront_logical_id, bucket_logical_id)
     if not fragment:
         return template
 

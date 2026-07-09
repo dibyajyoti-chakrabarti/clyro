@@ -28,9 +28,17 @@ real prefix values as plain Python strings; using them directly here removes
 the dependency on how IacArchitect chose to declare (or not declare) them as
 CFN parameters. Only genuine AWS pseudo-parameters (`${AWS::AccountId}`,
 `${AWS::Region}`) are kept as `!Sub` substitutions, since those always exist
-regardless of authoring style. The CloudFront distribution's logical ID is
-the one piece that's still genuinely unpredictable and must be referenced by
-name — everything else in this module is fully determined by `spec` alone.
+regardless of authoring style. The CloudFront distribution's and the frontend
+bucket's logical IDs are the pieces that are still genuinely unpredictable and
+must be passed in by the caller.
+
+The frontend bucket used to be reconstructed here as
+``{iam_scoped_prefix}-{node_id}-{account}``. Found live: IacArchitect actually
+named it ``${IamScopedPrefix}-${AWS::AccountId}`` (no node-id segment), so the
+CodeBuild project synced to a bucket that did not exist and its IAM policy
+scoped to the wrong ARN — `aws s3 sync` exited 1 and the site never deployed.
+Bucket *names* are LLM-chosen, so reference the bucket by logical ID via
+``!Ref``/``!GetAtt`` instead of guessing what it was called.
 """
 
 from __future__ import annotations
@@ -175,10 +183,10 @@ def _docker_project_block(node_id: str, build_path: str, naming_prefix: str, iam
 """
 
 
-def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: str) -> str:
+def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: str,
+                            bucket_logical_id: str) -> str:
     role_id = _role_id(node_id)
     project_id = _project_id(node_id)
-    bucket_name = f"{iam_scoped_prefix}-{node_id}-${{AWS::AccountId}}"
     buildspec = _indent_buildspec(_frontend_buildspec(build_path), 10)
     return f"""  {role_id}:
     Type: AWS::IAM::Role
@@ -203,8 +211,8 @@ def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: st
                   - s3:ListBucket
                   - s3:DeleteObject
                 Resource:
-                  - !Sub 'arn:aws:s3:::{bucket_name}'
-                  - !Sub 'arn:aws:s3:::{bucket_name}/*'
+                  - !GetAtt {bucket_logical_id}.Arn
+                  - !Sub '${{{bucket_logical_id}.Arn}}/*'
               - Effect: Allow
                 Action:
                   - cloudfront:CreateInvalidation
@@ -235,7 +243,7 @@ def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: st
         Image: {_BUILD_IMAGE}
         EnvironmentVariables:
           - Name: BUCKET_NAME
-            Value: !Sub '{bucket_name}'
+            Value: !Ref {bucket_logical_id}
           - Name: DISTRIBUTION_ID
             Value: !Ref __CFDIST__
       Source:
@@ -247,13 +255,17 @@ def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: st
 """
 
 
-def generate_codebuild_resources(spec: dict[str, Any], cloudfront_logical_id: str | None) -> str:
+def generate_codebuild_resources(spec: dict[str, Any], cloudfront_logical_id: str | None,
+                                 frontend_bucket_logical_id: str | None = None) -> str:
     """Return a YAML fragment (2-space-indented top-level Resources entries) with
     one AWS::CodeBuild::Project + AWS::IAM::Role per buildable node in
     ``spec['resources']``. Worker nodes that share the backend's build_path
     (the common case — see canvas_builder.py) are skipped: the backend's
     project already pushes the one shared image. Returns "" if there is
-    nothing to build (defensive; every real spec has at least a backend)."""
+    nothing to build (defensive; every real spec has at least a backend).
+
+    Both the CloudFront distribution's and the frontend bucket's logical IDs are
+    LLM-chosen and must be passed in by the caller."""
     resources = spec.get("resources") or []
     naming_prefix = spec.get("naming_prefix", "app")
     iam_scoped_prefix = spec.get("iam_scoped_prefix", f"clyro-{naming_prefix}")
@@ -271,11 +283,12 @@ def generate_codebuild_resources(spec: dict[str, Any], cloudfront_logical_id: st
             seen_docker_paths.add(build_path)
             blocks.append(_docker_project_block(entry["node_id"], build_path, naming_prefix, iam_scoped_prefix))
         elif node_type == "static":
-            if not cloudfront_logical_id:
-                # No CloudFront::Distribution found in the template to reference —
-                # skip rather than emit a broken !Ref/Sub to a placeholder.
+            if not cloudfront_logical_id or not frontend_bucket_logical_id:
+                # No CloudFront::Distribution / origin bucket found in the template to
+                # reference — skip rather than emit a broken !Ref/Sub to a placeholder.
                 continue
-            block = _frontend_project_block(entry["node_id"], build_path, iam_scoped_prefix)
+            block = _frontend_project_block(entry["node_id"], build_path, iam_scoped_prefix,
+                                            frontend_bucket_logical_id)
             block = block.replace("__CFDIST__", cloudfront_logical_id)
             blocks.append(block)
 
