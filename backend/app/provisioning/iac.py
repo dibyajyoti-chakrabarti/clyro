@@ -904,6 +904,52 @@ def enforce_env_values(template: str, spec: dict) -> str:
     return template
 
 
+# ── Cold-start: author ECS services stopped, scale them up after the build ────
+#
+# Found live: a first deploy can never reach CREATE_COMPLETE. The services are
+# authored DesiredCount: 1 against an ECR repository that stays empty until the
+# CodeBuild step runs — and that step only runs *after* CFN reports CREATE_COMPLETE.
+# So ECS retries CannotPullContainerError, the service never stabilizes, CFN waits
+# ~3h and times out, and the build is never triggered. A deadlock, every cold start.
+#
+# Breaking it deterministically: author every service at DesiredCount: 0. A service
+# with no desired tasks stabilizes instantly, so CFN completes, the build pushes a
+# real image, and deploy.scale_services_to_spec() then scales each service to the
+# count the spec asks for. The target count is read from the spec, never hardcoded.
+_DESIRED_COUNT_RE = re.compile(r"^(\s+)DesiredCount:\s*\d+\s*$", re.M)
+
+
+def enforce_ecs_desired_count(template: str, spec: dict) -> str:
+    """Force every AWS::ECS::Service to DesiredCount: 0 so CloudFormation can
+    complete before an image exists. Idempotent."""
+    if not template or "AWS::ECS::Service" not in template:
+        return template
+
+    def _zero_block(match: "re.Match") -> str:
+        logical_id, body = match.group(1), match.group(2)
+        if _DESIRED_COUNT_RE.search(body):
+            body = _DESIRED_COUNT_RE.sub(lambda m: f"{m.group(1)}DesiredCount: 0", body)
+        else:
+            # Not authored at all — insert it, since ECS defaults a service to 1 task.
+            body = re.sub(r"^(    Properties:\n)", r"\g<1>      DesiredCount: 0\n", body,
+                          count=1, flags=re.M)
+        return f"  {logical_id}:\n    Type: AWS::ECS::Service{body}"
+
+    return _ECS_SERVICE_BLOCK_RE.sub(_zero_block, template)
+
+
+def desired_counts_by_node(spec: dict) -> dict[str, int]:
+    """``node_id -> target task count`` for every containerized node. build_spec
+    already resolved this (``sizing.tasks``; workers are pinned to 1)."""
+    counts: dict[str, int] = {}
+    for entry in (spec or {}).get("resources") or []:
+        if entry.get("type") not in ("service", "worker"):
+            continue
+        sizing = entry.get("sizing") or {}
+        counts[entry["node_id"]] = int(sizing.get("tasks") or 1)
+    return counts
+
+
 def enforce_elasticache_deletion_policy(template: str) -> str:
     """Found live: an authoring rule previously told the agent to use
     DeletionPolicy/UpdateReplacePolicy: Retain on ElastiCache::ReplicationGroup as a
@@ -1138,6 +1184,7 @@ def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_log_group_naming(template)
     template = enforce_security_group_rules(template, spec)
     template = enforce_env_values(template, spec)
+    template = enforce_ecs_desired_count(template, spec)
     template = enforce_sg_description_charset(template)
     return template
 
