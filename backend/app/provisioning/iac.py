@@ -16,6 +16,7 @@ from typing import Any
 
 from cfnlint import api as cfnlint_api
 from cfnlint.config import ManualArgs
+from cfnlint.decode import cfn_yaml
 
 from canvas_core import canvas_ops
 from core.models import (
@@ -521,6 +522,261 @@ def enforce_sg_description_charset(template: str) -> str:
     return _SG_DESCRIPTION_RE.sub(_clean, template)
 
 
+# ── Security-group rules, generated from spec["network_edges"] ────────────────
+#
+# Found live: the template authored the ALB's *egress* to the backend on 8000 but
+# omitted the reciprocal *ingress* on the backend's SG, which default-denies inbound
+# — so the ALB health check never reached the task, the target stayed
+# Target.Timeout, and ECS cycled the service until CFN gave up ~3h later. cfn-lint
+# and cfn-guard both pass such a template: it is schema-valid CFN whose only defect
+# is a missing edge in the connection graph.
+#
+# The connection graph is not something the LLM should be re-deriving: build_spec
+# already emits it as spec["network_edges"], fully resolved (ports, protocols,
+# source/target SGs). So author the rules from the edges instead of trusting the
+# LLM to notice each one, the same enforce_* philosophy as the CodeBuild pipeline.
+#
+# Only *missing* rules are added, as standalone AWS::EC2::SecurityGroup{Ingress,
+# Egress} resources. Rules the LLM already authored — inline on the SG or
+# standalone — are detected and left alone, so this is idempotent and does not
+# duplicate. (AWS advises against mixing inline and standalone rules of the same
+# direction on one group; in practice we only ever add a direction the group is
+# missing entirely, which is the case that matters.)
+_SG_TYPE = "AWS::EC2::SecurityGroup"
+_INGRESS_TYPE = "AWS::EC2::SecurityGroupIngress"
+_EGRESS_TYPE = "AWS::EC2::SecurityGroupEgress"
+_INTERNET_CIDR = "0.0.0.0/0"
+_SUB_VAR_RE = re.compile(r"\$\{([^}]+)\}")
+_NON_ALNUM_RE = re.compile(r"[^a-zA-Z0-9]")
+
+
+def _resolve_sub(value: Any, spec: dict) -> str | None:
+    """Resolve a GroupName to a literal, expanding the prefix pseudo-parameters the
+    agent uses (`!Sub ${NamingPrefix}-alb-sg`). Returns None if it isn't a plain
+    string or a resolvable !Sub."""
+    if isinstance(value, str):
+        raw = value
+    elif isinstance(value, dict) and "Fn::Sub" in value:
+        raw = value["Fn::Sub"]
+        if isinstance(raw, list):
+            raw = raw[0] if raw else ""
+    else:
+        return None
+    if not isinstance(raw, str):
+        return None
+    subs = {
+        "NamingPrefix": spec.get("naming_prefix") or "",
+        "IamScopedPrefix": spec.get("iam_scoped_prefix") or "",
+        "ShortPrefix": spec.get("short_prefix") or "",
+    }
+    return _SUB_VAR_RE.sub(lambda m: subs.get(m.group(1), m.group(0)), raw)
+
+
+def _sg_stem(logical_id: str) -> str:
+    """`BackendSecurityGroup` -> `backend` (the fallback key when GroupName is absent)."""
+    stem = logical_id
+    for suffix in ("SecurityGroup", "SecGroup", "Group", "SG", "Sg"):
+        if stem.endswith(suffix) and len(stem) > len(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    return _NON_ALNUM_RE.sub("", stem).lower()
+
+
+def _stem_pascal(logical_id: str) -> str:
+    stem = logical_id
+    for suffix in ("SecurityGroup", "SecGroup", "Group", "SG", "Sg"):
+        if stem.endswith(suffix) and len(stem) > len(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    return _NON_ALNUM_RE.sub("", stem) or logical_id
+
+
+def _ref_id(value: Any) -> str | None:
+    """Logical id referenced by `!Ref X` / `!GetAtt X.GroupId`."""
+    if isinstance(value, dict):
+        if "Ref" in value:
+            ref = value["Ref"]
+            return ref if isinstance(ref, str) else None
+        att = value.get("Fn::GetAtt")
+        if isinstance(att, str):
+            return att.split(".")[0]
+        if isinstance(att, list) and att:
+            return att[0] if isinstance(att[0], str) else None
+    return None
+
+
+def _index_security_groups(resources: dict, spec: dict) -> tuple[dict, dict]:
+    by_name: dict[str, str] = {}
+    by_stem: dict[str, str] = {}
+    for logical_id, res in resources.items():
+        if not isinstance(res, dict) or res.get("Type") != _SG_TYPE:
+            continue
+        props = res.get("Properties") or {}
+        name = _resolve_sub(props.get("GroupName"), spec)
+        if name:
+            by_name.setdefault(name, logical_id)
+        by_stem.setdefault(_sg_stem(logical_id), logical_id)
+    return by_name, by_stem
+
+
+def _find_sg(sg_name: str, by_name: dict, by_stem: dict) -> str | None:
+    """Map a spec `security_group` name onto the template's LLM-chosen logical id.
+    Prefers the authored GroupName (which build_spec's `<node>-sg` convention makes
+    exact); falls back to the logical-id stem (`taskboard-prod-alb-sg` -> `Alb...`)."""
+    if not sg_name:
+        return None
+    if sg_name in by_name:
+        return by_name[sg_name]
+    base = sg_name[:-3] if sg_name.endswith("-sg") else sg_name
+    for candidate in (base.replace("-", ""), base.split("-")[-1]):
+        if candidate in by_stem:
+            return by_stem[candidate]
+    return None
+
+
+def _covers_port(rule: dict, port: int, protocol: str) -> bool:
+    proto = str(rule.get("IpProtocol", "")).lower()
+    if proto in ("-1", "all"):
+        return True
+    if proto != (protocol or "tcp").lower():
+        return False
+    try:
+        low, high = int(rule["FromPort"]), int(rule["ToPort"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return low <= port <= high
+
+
+def _rule_matches(rule: dict, port: int, protocol: str, peer_key: str,
+                  peer_lid: str | None, cidr: str | None) -> bool:
+    if not isinstance(rule, dict) or not _covers_port(rule, port, protocol):
+        return False
+    if peer_lid is not None:
+        return _ref_id(rule.get(peer_key)) == peer_lid
+    return rule.get("CidrIp") == cidr
+
+
+def _has_rule(resources: dict, ingress: bool, group_lid: str, port: int, protocol: str,
+              peer_lid: str | None = None, cidr: str | None = None) -> bool:
+    inline_key = "SecurityGroupIngress" if ingress else "SecurityGroupEgress"
+    peer_key = "SourceSecurityGroupId" if ingress else "DestinationSecurityGroupId"
+    standalone_type = _INGRESS_TYPE if ingress else _EGRESS_TYPE
+
+    props = (resources.get(group_lid) or {}).get("Properties") or {}
+    for rule in props.get(inline_key) or []:
+        if _rule_matches(rule, port, protocol, peer_key, peer_lid, cidr):
+            return True
+    for res in resources.values():
+        if not isinstance(res, dict) or res.get("Type") != standalone_type:
+            continue
+        rule = res.get("Properties") or {}
+        if _ref_id(rule.get("GroupId")) != group_lid:
+            continue
+        if _rule_matches(rule, port, protocol, peer_key, peer_lid, cidr):
+            return True
+    return False
+
+
+def _rule_block(logical_id: str, ingress: bool, group_lid: str, port: int, protocol: str,
+                peer_lid: str | None, cidr: str | None, description: str) -> str:
+    peer_key = "SourceSecurityGroupId" if ingress else "DestinationSecurityGroupId"
+    peer = (f"      {peer_key}: !Ref {peer_lid}\n" if peer_lid
+            else f"      CidrIp: {cidr}\n")
+    return (
+        f"  {logical_id}:\n"
+        f"    Type: {_INGRESS_TYPE if ingress else _EGRESS_TYPE}\n"
+        f"    Properties:\n"
+        f"      GroupId: !Ref {group_lid}\n"
+        f"{peer}"
+        f"      IpProtocol: {protocol}\n"
+        f"      FromPort: {port}\n"
+        f"      ToPort: {port}\n"
+        f"      Description: {description}\n"
+    )
+
+
+def enforce_security_group_rules(template: str, spec: dict) -> str:
+    """Add any security-group rule declared by spec["network_edges"] that the
+    template doesn't already have. See the block comment above for why."""
+    if not template or "Resources:" not in template:
+        return template
+    edges = (spec or {}).get("network_edges") or []
+    if not edges:
+        return template
+    try:
+        doc = cfn_yaml.loads(template)
+    except Exception as exc:  # unparseable YAML — cfn-lint reports it far better
+        log.warning("enforce_security_group_rules: could not parse template (%s)", exc)
+        return template
+    resources = (doc or {}).get("Resources")
+    if not isinstance(resources, dict):
+        return template
+
+    by_name, by_stem = _index_security_groups(resources, spec)
+    taken = set(resources)
+    blocks: list[str] = []
+
+    def _ensure(ingress: bool, group_lid: str, port: int, protocol: str,
+                peer_lid: str | None, cidr: str | None, description: str) -> None:
+        if not group_lid or not port:
+            return
+        if _has_rule(resources, ingress, group_lid, port, protocol, peer_lid, cidr):
+            return
+        peer_token = _stem_pascal(peer_lid) if peer_lid else "Internet"
+        direction = "Ingress" if ingress else "Egress"
+        logical_id = f"Clyro{_stem_pascal(group_lid)}{direction}{peer_token}{port}"
+        if logical_id in taken:
+            return
+        taken.add(logical_id)
+        blocks.append(_rule_block(logical_id, ingress, group_lid, port, protocol,
+                                  peer_lid, cidr, description))
+
+    for edge in edges:
+        kind = edge.get("kind")
+        if kind == "sg_ingress":
+            source = _find_sg(edge.get("from_sg"), by_name, by_stem)
+            target = _find_sg(edge.get("to_sg"), by_name, by_stem)
+            port, protocol = edge.get("port"), edge.get("protocol") or "tcp"
+            if not source or not target:
+                log.warning("enforce_security_group_rules: unresolved SG for edge %s",
+                            edge.get("description"))
+                continue
+            _ensure(True, target, port, protocol, source, None,
+                    f"Clyro enforced {_stem_pascal(source)} to "
+                    f"{_stem_pascal(target)} on port {port}")
+        elif kind == "alb":
+            alb = _find_sg(edge.get("alb_sg"), by_name, by_stem)
+            target = _find_sg(edge.get("target_sg"), by_name, by_stem)
+            listener_port, target_port = edge.get("listener_port"), edge.get("target_port")
+            if not alb or not target:
+                log.warning("enforce_security_group_rules: unresolved SG for edge %s",
+                            edge.get("description"))
+                continue
+            # Internet reaches the listener; an HTTPS listener that redirects HTTP
+            # also has to accept :80 for the redirect to be reachable at all.
+            _ensure(True, alb, listener_port, "tcp", None, _INTERNET_CIDR,
+                    f"Clyro enforced internet to ALB on port {listener_port}")
+            if edge.get("redirect_http") and listener_port != 80:
+                _ensure(True, alb, 80, "tcp", None, _INTERNET_CIDR,
+                        "Clyro enforced internet to ALB on port 80 for HTTPS redirect")
+            _ensure(False, alb, target_port, "tcp", target, None,
+                    f"Clyro enforced ALB to {_stem_pascal(target)} on port {target_port}")
+            # The rule the LLM omitted: the target's SG default-denies inbound, so the
+            # ALB's egress alone gets the health check nowhere.
+            _ensure(True, target, target_port, "tcp", alb, None,
+                    f"Clyro enforced ALB to {_stem_pascal(target)} on port {target_port}")
+
+    if not blocks:
+        return template
+
+    fragment = "".join(blocks)
+    out_match = _OUTPUTS_SECTION_RE.search(template)
+    if out_match:
+        insert_at = out_match.start()
+        return template[:insert_at] + fragment + "\n" + template[insert_at:]
+    return template.rstrip("\n") + "\n" + fragment
+
+
 def enforce_elasticache_deletion_policy(template: str) -> str:
     """Found live: an authoring rule previously told the agent to use
     DeletionPolicy/UpdateReplacePolicy: Retain on ElastiCache::ReplicationGroup as a
@@ -711,14 +967,16 @@ def security_scan(template: str) -> list[dict[str, str]]:
 # three call sites that previously spelled them out — which had already drifted:
 # refine()'s post-lint-loop block omitted enforce_free_tier_limits.
 #
-# enforce_codebuild_projects is deliberately NOT here — see its call site in
-# generate().
+# Order matters: enforce_sg_description_charset runs last so it also normalizes the
+# Description text emitted by enforce_security_group_rules. enforce_codebuild_projects
+# is deliberately NOT here — see its call site in generate().
 
 def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_free_tier_limits(template, spec)
     template = enforce_elasticache_deletion_policy(template)
     template = enforce_rds_deletion_policy(template)
     template = enforce_log_group_naming(template)
+    template = enforce_security_group_rules(template, spec)
     template = enforce_sg_description_charset(template)
     return template
 
