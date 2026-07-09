@@ -702,6 +702,33 @@ def security_scan(template: str) -> list[dict[str, str]]:
     return findings
 
 
+# ── Deterministic correctors + blocker gate, as single call sites ──────────────
+#
+# generate() and refine() each re-run the full corrector set after every LLM-facing
+# fix loop (the LLM can undo a correction while fixing something else), and both
+# they and validate() compute the same blocker findings. Keeping those two lists in
+# one place each means a new corrector or check is added once, not at the five and
+# three call sites that previously spelled them out — which had already drifted:
+# refine()'s post-lint-loop block omitted enforce_free_tier_limits.
+#
+# enforce_codebuild_projects is deliberately NOT here — see its call site in
+# generate().
+
+def _apply_enforcers(template: str, spec: dict) -> str:
+    template = enforce_free_tier_limits(template, spec)
+    template = enforce_elasticache_deletion_policy(template)
+    template = enforce_rds_deletion_policy(template)
+    template = enforce_log_group_naming(template)
+    template = enforce_sg_description_charset(template)
+    return template
+
+
+def _collect_findings(template: str, spec: dict) -> list[dict[str, str]]:
+    return (security_scan(template)
+            + check_ecs_network_reachability(template, spec)
+            + check_secret_interpolation(template, spec))
+
+
 # ── Agent-backed generate / refine ─────────────────────────────────────────────
 
 def _invoke_iac(payload: dict, project: Project) -> dict[str, Any]:
@@ -720,11 +747,7 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
         raise IacError((resp or {})["error"])
     template = (resp or {}).get("template", "") or ""
     message = (resp or {}).get("message") or "Generated your CloudFormation template."
-    template = enforce_free_tier_limits(template, spec)
-    template = enforce_elasticache_deletion_policy(template)
-    template = enforce_rds_deletion_policy(template)
-    template = enforce_log_group_naming(template)
-    template = enforce_sg_description_charset(template)
+    template = _apply_enforcers(template, spec)
 
     region = deployment.aws_connection.aws_region or "us-east-1"
     validation = lint_template(template, region)
@@ -735,23 +758,15 @@ def generate(project: Project, model: str | None = None) -> dict[str, Any]:
             template, validation, spec=spec, project=project, model=model, region=region)
         if fix_msg:
             message = fix_msg
-        template = enforce_free_tier_limits(template, spec)
-        template = enforce_elasticache_deletion_policy(template)
-        template = enforce_rds_deletion_policy(template)
-        template = enforce_log_group_naming(template)
-        template = enforce_sg_description_charset(template)
+        template = _apply_enforcers(template, spec)
 
-    findings = security_scan(template) + check_ecs_network_reachability(template, spec) + check_secret_interpolation(template, spec)
+    findings = _collect_findings(template, spec)
     if any(f["severity"] == "blocker" for f in findings):
         template, findings, fix_msg = _security_fix_loop(
             template, findings, spec=spec, project=project, model=model, region=region)
         if fix_msg:
             message = fix_msg
-        template = enforce_free_tier_limits(template, spec)
-        template = enforce_elasticache_deletion_policy(template)
-        template = enforce_rds_deletion_policy(template)
-        template = enforce_log_group_naming(template)
-        template = enforce_sg_description_charset(template)
+        template = _apply_enforcers(template, spec)
         validation = lint_template(template, region)
 
     # Runs last, once, after every LLM-facing fix loop is done — not before,
@@ -845,11 +860,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
         new_template = current
         message = "Couldn't apply that change — the response wasn't a valid template edit."
 
-    new_template = enforce_free_tier_limits(new_template, spec)
-    new_template = enforce_elasticache_deletion_policy(new_template)
-    new_template = enforce_rds_deletion_policy(new_template)
-    new_template = enforce_log_group_naming(new_template)
-    new_template = enforce_sg_description_charset(new_template)
+    new_template = _apply_enforcers(new_template, spec)
     validation = lint_template(new_template, region)
 
     # Bounded corrective loop if the edit introduced cfn-lint ERRORS (warnings are
@@ -860,23 +871,16 @@ def refine(project: Project, instruction: str, history: list | None = None,
             region=region, history=history)
         if fix_msg:
             message = fix_msg
-        new_template = enforce_elasticache_deletion_policy(new_template)
-        new_template = enforce_rds_deletion_policy(new_template)
-        new_template = enforce_log_group_naming(new_template)
-        new_template = enforce_sg_description_charset(new_template)
+        new_template = _apply_enforcers(new_template, spec)
 
-    findings = security_scan(new_template) + check_ecs_network_reachability(new_template, spec) + check_secret_interpolation(new_template, spec)
+    findings = _collect_findings(new_template, spec)
     if any(f["severity"] == "blocker" for f in findings):
         new_template, findings, fix_msg = _security_fix_loop(
             new_template, findings, spec=spec, project=project, model=model,
             region=region, history=history)
         if fix_msg:
             message = fix_msg
-        new_template = enforce_free_tier_limits(new_template, spec)
-        new_template = enforce_elasticache_deletion_policy(new_template)
-        new_template = enforce_rds_deletion_policy(new_template)
-        new_template = enforce_log_group_naming(new_template)
-        new_template = enforce_sg_description_charset(new_template)
+        new_template = _apply_enforcers(new_template, spec)
         validation = lint_template(new_template, region)
 
     new_template = enforce_codebuild_projects(new_template, spec)
@@ -898,7 +902,7 @@ def validate(project: Project, template: str) -> dict[str, Any]:
     region = deployment.aws_connection.aws_region or "us-east-1"
     validation = lint_template(template, region)
     spec = _spec_for(deployment)
-    findings = security_scan(template) + check_ecs_network_reachability(template, spec) + check_secret_interpolation(template, spec)
+    findings = _collect_findings(template, spec)
     has_blocker = any(f["severity"] == "blocker" for f in findings)
 
     deployment.cloudformation_template = template
@@ -928,6 +932,6 @@ def get_current(project: Project) -> dict[str, Any]:
     validation = lint_template(template, deployment.aws_connection.aws_region or "us-east-1") if template else None
     findings = []
     if template:
-        findings = security_scan(template) + check_ecs_network_reachability(template, _spec_for(deployment)) + check_secret_interpolation(template, _spec_for(deployment))
+        findings = _collect_findings(template, _spec_for(deployment))
     return {"template": template, "status": deployment.status, "validation": validation,
             "security_findings": findings}
