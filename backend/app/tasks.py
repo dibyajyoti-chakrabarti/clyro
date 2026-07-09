@@ -106,12 +106,14 @@ def run_provision_task(job_id: str, project_id: str):
     _run(job_id, _do)
 
 
-@shared_task(soft_time_limit=1200, time_limit=1500)
+@shared_task(soft_time_limit=2100, time_limit=2400)
 def run_build_task(job_id: str, project_id: str):
     # A "Retry build" click after Deployment.Status.BUILD_FAILED — deliberately
     # does NOT go through provision_with_feedback (which would re-poll/retry
     # the CFN stack); the stack is already CREATE_COMPLETE and untouched, only
-    # the build step needs to run again.
+    # the build step needs to run again. The ceiling must cover the build poll
+    # (build._POLL_TIMEOUT_SECONDS) plus the post-build ECS scale-up wait
+    # (deploy._STEADY_TIMEOUT_SECONDS), since build_with_feedback does both.
     from app.provisioning import build
 
     def _do():
