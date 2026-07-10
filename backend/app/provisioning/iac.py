@@ -1020,6 +1020,96 @@ def enforce_required_env(template: str, spec: dict) -> str:
     return result + "\n" if template.endswith("\n") else result
 
 
+_ECS_SERVICE_TYPE = "AWS::ECS::Service"
+
+
+def _task_security_group_ids(resources: dict) -> list[str]:
+    """The logical ids of the security groups ECS attaches to task ENIs."""
+    ids: list[str] = []
+    for res in resources.values():
+        if not isinstance(res, dict) or res.get("Type") != _ECS_SERVICE_TYPE:
+            continue
+        awsvpc = ((res.get("Properties") or {})
+                  .get("NetworkConfiguration") or {}).get("AwsvpcConfiguration") or {}
+        for entry in awsvpc.get("SecurityGroups") or []:
+            logical_id = _ref_id(entry)
+            if logical_id and logical_id not in ids:
+                ids.append(logical_id)
+    return ids
+
+
+def _has_internet_egress(resources: dict, sg_logical_id: str) -> bool:
+    sg = resources.get(sg_logical_id) or {}
+    for rule in (sg.get("Properties") or {}).get("SecurityGroupEgress") or []:
+        if isinstance(rule, dict) and rule.get("CidrIp") == _INTERNET_CIDR:
+            return True
+    for res in resources.values():
+        if not isinstance(res, dict) or res.get("Type") != _EGRESS_TYPE:
+            continue
+        props = res.get("Properties") or {}
+        if _ref_id(props.get("GroupId")) == sg_logical_id and props.get("CidrIp") == _INTERNET_CIDR:
+            return True
+    return False
+
+
+def enforce_task_egress(template: str, spec: dict) -> str:
+    """Guarantee ECS tasks can reach the internet.
+
+    Found live: the agent authored an inline `SecurityGroupEgress` on the task's
+    security group reading `Description: Allow HTTPS for ECR and Secrets Manager,
+    FromPort 443, DestinationSecurityGroupId: !Ref AlbSecurityGroup`. Declaring
+    *any* inline egress makes CloudFormation drop the default allow-all rule, and
+    the replacement pointed at the load balancer's security group rather than the
+    internet — so the task could not call ECR's public endpoint and died with
+    `ResourceInitializationError ... dial tcp ...:443: i/o timeout` before running
+    a single line of the customer's code.
+
+    A task always needs outbound internet: ECR for the image, Secrets Manager for
+    its secrets, CloudWatch for its logs, and (on free tier) there is no NAT
+    gateway and no VPC endpoints to reach them privately. Only fires when the
+    template narrowed egress itself — an untouched security group keeps the
+    permissive default and needs nothing. Idempotent."""
+    if not template or _ECS_SERVICE_TYPE not in template:
+        return template
+    try:
+        doc = cfn_yaml.loads(template)
+    except Exception as exc:
+        log.warning("enforce_task_egress: could not parse template (%s)", exc)
+        return template
+    resources = (doc or {}).get("Resources")
+    if not isinstance(resources, dict):
+        return template
+
+    blocks = []
+    for sg_logical_id in _task_security_group_ids(resources):
+        sg = resources.get(sg_logical_id) or {}
+        inline = (sg.get("Properties") or {}).get("SecurityGroupEgress")
+        if not inline:
+            continue  # default allow-all egress is intact
+        if _has_internet_egress(resources, sg_logical_id):
+            continue
+        logical_id = f"Clyro{_stem_pascal(sg_logical_id)}EgressInternet"
+        if logical_id in resources:
+            continue
+        blocks.append(
+            f"  {logical_id}:\n"
+            f"    Type: {_EGRESS_TYPE}\n"
+            f"    Properties:\n"
+            f"      GroupId: !Ref {sg_logical_id}\n"
+            f"      CidrIp: {_INTERNET_CIDR}\n"
+            f"      IpProtocol: -1\n"
+            f"      Description: Clyro enforced outbound internet for ECR Secrets Manager and logs\n"
+        )
+
+    if not blocks:
+        return template
+    fragment = "".join(blocks)
+    out_match = _OUTPUTS_SECTION_RE.search(template)
+    if out_match:
+        return template[:out_match.start()] + fragment + "\n" + template[out_match.start():]
+    return template.rstrip("\n") + "\n" + fragment
+
+
 _SECRET_TYPE = "AWS::SecretsManager::Secret"
 _GENERATE_SECRET_RE = re.compile(r"^(?P<ind>[ ]+)GenerateSecretString:[ ]*$")
 _EXCLUDE_CHARS_RE = re.compile(r"^(?P<ind>[ ]+)ExcludeCharacters:[ ]*.*$")
@@ -1333,6 +1423,7 @@ def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_rds_deletion_policy(template)
     template = enforce_log_group_naming(template)
     template = enforce_security_group_rules(template, spec)
+    template = enforce_task_egress(template, spec)
     template = enforce_secret_url_safe_charset(template)
     template = enforce_required_env(template, spec)
     template = enforce_env_values(template, spec)
@@ -1459,6 +1550,18 @@ def check_spec_conformance(template: str, spec: dict) -> list[dict[str, str]]:
                 f"No ECS container sets {key}. The spec requires it at the literal value "
                 f"'{value}'. Add it to the ContainerDefinitions Environment list of every "
                 "application container.")})
+
+    # 2c. Every ECS task can still reach the internet. A task security group that
+    #     narrows egress without a 0.0.0.0/0 rule cannot pull its image from ECR.
+    for sg_logical_id in _task_security_group_ids(resources):
+        sg = resources.get(sg_logical_id) or {}
+        if not (sg.get("Properties") or {}).get("SecurityGroupEgress"):
+            continue
+        if not _has_internet_egress(resources, sg_logical_id):
+            findings.append({"severity": "blocker", "message": (
+                f"{sg_logical_id} declares egress rules but none to {_INTERNET_CIDR}, which "
+                "removes the default allow-all. ECS tasks using it cannot reach ECR, Secrets "
+                "Manager or CloudWatch, and will fail with ResourceInitializationError.")})
 
     # 3. Every ECR image an ECS task pulls is one the build pipeline actually pushes.
     buildable = set(codebuild_spec.buildable_node_ids(spec))
