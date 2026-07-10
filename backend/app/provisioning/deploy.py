@@ -818,15 +818,17 @@ _TERMINAL_STATUSES = (
     Deployment.Status.BUILDING,
 )
 _POLL_INTERVAL_SECONDS = 8
-# 15 min per attempt — the UI's own copy says a healthy deploy typically takes
-# 8-12 min. This task supervises for one correction round, not indefinitely; if
-# a stack is still non-terminal past this ceiling (e.g. an ECS service that
-# never reaches steady state because the user's own image crash-loops), this
-# task simply stops watching and returns the current in-progress state — the
-# frontend's own deploy-status polling keeps reflecting real AWS state either
-# way. Two attempts at this ceiling plus one refine() round must fit inside
-# run_provision_task's soft_time_limit (app/tasks.py) with margin.
-_POLL_TIMEOUT_SECONDS = 900
+# 25 min per attempt. Was 15, which stranded real deploys (Defect M): the build
+# handoff lives only in this supervisor (the BUILDING branch below), but a stack
+# with a CloudFront distribution routinely takes 18-22 min to reach CREATE_COMPLETE.
+# The old ceiling gave up mid-CREATE, this task returned, and when CFN later went
+# live poll() flipped the deployment to BUILDING with nothing left to run the build —
+# stuck at "building" forever. The ceiling must outlast a realistically slow (but
+# healthy) create so the same task hands off to the build. Budget: two attempts plus
+# one refine() round must still fit run_provision_task's soft_time_limit=3300s
+# (app/tasks.py) — 2×1500 + ~120 ≈ 3120 < 3300, with margin. A genuinely stuck stack
+# (image crash-loop) still ends via CFN's own failure, not this ceiling.
+_POLL_TIMEOUT_SECONDS = 1500
 
 
 def _poll_to_terminal(project: Project) -> dict[str, Any]:
