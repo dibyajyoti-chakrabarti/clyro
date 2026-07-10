@@ -215,9 +215,12 @@ def _is_safe_output(deployment: Deployment, value: str) -> bool:
     Clyro's nor the user's own connected account), drop it rather than let it
     reach the user's browser."""
     clyro_account = getattr(settings, "CLYRO_AWS_ACCOUNT_ID", "")
-    if clyro_account and clyro_account in value:
-        return False
     user_account = deployment.aws_connection.aws_account_id
+    # Unless the user connected the account Clyro itself runs in — dogfooding, where
+    # every legitimate output names it. Found live: FrontendBucketName, SQSQueueURL
+    # and ECRRepositoryURI were all silently dropped from the user's own deployment.
+    if clyro_account and clyro_account != user_account and clyro_account in value:
+        return False
     for account in _ARN_ACCOUNT_RE.findall(value):
         if account != user_account:
             return False
