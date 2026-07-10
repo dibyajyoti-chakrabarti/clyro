@@ -4,10 +4,10 @@ function MetricsGrid() {
       <h3 className='text-lg font-semibold'>Key metrics</h3>
       <div className='mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4'>
         {[
-          ['API response time', 'â€”', ''],
-          ['Request rate', 'â€”', ''],
-          ['Error rate', 'â€”', ''],
-          ['Backend CPU', 'â€”', ''],
+          ['API response time', '—', ''],
+          ['Request rate', '—', ''],
+          ['Error rate', '—', ''],
+          ['Backend CPU', '—', ''],
         ].map(([title, primary, secondary]) => (
           <div key={title} className='rounded-lg border border-border bg-surface p-3'>
             <p className='text-xs text-text-muted'>{title}</p>
