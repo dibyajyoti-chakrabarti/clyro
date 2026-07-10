@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, pollJob } from '../../../../api'
+import ConfirmDialog from '../../../../components/ui/ConfirmDialog'
 import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPanel'
 import AwsConnectCard from './AwsConnectCard'
 import DeploymentSuccess from './DeploymentSuccess'
@@ -67,6 +68,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
   // infra lifecycle (pause / resume / delete) state
   const [infraActionLoading, setInfraActionLoading] = useState(false)
   const [infraActionError, setInfraActionError] = useState(null)
+  const [teardownOpen, setTeardownOpen] = useState(false)
 
   // shared
   const [showTemplate, setShowTemplate] = useState(false)
@@ -419,22 +421,36 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     }
   }
 
-  const handleTeardown = async () => {
-    if (!window.confirm('This permanently deletes all provisioned infrastructure for this project. This cannot be undone. Continue?')) {
-      return
-    }
+  const handleTeardown = () => {
     setInfraActionError(null)
+    setTeardownOpen(true)
+  }
+
+  const confirmTeardown = async () => {
     setInfraActionLoading(true)
     try {
       const data = await api.teardownDeploy(projectId)
       setDeployStatus(data.status)
+      setTeardownOpen(false)
       startDeployPoll()
     } catch (err) {
       setInfraActionError(err.data?.error || 'Failed to delete infrastructure.')
+      setTeardownOpen(false)
     } finally {
       setInfraActionLoading(false)
     }
   }
+
+  const teardownDialog = (
+    <ConfirmDialog
+      open={teardownOpen}
+      title='Delete infrastructure'
+      description='This permanently deletes all provisioned infrastructure for this project — the CloudFormation stack and every resource it created. This cannot be undone.'
+      confirmText={infraActionLoading ? 'Deleting…' : 'Yes, delete infrastructure'}
+      onCancel={() => setTeardownOpen(false)}
+      onConfirm={confirmTeardown}
+    />
+  )
 
   if (hydrating) {
     return (
@@ -553,6 +569,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
           cancelLoading={infraActionLoading}
           cancelError={infraActionError}
         />
+        {teardownDialog}
       </div>
     )
   }
@@ -575,6 +592,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
         onResume={handleResume}
         onTeardown={handleTeardown}
       />
+      {teardownDialog}
     </div>
   )
 }
