@@ -640,12 +640,22 @@ def _index_security_groups(resources: dict, spec: dict) -> tuple[dict, dict]:
 
 def _find_sg(sg_name: str, by_name: dict, by_stem: dict) -> str | None:
     """Map a spec `security_group` name onto the template's LLM-chosen logical id.
-    Prefers the authored GroupName (which build_spec's `<node>-sg` convention makes
-    exact); falls back to the logical-id stem (`taskboard-prod-alb-sg` -> `Alb...`)."""
+    Prefers the authored GroupName; falls back to the logical-id stem.
+
+    The spec names a group after its node (`db-sg`) while the template authors it
+    with the stack's naming prefix (`${NamingPrefix}-db-sg` -> `taskboard-prod-db-sg`),
+    so an equality test on GroupName never fires and everything silently fell through
+    to the stem. Found live: one generation named it `DBSecurityGroup` (stem `db`, a
+    match) and the next `DatabaseSecurityGroup` (stem `database`, no match), so the
+    ingress rules for the database went unenforced purely on model variance. Match the
+    GroupName on its suffix, and only accept an unambiguous hit."""
     if not sg_name:
         return None
     if sg_name in by_name:
         return by_name[sg_name]
+    suffixed = [lid for name, lid in by_name.items() if name.endswith(f"-{sg_name}")]
+    if len(suffixed) == 1:
+        return suffixed[0]
     base = sg_name[:-3] if sg_name.endswith("-sg") else sg_name
     for candidate in (base.replace("-", ""), base.split("-")[-1]):
         if candidate in by_stem:
