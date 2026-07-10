@@ -155,6 +155,18 @@ _LITERAL_ENV_VALUES = {
     "ALLOWED_HOSTS": "*",
 }
 
+# The contract scanner/compliance.py already states to the user and gates on:
+# "Clyro's ALB target group health check is hardcoded to GET /health". Nothing
+# actually pinned it — the agent chose the path, and got `/health/` on one
+# generation and `/` on the next. The app under test routes `path("health", ...)`
+# with no trailing slash and has no root route, so both 404 and the target never
+# goes healthy. Pin it here so the promise is real.
+#
+# Limitation: an app serving its check at, say, `/api/health` passes the Step-1
+# compliance check (the route merely has to contain "health") but would fail this.
+# Threading the matched route out of the scanner is the proper fix.
+_HEALTH_CHECK_PATH = "/health"
+
 
 def _add_literal_env(generated_env: list[dict[str, Any]], env_vars: list[dict[str, Any]]) -> None:
     """Promote a declared-but-unclassified env var to a generated one with a fixed
@@ -374,6 +386,7 @@ def build_spec(
         },
         "resources": resources,
         "network_edges": network_edges,
+        "health_check_path": _HEALTH_CHECK_PATH,
         "secrets": secrets,
         "generated_env": generated_env,
         # Which provisioned resource backs the Celery/task broker. Read by
