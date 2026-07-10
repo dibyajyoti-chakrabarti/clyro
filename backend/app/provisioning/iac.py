@@ -1020,6 +1020,108 @@ def enforce_required_env(template: str, spec: dict) -> str:
     return result + "\n" if template.endswith("\n") else result
 
 
+_ECR_REPOSITORY_TYPE = "AWS::ECR::Repository"
+_TASK_DEFINITION_RESOURCE = "AWS::ECS::TaskDefinition"
+_REPOSITORY_NAME_RE = re.compile(r"^(?P<ind>[ ]+)RepositoryName:[ ]*.*$")
+_IMAGE_LINE_RE = re.compile(r"^(?P<ind>[ ]+)Image:[ ]*.*\.dkr\.ecr\..*$")
+
+
+def _docker_repo_owner(spec: dict) -> dict[str, str]:
+    """``node_id -> the node whose CodeBuild project owns its ECR repository``.
+    A worker sharing the backend's build_path pulls the backend's image — the same
+    dedupe codebuild_spec.buildable_node_ids does."""
+    owners: dict[str, str] = {}
+    by_path: dict[str, str] = {}
+    for entry in (spec or {}).get("resources") or []:
+        if entry.get("type") not in ("service", "worker") or entry.get("image") != "ecr":
+            continue
+        build_path = entry.get("build_path")
+        if not build_path:
+            continue
+        by_path.setdefault(build_path, entry["node_id"])
+        owners[entry["node_id"]] = by_path[build_path]
+    return owners
+
+
+def _node_for_logical_id(logical_id: str, node_ids) -> str | None:
+    """`BackendTaskDefinition` -> `backend`. Longest suffix match, so
+    `BackendWorkerTaskDefinition` resolves to `worker`, not `backend`."""
+    name = re.sub(r"(TaskDefinition|TaskDef|Repository|Repo)$", "", logical_id).lower()
+    matches = [n for n in node_ids if name.endswith(n)]
+    if matches:
+        return max(matches, key=len)
+    contains = [n for n in node_ids if n in name]
+    return max(contains, key=len) if contains else None
+
+
+def enforce_ecr_image_repository(template: str, spec: dict) -> str:
+    """Point every ECS container at the ECR repository CodeBuild actually pushes to,
+    and name the repository accordingly.
+
+    codebuild_spec pushes to `{naming_prefix}-{node_id}` and does NOT create the
+    repository — the agent's template must. Found live: the agent created a single
+    repository named `!Ref NamingPrefix` (`taskboard-prod`) and had both task
+    definitions pull it, while the build pushed to `taskboard-prod-backend`. The push
+    would fail, and the pull would find nothing: ECS retries CannotPullContainerError
+    forever. Idempotent."""
+    owners = _docker_repo_owner(spec)
+    prefix = (spec or {}).get("naming_prefix") or ""
+    if not template or not owners or not prefix:
+        return template
+    try:
+        doc = cfn_yaml.loads(template)
+    except Exception as exc:
+        log.warning("enforce_ecr_image_repository: could not parse template (%s)", exc)
+        return template
+    resources = (doc or {}).get("Resources")
+    if not isinstance(resources, dict):
+        return template
+
+    wanted = sorted({f"{prefix}-{owner}" for owner in owners.values()})
+    lines = template.splitlines()
+    starts = [i for i, line in enumerate(lines) if _RESOURCE_KEY_RE.match(line)]
+
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(lines)
+        for k in range(start + 1, end):
+            if lines[k] and not lines[k].startswith(" "):
+                end = k
+                break
+        logical_id = _RESOURCE_KEY_RE.match(lines[start]).group("lid")
+        block = lines[start:end]
+
+        if any(l.strip() == f"Type: {_ECR_REPOSITORY_TYPE}" for l in block):
+            if len(wanted) == 1:
+                target = wanted[0]
+            else:
+                node = _node_for_logical_id(logical_id, owners)
+                target = f"{prefix}-{owners[node]}" if node else None
+            if target:
+                for k in range(start, end):
+                    match = _REPOSITORY_NAME_RE.match(lines[k])
+                    if match:
+                        lines[k] = f"{match.group('ind')}RepositoryName: {target}"
+                        break
+
+        elif any(l.strip() == f"Type: {_TASK_DEFINITION_RESOURCE}" for l in block):
+            node = _node_for_logical_id(logical_id, owners)
+            if node is None and len(wanted) == 1:
+                target = wanted[0]
+            elif node is not None:
+                target = f"{prefix}-{owners[node]}"
+            else:
+                continue
+            uri = ("!Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/"
+                   f"{target}:latest'")
+            for k in range(start, end):
+                match = _IMAGE_LINE_RE.match(lines[k])
+                if match:
+                    lines[k] = f"{match.group('ind')}Image: {uri}"
+
+    result = "\n".join(lines)
+    return result + "\n" if template.endswith("\n") else result
+
+
 _DISTRIBUTION_TYPE = "AWS::CloudFront::Distribution"
 _MANAGED_POLICY_TYPE = "AWS::IAM::ManagedPolicy"
 # The only origin request policies CloudFront accepts on an S3 origin. AWS rejects
@@ -1567,6 +1669,7 @@ def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_log_group_naming(template)
     template = enforce_security_group_rules(template, spec)
     template = enforce_task_egress(template, spec)
+    template = enforce_ecr_image_repository(template, spec)
     template = enforce_cloudfront_s3_origin_policy(template, spec)
     template = enforce_health_check_path(template, spec)
     template = enforce_secret_url_safe_charset(template)
@@ -1695,6 +1798,25 @@ def check_spec_conformance(template: str, spec: dict) -> list[dict[str, str]]:
                 f"No ECS container sets {key}. The spec requires it at the literal value "
                 f"'{value}'. Add it to the ContainerDefinitions Environment list of every "
                 "application container.")})
+
+    # 2g. The repositories CodeBuild pushes to exist. codebuild_spec creates the build
+    #     projects but never the repositories; if the template names them anything else
+    #     the `docker push` fails and nothing ever lands for ECS to pull.
+    owners = _docker_repo_owner(spec)
+    prefix = spec.get("naming_prefix") or ""
+    if owners and prefix:
+        declared = {
+            _resolve_sub((res.get("Properties") or {}).get("RepositoryName"), spec)
+            for res in resources.values()
+            if isinstance(res, dict) and res.get("Type") == _ECR_REPOSITORY_TYPE
+        }
+        for owner in sorted(set(owners.values())):
+            expected = f"{prefix}-{owner}"
+            if expected not in declared:
+                findings.append({"severity": "blocker", "message": (
+                    f"No AWS::ECR::Repository named '{expected}' — CodeBuild pushes the "
+                    f"{owner} image there and does not create the repository itself. "
+                    f"The template declares: {', '.join(sorted(d for d in declared if d)) or 'none'}.")})
 
     # 2f. Constructs the bootstrap role provably cannot create. cfn-lint accepts these
     #     happily — the template is valid CloudFormation, it just cannot be deployed by
