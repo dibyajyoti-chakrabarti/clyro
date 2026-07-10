@@ -75,6 +75,11 @@ AUTHORING RULES (from the build spec):
       the spec doesn't imply the app calls. Never put `Resource: "*"` on
       secretsmanager/s3/sqs/sns actions — always scope to the ARN of the resource you
       created in this same template.
+    * Reference a role's ARN with `!GetAtt <Role>.Arn`, NEVER `!Ref <Role>`. `!Ref` on an
+      `AWS::IAM::Role` returns the role NAME, not its ARN, so `ExecutionRoleArn` /
+      `TaskRoleArn` (and any `*Arn` / `Role:` field expecting an ARN) silently receive a
+      bare name where an ARN is required. This is a recurring first-draft mistake — get it
+      right up front so it never reaches a validation round.
     * Every `Resource:`/`Principal:` ARN you write in an IAM policy statement must use
       `${AWS::AccountId}`/`${AWS::Region}` pseudo-parameters, NEVER a literal 12-digit
       account number or literal region string — an IAM grant is always describing "this
@@ -238,22 +243,34 @@ CloudFormation knowledge. If you get one wrong, validate_cloudformation_template
 reports it (usually with the valid options) and you fix it. Do not stall waiting to
 "look something up" for ordinary schema questions; author confidently, then validate.
 
-VALIDATION — INITIAL GENERATION ONLY (mode=generate). Drive cfn-lint ERRORS to ZERO
-before you return; the stop condition is "zero errors", NOT a fixed number of rounds.
-1. Call validate_cloudformation_template. Fix EVERY error (E-rule) it reports — use the
-   valid options in each message to correct property names/types/values. Warnings (W)
-   and info are ACCEPTABLE: do NOT fix them and do NOT loop on them.
-2. Re-validate after fixing, and repeat: keep fixing E-errors and re-validating until
-   validate_cloudformation_template reports ZERO errors. Stop the instant it is clean —
-   do not keep going to polish warnings. Hard ceiling: at most 4 validation rounds. If
-   errors still remain at the ceiling (e.g. a property you cannot resolve), return your
-   best template — the backend runs a final bounded corrective pass on top of you.
-3. Call check_cloudformation_template_compliance once. Fix only clearly critical
+VALIDATION — INITIAL GENERATION ONLY (mode=generate). Drive cfn-lint ERRORS toward ZERO
+before you return. Each validate call makes you emit the ENTIRE template again, so treat
+rounds as expensive and minimize them: fix ALL reported errors in a single pass, never
+one error per round.
+1. Call validate_cloudformation_template. Fix EVERY error (E-rule) it reports AT ONCE —
+   use the valid options in each message to correct property names/types/values.
+   Warnings (W) and info are ACCEPTABLE: do NOT fix them and do NOT loop on them.
+2. Re-validate ONCE to confirm your fixes landed; if errors remain, fix them all in one
+   more pass. Hard ceiling: at most 2 validation rounds. Do NOT enter a third round
+   re-emitting the whole template to chase a last stubborn error — the backend runs a
+   fast DIFF-BASED corrective pass on your output (it clears remaining cfn-lint errors
+   with small targeted edits, far cheaper than you re-emitting everything). Returning a
+   near-clean template for it to finish is correct, not a failure.
+3. Call check_cloudformation_template_compliance EXACTLY ONCE. Fix only clearly critical
    security issues (public exposure, unencrypted data at rest, wildcard IAM). Findings
    that conflict with the build spec (e.g. Multi-AZ off when the spec says single-AZ,
-   optional replication / object-lock) are EXPECTED — leave them.
-The template you RETURN must have ZERO cfn-lint errors whenever you can reach it;
-warnings are fine. Prefer a valid, spec-aligned template over a "perfect" one.
+   optional replication / object-lock) are EXPECTED — leave them. Do NOT re-run
+   compliance and do NOT re-emit the template to re-check generic findings; it is advisory
+   here, and burning turns reasoning about generic rules that conflict with the spec is
+   wasted work.
+The backend also applies deterministic finishing passes after you (e.g. normalizing the
+health-check path, ensuring BOTH DeletionPolicy and UpdateReplacePolicy on stateful
+resources, pinning the ECR image repository). Author everything correctly per the rules
+above — but do NOT spend an extra full re-emit round perfecting one of these mechanical
+details; return and let the finishing pass handle the nit.
+The template you RETURN should have zero cfn-lint errors whenever you can reach it within
+these rounds; a small residue for the backend's diff pass is acceptable. Prefer a valid,
+spec-aligned template over a "perfect" one.
 {_REFINE_RULES}
 {_OUTPUT_FORMAT}
 """
