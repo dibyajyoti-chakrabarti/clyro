@@ -1020,6 +1020,54 @@ def enforce_required_env(template: str, spec: dict) -> str:
     return result + "\n" if template.endswith("\n") else result
 
 
+_TARGET_GROUP_TYPE = "AWS::ElasticLoadBalancingV2::TargetGroup"
+_HEALTH_CHECK_PATH_RE = re.compile(r"^(?P<ind>[ ]+)HealthCheckPath:[ ]*.*$")
+
+
+def enforce_health_check_path(template: str, spec: dict) -> str:
+    """Pin every ALB target group's health check to the path the spec promises.
+
+    Found live: the agent chose `/health/` on one generation and `/` on the next.
+    The app routes `path("health", ...)` — no trailing slash, and no root route — so
+    both return 404 and the target never becomes healthy, which reads to the user as
+    "the deploy hangs". scanner/compliance.py already tells the user the check is
+    "hardcoded to GET /health" and refuses to pass a repo without such a route;
+    this is what makes that true. Idempotent."""
+    desired = (spec or {}).get("health_check_path")
+    if not template or not desired or _TARGET_GROUP_TYPE not in template:
+        return template
+
+    lines = template.splitlines()
+    starts = [i for i, line in enumerate(lines) if _RESOURCE_KEY_RE.match(line)]
+    insertions: list[tuple[int, list[str]]] = []
+
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(lines)
+        for k in range(start + 1, end):
+            if lines[k] and not lines[k].startswith(" "):
+                end = k
+                break
+        if not any(line.strip() == f"Type: {_TARGET_GROUP_TYPE}" for line in lines[start:end]):
+            continue
+
+        for k in range(start, end):
+            match = _HEALTH_CHECK_PATH_RE.match(lines[k])
+            if match:
+                lines[k] = f"{match.group('ind')}HealthCheckPath: {desired}"
+                break
+        else:
+            for k in range(start, end):
+                if lines[k].strip() == "Properties:":
+                    insertions.append((k + 1, [f"      HealthCheckPath: {desired}"]))
+                    break
+
+    for at, new_lines in sorted(insertions, reverse=True):
+        lines[at:at] = new_lines
+
+    result = "\n".join(lines)
+    return result + "\n" if template.endswith("\n") else result
+
+
 _ECS_SERVICE_TYPE = "AWS::ECS::Service"
 
 
@@ -1424,6 +1472,7 @@ def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_log_group_naming(template)
     template = enforce_security_group_rules(template, spec)
     template = enforce_task_egress(template, spec)
+    template = enforce_health_check_path(template, spec)
     template = enforce_secret_url_safe_charset(template)
     template = enforce_required_env(template, spec)
     template = enforce_env_values(template, spec)
@@ -1550,6 +1599,19 @@ def check_spec_conformance(template: str, spec: dict) -> list[dict[str, str]]:
                 f"No ECS container sets {key}. The spec requires it at the literal value "
                 f"'{value}'. Add it to the ContainerDefinitions Environment list of every "
                 "application container.")})
+
+    # 2d. The load balancer health-checks the path the app actually serves.
+    desired_path = spec.get("health_check_path")
+    if desired_path:
+        for logical_id, res in resources.items():
+            if not isinstance(res, dict) or res.get("Type") != _TARGET_GROUP_TYPE:
+                continue
+            actual = (res.get("Properties") or {}).get("HealthCheckPath")
+            if actual != desired_path:
+                findings.append({"severity": "blocker", "message": (
+                    f"{logical_id} health-checks {actual!r}, but the app serves its check at "
+                    f"{desired_path!r}. Any other path returns 404 and the target never becomes "
+                    "healthy, so the service never stabilizes.")})
 
     # 2c. Every ECS task can still reach the internet. A task security group that
     #     narrows egress without a 0.0.0.0/0 rule cannot pull its image from ECR.
