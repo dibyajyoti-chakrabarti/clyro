@@ -294,8 +294,14 @@ def poll(project: Project) -> dict[str, Any]:
         # actually usable. A deployment already past BUILDING (COMPLETE,
         # BUILD_FAILED, etc.) is left alone here — this branch only fires the
         # first time CFN goes live.
+        #
+        # FAILED belongs in this list too: a service that never stabilizes is a
+        # *runtime* failure on a stack that stays CREATE_COMPLETE, so this branch
+        # would otherwise flip it back to BUILDING on the frontend's next poll and
+        # bury the diagnosis. Found live on deploy #3.
         if deployment.status not in (
-            Deployment.Status.BUILDING, Deployment.Status.BUILD_FAILED, Deployment.Status.COMPLETE,
+            Deployment.Status.BUILDING, Deployment.Status.BUILD_FAILED,
+            Deployment.Status.COMPLETE, Deployment.Status.FAILED,
         ):
             deployment.status = Deployment.Status.BUILDING
             deployment.save(update_fields=["status", "updated_at"])
