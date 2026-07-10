@@ -849,6 +849,12 @@ def _redis_url(cache: dict, *, for_kombu: bool) -> str:
     return f"!Sub '{url}'"
 
 
+def _yaml_scalar(value: str) -> str:
+    """Quote a literal env value for YAML. Not cosmetic: an unquoted `*` is an alias
+    indicator and makes the template unparseable."""
+    return "'" + str(value).replace("'", "''") + "'"
+
+
 def _replace_env_value(template: str, key: str, new_value: str) -> str:
     """Rewrite the `Value:` line of every `- Name: <key>` container env entry.
     Anchored on the key name, so CloudWatch alarm `Dimensions` (which are also
@@ -885,7 +891,12 @@ def enforce_env_values(template: str, spec: dict) -> str:
         key = entry.get("key_name") or ""
         if not key:
             continue
-        if _BROKER_KEY_RE.search(key):
+        literal = entry.get("value")
+        if literal is not None:
+            # build_spec already knows the exact production value — no resource to
+            # resolve against, so nothing here to derive.
+            template = _replace_env_value(template, key, _yaml_scalar(literal))
+        elif _BROKER_KEY_RE.search(key):
             if broker.get("transport") == "redis" and cache:
                 template = _replace_env_value(template, key, _redis_url(cache, for_kombu=True))
             elif broker.get("transport") == "sqs":
@@ -917,6 +928,75 @@ def enforce_env_values(template: str, spec: dict) -> str:
 # real image, and deploy.scale_services_to_spec() then scales each service to the
 # count the spec asks for. The target count is read from the spec, never hardcoded.
 _DESIRED_COUNT_RE = re.compile(r"^(\s+)DesiredCount:\s*\d+\s*$", re.M)
+
+
+_RESOURCE_KEY_RE = re.compile(r"^  (?P<lid>[A-Za-z0-9_]+):[ ]*$")
+_ENV_LIST_RE = re.compile(r"^(?P<ind>[ ]+)Environment:[ ]*$")
+_ENV_ITEM_RE = re.compile(r"^[ ]*- Name:[ ]*(?P<key>\S+)[ ]*$")
+_TASK_DEFINITION_TYPE = "AWS::ECS::TaskDefinition"
+
+
+def _literal_env(spec: dict) -> list[tuple[str, str]]:
+    return [(entry["key_name"], entry["value"])
+            for entry in (spec or {}).get("generated_env") or []
+            if entry.get("key_name") and entry.get("value") is not None]
+
+
+def enforce_required_env(template: str, spec: dict) -> str:
+    """Insert any spec-mandated literal env var the agent left out of a container.
+    `enforce_env_values` can only rewrite a `Value:` line that already exists; a key
+    the agent never authored needs the whole `- Name:/Value:` pair added.
+
+    Scoped to AWS::ECS::TaskDefinition blocks on purpose. A CodeBuild project has its
+    own `Environment:` (a mapping, not a list) and an `EnvironmentVariables:` list
+    that also uses `- Name:` — anchoring on the text `Environment:` alone would
+    corrupt it. Idempotent: a key already present in a container is left alone.
+    """
+    required = _literal_env(spec)
+    if not template or not required or _TASK_DEFINITION_TYPE not in template:
+        return template
+
+    lines = template.splitlines()
+    starts = [i for i, line in enumerate(lines) if _RESOURCE_KEY_RE.match(line)]
+    insertions: list[tuple[int, list[str]]] = []
+
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(lines)
+        for k in range(start + 1, end):
+            # A new top-level section (Outputs:, Parameters:) ends the Resources block.
+            if lines[k] and not lines[k].startswith(" "):
+                end = k
+                break
+        if not any(line.strip() == f"Type: {_TASK_DEFINITION_TYPE}" for line in lines[start:end]):
+            continue
+
+        for k in range(start, end):
+            match = _ENV_LIST_RE.match(lines[k])
+            if not match:
+                continue
+            item_indent = match.group("ind") + "  "
+            stop = k + 1
+            while stop < end and (not lines[stop].strip() or lines[stop].startswith(item_indent)):
+                stop += 1
+            present = {
+                item.group("key")
+                for item in (_ENV_ITEM_RE.match(lines[x]) for x in range(k + 1, stop))
+                if item
+            }
+            new_lines = []
+            for key, value in required:
+                if key in present:
+                    continue
+                new_lines.append(f"{item_indent}- Name: {key}")
+                new_lines.append(f"{item_indent}  Value: {_yaml_scalar(value)}")
+            if new_lines:
+                insertions.append((k + 1, new_lines))
+
+    for at, new_lines in sorted(insertions, reverse=True):
+        lines[at:at] = new_lines
+
+    result = "\n".join(lines)
+    return result + "\n" if template.endswith("\n") else result
 
 
 def enforce_ecs_desired_count(template: str, spec: dict) -> str:
@@ -1183,6 +1263,7 @@ def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_rds_deletion_policy(template)
     template = enforce_log_group_naming(template)
     template = enforce_security_group_rules(template, spec)
+    template = enforce_required_env(template, spec)
     template = enforce_env_values(template, spec)
     template = enforce_ecs_desired_count(template, spec)
     template = enforce_sg_description_charset(template)
@@ -1290,6 +1371,23 @@ def check_spec_conformance(template: str, spec: dict) -> list[dict[str, str]]:
                 f"{task_def} sets {key} to an ARN ({text[:60]}), not a connection URL. "
                 "Clients parse this value as a URL; an ARN has no scheme and the container "
                 "will fail at startup. Use the resource's endpoint with a real scheme.")})
+
+    # 2b. Every spec-mandated literal env var reached at least one container.
+    #     enforce_required_env inserts these, but it can only extend an `Environment:`
+    #     list that exists — a container authored without one needs the agent to fix it.
+    for key, value in _literal_env(spec):
+        reached = any(
+            container.get("Name") == key
+            for res in resources.values()
+            if isinstance(res, dict) and res.get("Type") == "AWS::ECS::TaskDefinition"
+            for definition in (res.get("Properties") or {}).get("ContainerDefinitions") or []
+            for container in definition.get("Environment") or []
+        )
+        if not reached:
+            findings.append({"severity": "blocker", "message": (
+                f"No ECS container sets {key}. The spec requires it at the literal value "
+                f"'{value}'. Add it to the ContainerDefinitions Environment list of every "
+                "application container.")})
 
     # 3. Every ECR image an ECS task pulls is one the build pipeline actually pushes.
     buildable = set(codebuild_spec.buildable_node_ids(spec))
