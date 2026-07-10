@@ -8,6 +8,13 @@ import IacEditor from './IacEditor'
 import ProvisionLog from './ProvisionLog'
 import ReviewArchitecture from './ReviewArchitecture'
 
+// Deployment statuses that describe a stack the provisioning screen can show.
+// Anything else (iac_ready, pending, deleted) belongs in the IaC editor.
+const DEPLOY_PHASE_STATUSES = [
+  'submitting', 'in_progress', 'building', 'complete',
+  'failed', 'rolled_back', 'build_failed',
+]
+
 function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) {
   const [phase, setPhase] = useState('aws_connect')
   const [hydrating, setHydrating] = useState(true)
@@ -97,7 +104,12 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
           try {
             deployData = await api.getDeployStatus(projectId)
           } catch { /* no submitted deployment yet — fall through to iac */ }
-          if (!cancelled && deployData && deployData.status && deployData.status !== 'iac_ready') {
+          // Only a status that describes a real stack resumes into that screen.
+          // Found live: after a teardown the deployment is `deleted`, which is
+          // neither `iac_ready` nor `complete` — it rendered the old provisioning
+          // log with no controls at all, so a torn-down project could never be
+          // provisioned again from the UI.
+          if (!cancelled && deployData && DEPLOY_PHASE_STATUSES.includes(deployData.status)) {
             setProvisioningLog(deployData.log || [])
             setDeployStatus(deployData.status)
             setStackOutputs(deployData.outputs || [])
