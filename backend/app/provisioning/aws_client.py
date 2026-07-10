@@ -152,6 +152,65 @@ def delete_stack(credentials: dict, region: str, stack_name: str) -> None:
     cfn.delete_stack(StackName=stack_name)
 
 
+def create_change_set(credentials: dict, region: str, stack_name: str,
+                      template_body: str, change_set_name: str) -> str:
+    """Create an UPDATE change set for a live stack. A change set is CFN's dry-run:
+    it computes what the template would do (including whether any resource would be
+    *replaced*, i.e. destroyed and recreated) WITHOUT applying it, so an update that
+    would drop a database can be refused before it runs. Returns the change set id;
+    creation is async — poll ``describe_change_set`` for CREATE_COMPLETE."""
+    cfn = _cfn_client(credentials, region)
+    response = cfn.create_change_set(
+        StackName=stack_name,
+        TemplateBody=template_body,
+        ChangeSetName=change_set_name,
+        ChangeSetType='UPDATE',
+        Capabilities=['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
+    )
+    return response['Id']
+
+
+def describe_change_set(credentials: dict, region: str, change_set_id: str) -> dict:
+    """Return ``{status, status_reason, changes}`` for a change set. Each change is
+    ``{action, logical_id, resource_type, replacement}`` — ``replacement`` is the
+    decisive signal ('True'/'Conditional' means the resource is destroyed and
+    recreated). An empty change set finishes with status FAILED and a status_reason
+    that says the submission didn't contain changes."""
+    cfn = _cfn_client(credentials, region)
+    response = cfn.describe_change_set(ChangeSetName=change_set_id)
+    changes = []
+    for change in response.get('Changes', []):
+        rc = change.get('ResourceChange') or {}
+        changes.append({
+            'action': rc.get('Action'),
+            'logical_id': rc.get('LogicalResourceId'),
+            'resource_type': rc.get('ResourceType'),
+            'replacement': rc.get('Replacement'),
+        })
+    return {
+        'status': response.get('Status'),
+        'status_reason': response.get('StatusReason'),
+        'changes': changes,
+    }
+
+
+def execute_change_set(credentials: dict, region: str, change_set_id: str) -> None:
+    """Apply a change set — this is the actual UpdateStack. Progress is read via
+    describe_stack_events / describe_stack the same way a create is."""
+    cfn = _cfn_client(credentials, region)
+    cfn.execute_change_set(ChangeSetName=change_set_id)
+
+
+def delete_change_set(credentials: dict, region: str, change_set_id: str) -> None:
+    """Discard a change set (an empty or refused one) so it doesn't linger on the
+    stack. Best-effort — a missing change set is not an error here."""
+    cfn = _cfn_client(credentials, region)
+    try:
+        cfn.delete_change_set(ChangeSetName=change_set_id)
+    except ClientError:
+        pass
+
+
 def list_stack_resources(credentials: dict, region: str, stack_name: str) -> list[dict]:
     """Return every resource in the stack as
     ``{logical_id, physical_id, resource_type}`` — used to find the ECS

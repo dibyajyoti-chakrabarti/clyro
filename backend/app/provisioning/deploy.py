@@ -831,6 +831,105 @@ def _correction_instruction(root_cause: str) -> str:
     )
 
 
+# ── In-place stack update (the guarded alternative to teardown-and-recreate) ────
+#
+# start() can only create (or delete-then-create) a stack — so once a stack is live,
+# a template change meant a full teardown, which destroys the database. That is also
+# why the feedback loop could never fix a live-but-broken app: there was no way to
+# apply a corrected template without wiping the data. update_live_stack closes that
+# gap through a CloudFormation change set, which is a dry run: it reports whether any
+# resource would be REPLACED (destroyed and recreated) before anything is applied. We
+# refuse outright any change that would replace or remove a stateful resource, so an
+# in-place update can never silently drop a database, cache, or bucket.
+
+# Resources that hold data — replacing or removing one loses it, so an update that
+# would do so is refused rather than applied.
+_STATEFUL_RESOURCE_TYPES = frozenset({
+    "AWS::RDS::DBInstance", "AWS::RDS::DBCluster",
+    "AWS::ElastiCache::ReplicationGroup", "AWS::ElastiCache::CacheCluster",
+    "AWS::EFS::FileSystem", "AWS::S3::Bucket",
+})
+_CHANGE_SET_TIMEOUT_SECONDS = 120
+_CHANGE_SET_POLL_SECONDS = 4
+# CloudFormation's own phrase for "the template is identical to the live stack".
+_EMPTY_CHANGE_SET_REASONS = ("didn't contain changes", "No updates are to be performed")
+
+
+def _unsafe_changes(changes: list[dict]) -> list[dict]:
+    """The changes that would destroy data: a stateful resource being replaced
+    (Replacement True/Conditional) or removed."""
+    unsafe = []
+    for change in changes:
+        if change.get("resource_type") not in _STATEFUL_RESOURCE_TYPES:
+            continue
+        if change.get("action") == "Remove" or change.get("replacement") in ("True", "Conditional"):
+            unsafe.append(change)
+    return unsafe
+
+
+def _wait_change_set(creds: dict, region: str, change_set_id: str) -> dict:
+    """Poll a change set until CloudFormation finishes computing it (CREATE_COMPLETE)
+    or gives up (FAILED — which also covers the empty-change-set case)."""
+    elapsed = 0
+    info: dict = {}
+    while elapsed < _CHANGE_SET_TIMEOUT_SECONDS:
+        info = aws_client.describe_change_set(creds, region, change_set_id)
+        if info.get("status") in ("CREATE_COMPLETE", "FAILED"):
+            return info
+        time.sleep(_CHANGE_SET_POLL_SECONDS)
+        elapsed += _CHANGE_SET_POLL_SECONDS
+    return info or {"status": "FAILED", "status_reason": "change set timed out", "changes": []}
+
+
+def _apply_stack_update(creds: dict, region: str, stack_name: str, template: str) -> dict[str, Any]:
+    """Create a change set against a live stack, refuse it if it would destroy a
+    stateful resource, otherwise execute it. Returns
+    ``{applied: bool, empty: bool, reason: str|None}`` — ``empty`` means the template
+    already matches the live stack, ``reason`` explains a refusal or CFN error."""
+    change_set_name = f"clyro-update-{int(time.time())}"
+    change_set_id = aws_client.create_change_set(creds, region, stack_name, template, change_set_name)
+    info = _wait_change_set(creds, region, change_set_id)
+
+    if info.get("status") == "FAILED":
+        reason = info.get("status_reason") or ""
+        aws_client.delete_change_set(creds, region, change_set_id)
+        if any(phrase in reason for phrase in _EMPTY_CHANGE_SET_REASONS):
+            return {"applied": False, "empty": True, "reason": None}
+        return {"applied": False, "empty": False, "reason": reason or "the change set could not be computed"}
+
+    unsafe = _unsafe_changes(info.get("changes") or [])
+    if unsafe:
+        aws_client.delete_change_set(creds, region, change_set_id)
+        detail = ", ".join(f"{c['logical_id']} ({c['resource_type']})" for c in unsafe)
+        return {"applied": False, "empty": False, "reason": (
+            f"this change would replace or delete stateful resource(s) {detail}, which would "
+            "destroy their data. Refusing the in-place update — tear down and re-provision if "
+            "this change is intended.")}
+
+    aws_client.execute_change_set(creds, region, change_set_id)
+    return {"applied": True, "empty": False, "reason": None}
+
+
+def update_live_stack(project: Project) -> dict[str, Any]:
+    """Apply the active deployment's current template to its LIVE stack in place via a
+    guarded change set (see _apply_stack_update). Sets the deployment back to
+    IN_PROGRESS when an update is actually executed so the normal poll path tracks it
+    to UPDATE_COMPLETE. Returns _apply_stack_update's ``{applied, empty, reason}``."""
+    deployment = _active_deployment(project)
+    if deployment is None or not deployment.cloudformation_stack_name:
+        raise DeployError("No live stack to update.")
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name
+    if not cfn_events.is_live(aws_client.find_stack(creds, region, stack_name)):
+        raise DeployError("The stack isn't in a state that can be updated in place.")
+
+    result = _apply_stack_update(creds, region, stack_name, deployment.cloudformation_template)
+    if result["applied"]:
+        deployment.status = Deployment.Status.IN_PROGRESS
+        deployment.save(update_fields=["status", "updated_at"])
+    return result
+
+
 def provision_with_feedback(project: Project) -> dict[str, Any]:
     """Assumes `start()` has already been submitted (the view does this
     synchronously — it's a fast precondition-checked CreateStack call, not the
@@ -874,5 +973,57 @@ def provision_with_feedback(project: Project) -> dict[str, Any]:
         # build_with_feedback also scales the cold-started services up to the spec's
         # task count once the image exists — see its own comment for why it owns that.
         result = build.build_with_feedback(project)
+        # The stack is already CREATE_COMPLETE, so start()'s delete-and-recreate path
+        # can't run without destroying the database. If the app failed to come up for a
+        # reason a template change could fix, refine and apply it via a guarded in-place
+        # update (which refuses anything that would replace a stateful resource), then
+        # rebuild once. This is the one place the feedback loop can correct a *live*
+        # stack rather than only one CFN rejects outright.
+        if result["status"] == Deployment.Status.FAILED:
+            result = _heal_live_stack(project, result)
 
     return result
+
+
+def _heal_live_stack(project: Project, result: dict[str, Any]) -> dict[str, Any]:
+    """One bounded self-heal attempt for a live stack whose app didn't come up:
+    refine the template from the failure, apply it via a guarded in-place update, and
+    rebuild. Any step that can't proceed safely returns the original failure
+    unchanged (optionally annotated) — this never makes things worse."""
+    from . import build, iac
+
+    root_cause = result.get("error")
+    active = _active_deployment(project)
+    if not root_cause or active is None or not active.cloudformation_stack_name:
+        return result
+
+    try:
+        refined = iac.refine(project, _correction_instruction(root_cause),
+                             template=active.cloudformation_template)
+    except iac.IacError:
+        return result
+    new_template = refined.get("template")
+    if not new_template or not (refined.get("validation") or {}).get("is_valid"):
+        return result
+    if any(f.get("severity") == "blocker" for f in refined.get("security_findings") or []):
+        return result
+
+    # refine()/ensure_deployment may persist to a different in-flight row; write the
+    # corrected template onto the LIVE stack's own deployment so the guarded update
+    # reads exactly what it will apply.
+    active.cloudformation_template = new_template
+    active.save(update_fields=["cloudformation_template", "updated_at"])
+
+    try:
+        update = update_live_stack(project)
+    except DeployError as exc:
+        return {**result, "error": f"{root_cause}\n\nGenerated a fix but couldn't apply it: {exc}"}
+    if not update.get("applied"):
+        if update.get("reason"):
+            return {**result, "error": f"{root_cause}\n\nGenerated a fix but did not apply it — {update['reason']}"}
+        return result  # empty change set — the fix changed nothing; keep the original error
+
+    healed = _poll_to_terminal(project)
+    if healed["status"] == Deployment.Status.BUILDING:
+        healed = build.build_with_feedback(project)
+    return healed
