@@ -139,6 +139,39 @@ def _public_service_ids(nodes: list[dict], connections: list[dict]) -> set[str]:
     return public
 
 
+
+# Env vars whose production value Clyro can state outright, rather than derive from
+# a resource the template creates. A `value` entry means "the template must set this
+# key to exactly this literal" — iac.enforce_env_values renders it and
+# iac.enforce_required_env inserts it when the agent leaves it out entirely.
+#
+# ALLOWED_HOSTS: found live. RepoRecon classifies it `optional`, so it never reached
+# generated_env, so the container ran with Django's empty default and answered every
+# request — including the ALB's health check — with 400 DisallowedHost. The stack was
+# healthy; the app was unreachable. Host validation genuinely belongs to the load
+# balancer and CloudFront here, not to Django, and scanner/compliance.py already tells
+# the user Clyro "sets this permissively at deploy time".
+_LITERAL_ENV_VALUES = {
+    "ALLOWED_HOSTS": "*",
+}
+
+
+def _add_literal_env(generated_env: list[dict[str, Any]], env_vars: list[dict[str, Any]]) -> None:
+    """Promote a declared-but-unclassified env var to a generated one with a fixed
+    value. Only for keys the app actually reads: if the repo never mentions
+    ALLOWED_HOSTS, injecting it would be noise, and the Step-1 compliance check
+    already flags a hardcoded one."""
+    declared = {var.get("key_name") for var in env_vars or []}
+    present = {entry.get("key_name") for entry in generated_env}
+    for key, value in _LITERAL_ENV_VALUES.items():
+        if key in declared and key not in present:
+            generated_env.append({
+                "key_name": key,
+                "hint": f"set to {value} — the load balancer is the host gate, not the app",
+                "value": value,
+            })
+
+
 def build_spec(
     canvas: dict[str, Any],
     intent: dict[str, Any],
@@ -295,6 +328,8 @@ def build_spec(
                 "secretsmanager_arn": var.get("secrets_manager_arn"),
                 "classification": classification,
             })
+
+    _add_literal_env(generated_env, env_vars)
 
     return {
         "project": project,
