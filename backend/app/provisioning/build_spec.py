@@ -167,6 +167,21 @@ _LITERAL_ENV_VALUES = {
 # Threading the matched route out of the scanner is the proper fix.
 _HEALTH_CHECK_PATH = "/health"
 
+# The command that applies database schema migrations, per detected backend
+# framework. Found live: the container image's CMD is the app server only
+# (gunicorn), and `manage.py migrate` lives exclusively in the docker-compose
+# override, which ECS never reads — so RDS came up with no tables and every ORM
+# query 500'd even though the ALB target was healthy. This runs the framework's
+# own migrate command once, on the app's own image, before the service scales up.
+#
+# Keyed by the framework RepoRecon detects (build_spec receives it via `frameworks`),
+# so a static site or a Go binary — anything not in this map — gets no migration
+# step at all rather than a bogus `manage.py migrate`. Add a framework here only
+# once its migrate command is known to be idempotent (safe to re-run on retry).
+_MIGRATE_COMMANDS: dict[str, list[str]] = {
+    "django": ["python", "manage.py", "migrate", "--noinput"],
+}
+
 
 def _add_literal_env(generated_env: list[dict[str, Any]], env_vars: list[dict[str, Any]]) -> None:
     """Promote a declared-but-unclassified env var to a generated one with a fixed
@@ -189,6 +204,7 @@ def build_spec(
     intent: dict[str, Any],
     env_vars: list[dict[str, Any]],
     region: str = "us-east-1",
+    frameworks: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Map a finalized ``canvas`` (``{nodes, connections, ...}``) + ``intent`` +
     ``env_vars`` into the typed build spec the IaC agent authors CFN from.
@@ -198,9 +214,12 @@ def build_spec(
     ``env_vars`` is a list of dicts shaped like
     the ``EnvVarKey`` rows (``key_name``, ``classification``, ``secrets_manager_arn``,
     ``production_default``, ``context_block``).
+    ``frameworks`` maps a node id to its RepoRecon-detected framework (e.g.
+    ``{"backend": "django"}``) — used only to decide the database-migration step.
     """
     canvas = canvas or {}
     intent = intent or {}
+    frameworks = frameworks or {}
     nodes = canvas.get("nodes") or []
     connections = canvas.get("connections") or []
 
@@ -263,6 +282,7 @@ def build_spec(
             entry["image"] = node.get("image", "ecr")
             entry["container_port"] = node.get("port", 8000)
             entry["public"] = node_id in public_ids
+            entry["framework"] = frameworks.get(node_id)
             entry["sizing"] = {
                 "fargate_vcpu": sizing["fargate_vcpu"],
                 "fargate_gb": sizing["fargate_gb"],
@@ -343,6 +363,26 @@ def build_spec(
 
     _add_literal_env(generated_env, env_vars)
 
+    # The one service whose schema must be migrated before any traffic reaches it.
+    # A service framework with a known migrate command wins; a public (ALB-fronted)
+    # one is preferred when several qualify. None → no migration step (see
+    # _MIGRATE_COMMANDS). The worker shares the backend image but must NOT also run
+    # migrate — one run is enough, and two racing migrations can deadlock.
+    migrate: dict[str, Any] | None = None
+    migratable = [
+        (entry, _MIGRATE_COMMANDS[(frameworks.get(entry["node_id"]) or "").lower()])
+        for entry in resources
+        if entry["type"] == "service"
+        and (frameworks.get(entry["node_id"]) or "").lower() in _MIGRATE_COMMANDS
+    ]
+    if migratable:
+        entry, command = next((mc for mc in migratable if mc[0].get("public")), migratable[0])
+        migrate = {
+            "node_id": entry["node_id"],
+            "framework": frameworks.get(entry["node_id"]),
+            "command": command,
+        }
+
     return {
         "project": project,
         "environment": environment,
@@ -387,6 +427,9 @@ def build_spec(
         "resources": resources,
         "network_edges": network_edges,
         "health_check_path": _HEALTH_CHECK_PATH,
+        # The database-migration step (or None). Read by deploy.run_migrations, which
+        # runs `command` once on the `node_id` service's own image before scale-up.
+        "migrate": migrate,
         "secrets": secrets,
         "generated_env": generated_env,
         # Which provisioned resource backs the Celery/task broker. Read by
