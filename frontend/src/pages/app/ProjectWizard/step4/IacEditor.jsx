@@ -27,6 +27,22 @@ const STAGES = [
   'Finalizing the template…',
 ]
 
+// Seconds at which each STAGE begins. Calibrated to measured generate timing — a
+// typical run is ~3-4 min split roughly 19% initial draft / 52% validate-and-fix
+// loop / 26% final template stream. A flat elapsed/9 raced to the last stage in 45s
+// and then sat on "Finalizing…" for three minutes; these thresholds keep the label on
+// the (genuinely longest) best-practices/self-correction stage through the middle and
+// only reach "Finalizing" near the real end.
+const STAGE_STARTS = [0, 8, 20, 45, 90, 170]
+
+function stageIndex(elapsed) {
+  let idx = 0
+  for (let i = 0; i < STAGE_STARTS.length; i += 1) {
+    if (elapsed >= STAGE_STARTS[i]) idx = i
+  }
+  return idx
+}
+
 const MIN_CHAT_WIDTH = 260
 const MIN_EDITOR_WIDTH = 380
 const DEFAULT_CHAT_RATIO = 0.30
@@ -141,7 +157,8 @@ export default function IacEditor({
     }
     return () => clearInterval(elapsedTimerRef.current)
   }, [generating, template])
-  const stageMessage = STAGES[Math.min(Math.floor(elapsed / 9), STAGES.length - 1)]
+  const currentStage = stageIndex(elapsed)
+  const stageMessage = STAGES[currentStage]
 
   // ── Copy button ────────────────────────────────────────────────────────────
 
@@ -232,7 +249,7 @@ export default function IacEditor({
           <div className='space-y-1'>
             <p className='text-sm font-medium text-text-primary'>{stageMessage}</p>
             <p className='text-xs text-text-muted'>
-              {elapsed < 5 ? 'Starting up…' : `${elapsed}s elapsed`}
+              {elapsed < 5 ? 'Starting up…' : `${elapsed}s elapsed · usually ~3–4 min`}
             </p>
           </div>
           <div className='flex gap-1.5'>
@@ -240,14 +257,14 @@ export default function IacEditor({
               <span
                 key={i}
                 className={`h-1 rounded-full transition-all duration-700 ${
-                  i <= Math.min(Math.floor(elapsed / 9), STAGES.length - 1)
+                  i <= currentStage
                     ? 'w-6 bg-accent'
                     : 'w-3 bg-white/[0.12]'
                 }`}
               />
             ))}
           </div>
-          {elapsed > 90 && (
+          {elapsed > 240 && (
             <p className='max-w-xs text-xs text-text-muted/70'>
               Taking longer than usual — the agent may be handling a complex architecture.
             </p>
