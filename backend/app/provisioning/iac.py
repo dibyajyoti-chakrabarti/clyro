@@ -1020,6 +1020,101 @@ def enforce_required_env(template: str, spec: dict) -> str:
     return result + "\n" if template.endswith("\n") else result
 
 
+_DISTRIBUTION_TYPE = "AWS::CloudFront::Distribution"
+_MANAGED_POLICY_TYPE = "AWS::IAM::ManagedPolicy"
+# The only origin request policies CloudFront accepts on an S3 origin. AWS rejects
+# CreateDistribution outright with anything else — including AllViewer, which the
+# agent reaches for because it is the right answer for the ALB origin next to it.
+_S3_ORIGIN_REQUEST_POLICY_IDS = {
+    "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf",  # CORS-S3Origin
+    "59781a5b-3903-41f3-afcb-af62929ccde1",  # CORS-CustomOrigin
+    "acba4595-bd28-49b8-b9fe-13317c0390fa",  # UserAgentRefererHeaders
+}
+_TARGET_ORIGIN_RE = re.compile(r"^[ ]*(?:- )?TargetOriginId:[ ]*(?P<id>\S+)[ ]*$")
+_ORIGIN_REQUEST_POLICY_RE = re.compile(r"^[ ]*(?:- )?OriginRequestPolicyId:[ ]*(?P<id>\S+)[ ]*$")
+
+
+def _s3_origin_ids(resources: dict) -> set[str]:
+    """Origin ids served by S3 rather than a custom origin (the ALB)."""
+    ids: set[str] = set()
+    for res in resources.values():
+        if not isinstance(res, dict) or res.get("Type") != _DISTRIBUTION_TYPE:
+            continue
+        config = (res.get("Properties") or {}).get("DistributionConfig") or {}
+        for origin in config.get("Origins") or []:
+            if not isinstance(origin, dict):
+                continue
+            if "S3OriginConfig" in origin or origin.get("OriginAccessControlId") is not None:
+                if origin.get("Id"):
+                    ids.add(str(origin["Id"]))
+    return ids
+
+
+def _cache_behaviors(resources: dict):
+    """Yield ``(target_origin_id, origin_request_policy_id)`` for every cache behavior."""
+    for res in resources.values():
+        if not isinstance(res, dict) or res.get("Type") != _DISTRIBUTION_TYPE:
+            continue
+        config = (res.get("Properties") or {}).get("DistributionConfig") or {}
+        behaviors = [config.get("DefaultCacheBehavior")] + list(config.get("CacheBehaviors") or [])
+        for behavior in behaviors:
+            if isinstance(behavior, dict):
+                yield str(behavior.get("TargetOriginId")), behavior.get("OriginRequestPolicyId")
+
+
+def _disallowed_s3_policy(policy_id) -> bool:
+    return policy_id is not None and str(policy_id) not in _S3_ORIGIN_REQUEST_POLICY_IDS
+
+
+def enforce_cloudfront_s3_origin_policy(template: str, spec: dict) -> str:
+    """Drop the origin request policy from any cache behavior pointing at an S3 origin.
+
+    Found live: the agent set `OriginRequestPolicyId: b689b0a8-…` (AllViewer) on every
+    behavior. That is correct for the ALB origin — it forwards the Host header the
+    backend needs — and illegal for the S3 origin, so CloudFormation rolled the whole
+    stack back with a 400. The property is optional: a static site behind OAC needs no
+    origin request policy at all. Only S3-targeted behaviors are touched. Idempotent."""
+    if not template or _DISTRIBUTION_TYPE not in template:
+        return template
+    try:
+        doc = cfn_yaml.loads(template)
+    except Exception as exc:
+        log.warning("enforce_cloudfront_s3_origin_policy: could not parse template (%s)", exc)
+        return template
+    resources = (doc or {}).get("Resources")
+    if not isinstance(resources, dict):
+        return template
+
+    s3_ids = _s3_origin_ids(resources)
+    if not s3_ids:
+        return template
+    if not any(t in s3_ids and _disallowed_s3_policy(p) for t, p in _cache_behaviors(resources)):
+        return template
+
+    lines = template.splitlines()
+    # A behavior's TargetOriginId and OriginRequestPolicyId are siblings, so walk the
+    # file and remember the most recent TargetOriginId; a `- PathPattern:`/`- Id:` line
+    # or a dedent out of the block starts a new one.
+    drop: list[int] = []
+    current: str | None = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("- ") and "TargetOriginId" not in stripped:
+            current = None  # new list item; its TargetOriginId has not been seen yet
+        match = _TARGET_ORIGIN_RE.match(line)
+        if match:
+            current = match.group("id")
+            continue
+        policy = _ORIGIN_REQUEST_POLICY_RE.match(line)
+        if policy and current in s3_ids and _disallowed_s3_policy(policy.group("id")):
+            drop.append(index)
+
+    for index in reversed(drop):
+        del lines[index]
+    result = "\n".join(lines)
+    return result + "\n" if template.endswith("\n") else result
+
+
 _TARGET_GROUP_TYPE = "AWS::ElasticLoadBalancingV2::TargetGroup"
 _HEALTH_CHECK_PATH_RE = re.compile(r"^(?P<ind>[ ]+)HealthCheckPath:[ ]*.*$")
 
@@ -1472,6 +1567,7 @@ def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_log_group_naming(template)
     template = enforce_security_group_rules(template, spec)
     template = enforce_task_egress(template, spec)
+    template = enforce_cloudfront_s3_origin_policy(template, spec)
     template = enforce_health_check_path(template, spec)
     template = enforce_secret_url_safe_charset(template)
     template = enforce_required_env(template, spec)
@@ -1599,6 +1695,26 @@ def check_spec_conformance(template: str, spec: dict) -> list[dict[str, str]]:
                 f"No ECS container sets {key}. The spec requires it at the literal value "
                 f"'{value}'. Add it to the ContainerDefinitions Environment list of every "
                 "application container.")})
+
+    # 2f. Constructs the bootstrap role provably cannot create. cfn-lint accepts these
+    #     happily — the template is valid CloudFormation, it just cannot be deployed by
+    #     the role Clyro assumes. Both cost a full create/rollback cycle to discover.
+    for logical_id, res in resources.items():
+        if isinstance(res, dict) and res.get("Type") == _MANAGED_POLICY_TYPE:
+            findings.append({"severity": "blocker", "message": (
+                f"{logical_id} is an {_MANAGED_POLICY_TYPE}, which Clyro's bootstrap role "
+                "cannot create — it grants iam:PutRolePolicy and iam:AttachRolePolicy but "
+                "not iam:CreatePolicy. Attach the policy document inline to the role's "
+                "Policies list instead.")})
+
+    s3_ids = _s3_origin_ids(resources)
+    for target, policy_id in _cache_behaviors(resources):
+        if target in s3_ids and _disallowed_s3_policy(policy_id):
+            findings.append({"severity": "blocker", "message": (
+                f"The cache behavior targeting the S3 origin {target!r} sets "
+                f"OriginRequestPolicyId {str(policy_id)!r}. CloudFront only allows "
+                "CORS-S3Origin, CORS-CustomOrigin or UserAgentRefererHeaders on an S3 "
+                "origin and rejects the distribution otherwise. Remove the property.")})
 
     # 2e. A generated secret can't contain a character that changes how the
     #     connection string embedding it parses. Every other enforcer added here has
