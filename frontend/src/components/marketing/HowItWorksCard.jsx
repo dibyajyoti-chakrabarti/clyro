@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Search,
   Zap,
@@ -18,6 +19,22 @@ import {
   Settings,
   Bell,
 } from "lucide-react";
+
+// Matches the mobile cutoff already used by useHowItWorksAnimation (window.innerWidth < 768)
+function useIsMobileCard() {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 767px)");
+    const onChange = (e) => setIsMobile(e.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return isMobile;
+}
 
 const CARD_THEMES = {
   "01": {
@@ -205,12 +222,15 @@ export default function HowItWorksCard({
   const isEven = Number(step) % 2 === 0;
   const featureCount = copy.features.length;
   const hasOddFeatures = featureCount % 2 !== 0;
+  const isMobile = useIsMobileCard();
 
   // Card 3 has 5 features (3 rows) — tighten to prevent overflow
   const pillPadding = featureCount >= 5 ? "8px 12px" : "9px 14px";
   const gridGap = featureCount >= 5 ? "7px" : "10px";
 
-  const badgePosition = isEven
+  const badgePosition = isMobile
+    ? { top: "-34px", left: "50%", transform: "translateX(-50%)" }
+    : isEven
     ? { top: "20px", left: "20px" }
     : { top: "20px", right: "20px" };
 
@@ -218,10 +238,11 @@ export default function HowItWorksCard({
     <article
       style={{
         display: "flex",
-        flexDirection: isEven ? "row-reverse" : "row",
+        flexDirection: isMobile ? "column" : isEven ? "row-reverse" : "row",
         width: "100%",
-        height: "100%",
-        minHeight: "480px",
+        height: isMobile ? "auto" : "100%",
+        minHeight: isMobile ? undefined : "480px",
+        paddingTop: isMobile ? "48px" : 0,
         borderRadius: "20px 20px 0 0",
         overflow: "hidden",
         position: "relative",
@@ -236,22 +257,23 @@ export default function HowItWorksCard({
       {/* Text half */}
       <div
         style={{
-          flex: "0 0 48%",
+          order: isMobile ? 2 : 0,
+          flex: isMobile ? "0 0 auto" : "0 0 48%",
           display: "flex",
           flexDirection: "column",
           justifyContent: "flex-start",
-          padding: "44px 48px 40px 48px",
-          minHeight: "100%",
+          padding: isMobile ? "14px 24px 48px" : "44px 48px 40px 48px",
+          minHeight: isMobile ? undefined : "100%",
           boxSizing: "border-box",
-          overflow: "hidden",
+          overflow: isMobile ? "visible" : "hidden",
         }}
       >
         {/* Heading */}
         <h3
           style={{
             fontWeight: 800,
-            fontSize: "clamp(44px, 5vw, 68px)",
-            lineHeight: 1.0,
+            fontSize: isMobile ? "clamp(28px, 9vw, 38px)" : "clamp(44px, 5vw, 68px)",
+            lineHeight: isMobile ? 1.08 : 1.0,
             letterSpacing: "-0.01em",
             textTransform: "uppercase",
             fontFamily: "inherit",
@@ -259,6 +281,8 @@ export default function HowItWorksCard({
             display: "flex",
             flexDirection: "column",
             gap: 0,
+            overflowWrap: isMobile ? "break-word" : undefined,
+            wordBreak: isMobile ? "break-word" : undefined,
           }}
         >
           <span style={{ color: theme.headingColor, display: "block" }}>
@@ -291,9 +315,10 @@ export default function HowItWorksCard({
           {copy.body}
         </p>
 
-        {/* Description paragraph */}
+        {/* Description paragraph — hidden on mobile, visible on desktop/tablet */}
         <p
           style={{
+            display: isMobile ? "none" : "block",
             color: theme.descColor,
             fontSize: "14px",
             lineHeight: 1.7,
@@ -305,10 +330,10 @@ export default function HowItWorksCard({
           {copy.desc}
         </p>
 
-        {/* Feature pill grid */}
+        {/* Feature pill grid — hidden on mobile, visible on desktop/tablet */}
         <div
           style={{
-            display: "grid",
+            display: isMobile ? "none" : "grid",
             gridTemplateColumns: "1fr 1fr",
             gap: gridGap,
             marginTop: "20px",
@@ -356,8 +381,8 @@ export default function HowItWorksCard({
           })}
         </div>
 
-        {/* Tagline — pushed to bottom */}
-        <div style={{ marginTop: "auto", paddingTop: "16px", flexShrink: 0 }}>
+        {/* Tagline — pushed to bottom; hidden on mobile, visible on desktop/tablet */}
+        <div style={{ display: isMobile ? "none" : "block", marginTop: "auto", paddingTop: "16px", flexShrink: 0 }}>
           <p
             style={{
               fontSize: "26px",
@@ -392,10 +417,11 @@ export default function HowItWorksCard({
           </p>
         </div>
 
-        {/* CTA button */}
+        {/* CTA button — hidden on mobile, visible on desktop/tablet */}
         <button
           type="button"
           style={{
+            display: isMobile ? "none" : "inline-block",
             marginTop: "14px",
             padding: "9px 20px",
             fontSize: "11px",
@@ -419,14 +445,18 @@ export default function HowItWorksCard({
       {/* Illustration half */}
       <div
         style={{
-          flex: "0 0 52%",
-          maxWidth: "52%",
+          order: isMobile ? 1 : 0,
+          flex: isMobile ? "0 0 auto" : "0 0 52%",
+          width: isMobile ? "100%" : undefined,
+          maxWidth: isMobile ? "100%" : "52%",
+          height: isMobile ? "290px" : undefined,
           position: "relative",
-          overflow: "hidden",
+          overflow: isMobile ? "visible" : "hidden",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: 0,
+          padding: isMobile ? "0 24px" : 0,
+          boxSizing: "border-box",
         }}
       >
         {illustration && (
@@ -434,14 +464,14 @@ export default function HowItWorksCard({
             src={illustration}
             alt=""
             style={{
-              width: step === "01" ? "100%" : "95%",
-              height: step === "01" ? "100%" : "95%",
-              maxWidth: step === "01" ? "100%" : "95%",
-              maxHeight: step === "01" ? "100%" : "95%",
+              width: isMobile ? "100%" : step === "01" ? "100%" : "95%",
+              height: isMobile ? "100%" : step === "01" ? "100%" : "95%",
+              maxWidth: isMobile ? "100%" : step === "01" ? "100%" : "95%",
+              maxHeight: isMobile ? "100%" : step === "01" ? "100%" : "95%",
               objectFit: "contain",
               objectPosition: "center",
               display: "block",
-              padding: step === "01" ? "8px" : "12px",
+              padding: isMobile ? (step === "01" ? "4px" : "6px") : step === "01" ? "8px" : "12px",
               boxSizing: "border-box",
             }}
           />
