@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import re
 import string
+from pathlib import Path
 from typing import Any
 
 from cfnlint import api as cfnlint_api
@@ -1684,6 +1685,119 @@ def security_scan(template: str) -> list[dict[str, str]]:
     return findings
 
 
+# ── Capability gate: refuse what the bootstrap role provably cannot create ─────
+#
+# Every deploy so far produced a template broken in a NEW way, and the most
+# expensive class was "the provisioning role can't create this resource" — it
+# only surfaces 5–40 min into a live deploy, as a full rollback. The concrete
+# case: bootstrap.yaml grants iam:AttachRolePolicy/PutRolePolicy but NOT
+# iam:CreatePolicy, so an authored AWS::IAM::ManagedPolicy rolls the whole stack
+# back. This gate reads the role's ACTUAL granted actions from bootstrap.yaml and
+# flags a template resource whose create action provably isn't among them, before
+# any AWS call — turning a 40-minute rollback into a pre-deploy blocker the refine
+# loop fixes deterministically.
+#
+# Deliberately a denylist, not an IAM simulator: CFN-type → required-create-action
+# is not 1:1 or fully enumerable, so only the types below are checked. Unmapped
+# types are assumed allowed. This catches the gaps we can name; it is not a proof
+# of deployability.
+
+_BOOTSTRAP_POLICY_PATH = Path(__file__).resolve().parents[2] / "cfn-templates" / "bootstrap.yaml"
+_granted_actions_cache: frozenset[str] | None = None
+
+# CFN resource type → an IAM action AWS requires to CREATE it. Listed only for types
+# whose create action the bootstrap role may lack: AWS::IAM::ManagedPolicy is the known
+# gap; the rest are whole services bootstrap.yaml grants nothing for, so an authored
+# resource of that type is a hallucination that would AccessDenied at CreateStack.
+_RESOURCE_REQUIRED_ACTIONS: dict[str, list[str]] = {
+    "AWS::IAM::ManagedPolicy": ["iam:CreatePolicy"],
+    "AWS::IAM::User": ["iam:CreateUser"],
+    "AWS::IAM::Group": ["iam:CreateGroup"],
+    "AWS::IAM::AccessKey": ["iam:CreateAccessKey"],
+    "AWS::Lambda::Function": ["lambda:CreateFunction"],
+    "AWS::DynamoDB::Table": ["dynamodb:CreateTable"],
+    "AWS::SNS::Topic": ["sns:CreateTopic"],
+    "AWS::KMS::Key": ["kms:CreateKey"],
+    "AWS::EFS::FileSystem": ["elasticfilesystem:CreateFileSystem"],
+    "AWS::Events::Rule": ["events:PutRule"],
+    "AWS::ApiGateway::RestApi": ["apigateway:POST"],
+    "AWS::ApiGatewayV2::Api": ["apigateway:POST"],
+    "AWS::AutoScaling::AutoScalingGroup": ["autoscaling:CreateAutoScalingGroup"],
+}
+
+
+def _granted_iam_actions() -> frozenset[str]:
+    """The exact IAM actions the Clyro provisioning role grants, parsed once from
+    bootstrap.yaml. Empty (which disables the gate) if the file can't be read —
+    a parse failure must never invent a blocker on a valid template."""
+    global _granted_actions_cache
+    if _granted_actions_cache is not None:
+        return _granted_actions_cache
+    actions: set[str] = set()
+    try:
+        doc = cfn_yaml.loads(_BOOTSTRAP_POLICY_PATH.read_text())
+        role = ((doc or {}).get("Resources", {}).get("ClyroProvisioningRole", {})
+                .get("Properties", {}))
+        for policy in role.get("Policies") or []:
+            for stmt in (policy.get("PolicyDocument") or {}).get("Statement") or []:
+                action = stmt.get("Action")
+                if isinstance(action, str):
+                    actions.add(action)
+                elif isinstance(action, list):
+                    actions.update(a for a in action if isinstance(a, str))
+    except Exception:  # noqa: BLE001 — a missing/unparseable policy disables the gate
+        log.warning("capability gate: could not parse %s; gate disabled", _BOOTSTRAP_POLICY_PATH)
+        actions = set()
+    _granted_actions_cache = frozenset(actions)
+    return _granted_actions_cache
+
+
+def check_within_capabilities(template: str, spec: dict) -> list[dict[str, str]]:
+    """Blocker for any template resource whose create action the provisioning role
+    provably doesn't grant (see the module comment above). Spec-driven: the granted
+    set is read from bootstrap.yaml, not hardcoded here."""
+    if not template:
+        return []
+    granted = _granted_iam_actions()
+    if not granted:
+        return []  # gate disabled (couldn't read the policy) — don't invent blockers
+    try:
+        doc = cfn_yaml.loads(template)
+    except Exception:
+        return []  # cfn-lint reports parse failures far better than we can
+    resources = (doc or {}).get("Resources")
+    if not isinstance(resources, dict):
+        return []
+
+    findings: list[dict[str, str]] = []
+    flagged: set[str] = set()
+    for res in resources.values():
+        if not isinstance(res, dict):
+            continue
+        rtype = res.get("Type")
+        if rtype in flagged or rtype not in _RESOURCE_REQUIRED_ACTIONS:
+            continue
+        required = _RESOURCE_REQUIRED_ACTIONS[rtype]
+        if any(action in granted for action in required):
+            continue
+        flagged.add(rtype)
+        if rtype == "AWS::IAM::ManagedPolicy":
+            message = (
+                "The Clyro provisioning role can attach and inline IAM policies but not "
+                "iam:CreatePolicy, so an AWS::IAM::ManagedPolicy resource makes the whole "
+                "stack roll back at CreateStack. Fold its permissions into an inline "
+                "'Policies' entry on the IAM role that references it, and remove the "
+                "AWS::IAM::ManagedPolicy resource.")
+        else:
+            message = (
+                f"The Clyro provisioning role has no permission to create {rtype} (it needs "
+                f"{', '.join(required)}, which the bootstrap role does not grant). This "
+                "resource type isn't part of what Clyro can provision — remove it or replace "
+                "it with a supported resource.")
+        findings.append({"severity": "blocker", "message": message})
+    return findings
+
+
 # ── Deterministic correctors + blocker gate, as single call sites ──────────────
 #
 # generate() and refine() each re-run the full corrector set after every LLM-facing
@@ -1719,6 +1833,7 @@ def _collect_findings(template: str, spec: dict) -> list[dict[str, str]]:
     return (security_scan(template)
             + check_ecs_network_reachability(template, spec)
             + check_secret_interpolation(template, spec)
+            + check_within_capabilities(template, spec)
             + check_spec_conformance(template, spec))
 
 
