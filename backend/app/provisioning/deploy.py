@@ -21,7 +21,7 @@ from django.utils import timezone
 
 from core.models import Deployment, DeploymentStackOutput, Project, ProvisioningLogEntry
 
-from . import aws_client, cfn_events
+from . import aws_client, cfn_events, runtime_probe
 
 log = logging.getLogger(__name__)
 
@@ -329,6 +329,13 @@ _STEADY_POLL_SECONDS = 10
 # the target group's health checks before it counts as running. Well under the ~3h
 # CFN would have burned; long enough for a cold Fargate pull plus health checks.
 _STEADY_TIMEOUT_SECONDS = 480
+# Found live: a service that reaches its task count and is killed three minutes
+# later by a failing health check was reported steady, because the old check
+# dropped a service from the wait list the first time it observed
+# `running >= desired`. A single sample cannot distinguish "running" from
+# "running, for now". Require the condition to hold across consecutive polls so
+# a kill/replace cycle resets the streak instead of going unnoticed.
+_STEADY_CONFIRM_POLLS = 3
 
 
 _SERVICE_NAME_SUFFIXES = ("-service", "-svc", "-ecs")
@@ -353,6 +360,48 @@ def _desired_for_service(service_name: str, counts_by_node: dict[str, int]) -> i
     log.warning("scale: ECS service %r matched no canvas node; defaulting to 1 task",
                 service_name)
     return 1
+
+
+def _service_is_serving(creds: dict, region: str, cluster: str, service: str,
+                        desired: int, since) -> tuple[bool, str]:
+    """Is this service running its tasks *and* actually able to serve? Returns
+    ``(ok, reason_if_not)``.
+
+    Three independent ways a scaled-up service can still be broken, in the order
+    they are cheapest to detect:
+
+    1. It never reaches its task count (image won't pull, or the container exits
+       immediately).
+    2. It reaches the count, then a task is killed and replaced — a crash loop.
+       Detected by any task stopping *after* the scale-up began; `since` is what
+       separates this run's kills from stopped tasks left over from earlier.
+    3. It reaches the count and stays there, but the load balancer never marks
+       the target healthy, so no traffic ever reaches it. This is the one that
+       stayed invisible: from ECS's side the service looks perfect.
+    """
+    counts = aws_client.get_ecs_service_counts(creds, region, cluster, service)
+    if counts["running"] != desired or counts["pending"]:
+        return False, (f"running={counts['running']} pending={counts['pending']} "
+                       f"desired={desired}")
+
+    for task in aws_client.describe_stopped_tasks(creds, region, cluster, service):
+        stopped_at = task.get("stoppedAt")
+        if stopped_at and stopped_at >= since:
+            return False, "a task was stopped after scale-up — the service is replacing tasks"
+
+    service_detail = aws_client.describe_ecs_service(creds, region, cluster, service)
+    for load_balancer in service_detail.get("loadBalancers") or []:
+        target_group_arn = load_balancer.get("targetGroupArn")
+        if not target_group_arn:
+            continue
+        targets = aws_client.describe_target_health(creds, region, target_group_arn)
+        if not targets:
+            return False, "no targets registered with the load balancer"
+        unhealthy = [t for t in targets if t["state"] != "healthy"]
+        if unhealthy:
+            return False, f"load balancer target is {unhealthy[0]['state']}"
+
+    return True, ""
 
 
 def _stack_ecs_services(creds: dict, region: str, stack_name: str) -> list[tuple[str, str]]:
@@ -395,26 +444,35 @@ def scale_services_to_spec(project: Project) -> dict[str, Any]:
         scaled.append({"cluster": cluster, "service": service, "desired": target})
         log.info("scale_services_to_spec: %s -> %d task(s)", service, target)
 
+    started_at = timezone.now()
+    streaks = {entry["service"]: 0 for entry in scaled}
+    reasons: dict[str, str] = {}
     elapsed = 0
-    pending = list(scaled)
-    while pending and elapsed < _STEADY_TIMEOUT_SECONDS:
+    while elapsed < _STEADY_TIMEOUT_SECONDS:
         time.sleep(_STEADY_POLL_SECONDS)
         elapsed += _STEADY_POLL_SECONDS
-        still = []
-        for entry in pending:
-            counts = aws_client.get_ecs_service_counts(
-                creds, region, entry["cluster"], entry["service"])
-            if counts["running"] < entry["desired"]:
-                still.append(entry)
-        pending = still
+        for entry in scaled:
+            ok, reason = _service_is_serving(
+                creds, region, entry["cluster"], entry["service"], entry["desired"], started_at)
+            if ok:
+                streaks[entry["service"]] += 1
+            else:
+                # Reset, don't decrement: a service that flaps must start its
+                # confirmation window over, not creep toward steady on average.
+                streaks[entry["service"]] = 0
+                reasons[entry["service"]] = reason
+        if all(streaks[entry["service"]] >= _STEADY_CONFIRM_POLLS for entry in scaled):
+            return {"scaled": scaled, "steady": True, "error": None}
 
-    if pending:
-        stuck = ", ".join(e["service"] for e in pending)
-        return {"scaled": scaled, "steady": False,
-                "error": f"ECS service(s) never reached the desired task count: {stuck}. "
-                         "The image was pushed, so this is a runtime failure (the container "
-                         "exits on start, or the load balancer never marks it healthy)."}
-    return {"scaled": scaled, "steady": True, "error": None}
+    stuck = [e for e in scaled if streaks[e["service"]] < _STEADY_CONFIRM_POLLS]
+    summary = "; ".join(f"{e['service']} ({reasons.get(e['service'], 'unknown')})" for e in stuck)
+    error = (f"ECS service(s) never stabilized: {summary}. The image was pushed, so this is a "
+             "runtime failure, not a provisioning one.")
+    diagnosis = runtime_probe.services_root_cause(
+        creds, region, [(e["cluster"], e["service"]) for e in stuck])
+    if diagnosis:
+        error += f"\n\n{diagnosis}"
+    return {"scaled": scaled, "steady": False, "error": error}
 
 
 def _live_deployment(project: Project) -> Deployment:
@@ -559,6 +617,31 @@ def _root_failure(deployment: Deployment) -> str | None:
     return first.plain_message if first else None
 
 
+# CloudFormation's message when an ECS service never reaches steady state names
+# the service and nothing else — never the reason, which lives in the stopped
+# task, the container's exit code, or the load balancer's health check.
+_ECS_STABILIZATION_RE = re.compile(r"did not stabilize|failed to stabilize", re.I)
+
+
+def _enriched_root_cause(deployment: Deployment, root_cause: str | None) -> str | None:
+    """Append the runtime reason to a CFN failure that has none of its own, so the
+    correction round feeds `iac.refine()` the container's actual error rather
+    than "the service did not stabilize". Best-effort and narrowly gated: an
+    ECS-stabilization failure is the only CFN error whose true cause is outside
+    CloudFormation's own event stream, and probing costs an STS assume-role."""
+    if not root_cause or not _ECS_STABILIZATION_RE.search(root_cause):
+        return root_cause
+    try:
+        creds, region = _assume(deployment)
+        stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+        services = _stack_ecs_services(creds, region, stack_name)
+        diagnosis = runtime_probe.services_root_cause(creds, region, services)
+    except Exception as exc:  # noqa: BLE001 — enrichment must never mask the real failure
+        log.warning("could not enrich root cause for deployment %s (%s)", deployment.id, exc)
+        return root_cause
+    return f"{root_cause}\n\n{diagnosis}" if diagnosis else root_cause
+
+
 # ── Provisioning feedback loop ───────────────────────────────────────────────
 #
 # No agent one-shots provisioning reliably — this session alone hit three
@@ -627,6 +710,8 @@ def provision_with_feedback(project: Project) -> dict[str, Any]:
     if result["status"] in (Deployment.Status.FAILED, Deployment.Status.ROLLED_BACK):
         deployment = _active_deployment(project)
         root_cause = (deployment and _root_failure(deployment)) or result.get("error")
+        if deployment:
+            root_cause = _enriched_root_cause(deployment, root_cause)
         if root_cause:
             try:
                 refine_result = iac.refine(project, _correction_instruction(root_cause))
