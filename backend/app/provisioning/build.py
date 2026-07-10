@@ -36,7 +36,7 @@ from django.utils import timezone
 from core.models import Deployment, DeploymentStackOutput, Project, ProvisioningLogEntry
 from app import github_utils
 
-from . import aws_client, codebuild_spec, iac
+from . import aws_client, codebuild_spec, iac, runtime_probe
 from .deploy import DeployError, _active_deployment, _assume, _serialize_log, scale_services_to_spec
 
 log = logging.getLogger(__name__)
@@ -197,10 +197,13 @@ def _poll_build_to_terminal(started: dict[str, Any]) -> dict[str, Any]:
             if all(s == "SUCCEEDED" for s in statuses):
                 return {"status": Deployment.Status.COMPLETE, "error": None}
             failed = [n for n, s in zip(codebuild_names, statuses) if s != "SUCCEEDED"]
-            return {
-                "status": Deployment.Status.BUILD_FAILED,
-                "error": f"Build failed for: {', '.join(failed)} — check the CodeBuild logs for details.",
-            }
+            error = f"Build failed for: {', '.join(failed)}."
+            # Telling a user to "check the CodeBuild logs" makes them go find in the
+            # AWS console what Clyro is already holding the credentials to read.
+            diagnosis = runtime_probe.build_root_cause(creds, region, build_ids)
+            if diagnosis:
+                error += f"\n\n{diagnosis}"
+            return {"status": Deployment.Status.BUILD_FAILED, "error": error}
         time.sleep(_POLL_INTERVAL_SECONDS)
         elapsed += _POLL_INTERVAL_SECONDS
 
