@@ -1600,6 +1600,24 @@ def check_spec_conformance(template: str, spec: dict) -> list[dict[str, str]]:
                 f"'{value}'. Add it to the ContainerDefinitions Environment list of every "
                 "application container.")})
 
+    # 2e. A generated secret can't contain a character that changes how the
+    #     connection string embedding it parses. Every other enforcer added here has
+    #     a matching gate; without this one a hand-edited or stale template could
+    #     still provision a password that breaks DATABASE_URL about half the time.
+    for logical_id, res in resources.items():
+        if not isinstance(res, dict) or res.get("Type") != _SECRET_TYPE:
+            continue
+        generate = (res.get("Properties") or {}).get("GenerateSecretString")
+        if not isinstance(generate, dict):
+            continue
+        excluded = set(generate.get("ExcludeCharacters") or "")
+        missing = sorted(set(_SECRET_EXCLUDE_CHARACTERS) - excluded)
+        if missing:
+            findings.append({"severity": "blocker", "message": (
+                f"{logical_id} can generate a secret containing {''.join(missing)!r}, which is "
+                "not URL-safe. The value is interpolated into a connection string, so the app "
+                "fails at startup with a URL parse error. Exclude every reserved character.")})
+
     # 2d. The load balancer health-checks the path the app actually serves.
     desired_path = spec.get("health_check_path")
     if desired_path:
