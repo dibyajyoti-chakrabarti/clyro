@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import re
+import string
 from typing import Any
 
 from cfnlint import api as cfnlint_api
@@ -940,6 +941,16 @@ def enforce_env_values(template: str, spec: dict) -> str:
 _DESIRED_COUNT_RE = re.compile(r"^(\s+)DesiredCount:\s*\d+\s*$", re.M)
 
 
+# Secrets Manager generates the RDS master password, and the template interpolates it
+# raw into `postgres://user:${password}@host:5432/db`. Anything outside RFC 3986's
+# "unreserved" set can therefore change how that URL parses. Found live: two identical
+# deployments, one worked and one died at boot with
+# `dj_database_url.ParseError: This string is not a valid url` — the only difference was
+# which 16 characters Secrets Manager happened to draw. The template's own
+# `ExcludeCharacters: '"@/\'` covers only what RDS itself rejects, not what a URL parser
+# does. Keep A-Za-z0-9 and `-._~`; exclude every other punctuation character and space.
+_SECRET_EXCLUDE_CHARACTERS = "".join(sorted(set(string.punctuation + " ") - set("-._~")))
+
 _RESOURCE_KEY_RE = re.compile(r"^  (?P<lid>[A-Za-z0-9_]+):[ ]*$")
 _ENV_LIST_RE = re.compile(r"^(?P<ind>[ ]+)Environment:[ ]*$")
 _ENV_ITEM_RE = re.compile(r"^[ ]*- Name:[ ]*(?P<key>\S+)[ ]*$")
@@ -1001,6 +1012,55 @@ def enforce_required_env(template: str, spec: dict) -> str:
                 new_lines.append(f"{item_indent}  Value: {_yaml_scalar(value)}")
             if new_lines:
                 insertions.append((k + 1, new_lines))
+
+    for at, new_lines in sorted(insertions, reverse=True):
+        lines[at:at] = new_lines
+
+    result = "\n".join(lines)
+    return result + "\n" if template.endswith("\n") else result
+
+
+_SECRET_TYPE = "AWS::SecretsManager::Secret"
+_GENERATE_SECRET_RE = re.compile(r"^(?P<ind>[ ]+)GenerateSecretString:[ ]*$")
+_EXCLUDE_CHARS_RE = re.compile(r"^(?P<ind>[ ]+)ExcludeCharacters:[ ]*.*$")
+
+
+def enforce_secret_url_safe_charset(template: str) -> str:
+    """Force every generated secret to draw from a URL-safe alphabet, so a password
+    embedded in a connection string can never change how that string parses.
+    Idempotent; spec-independent (the constraint is RFC 3986's, not the canvas's)."""
+    if not template or _SECRET_TYPE not in template:
+        return template
+
+    desired = _yaml_scalar(_SECRET_EXCLUDE_CHARACTERS)
+    lines = template.splitlines()
+    starts = [i for i, line in enumerate(lines) if _RESOURCE_KEY_RE.match(line)]
+    insertions: list[tuple[int, list[str]]] = []
+
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(lines)
+        for k in range(start + 1, end):
+            if lines[k] and not lines[k].startswith(" "):
+                end = k
+                break
+        if not any(line.strip() == f"Type: {_SECRET_TYPE}" for line in lines[start:end]):
+            continue
+
+        for k in range(start, end):
+            match = _GENERATE_SECRET_RE.match(lines[k])
+            if not match:
+                continue
+            child_indent = match.group("ind") + "  "
+            stop = k + 1
+            while stop < end and (not lines[stop].strip() or lines[stop].startswith(child_indent)):
+                stop += 1
+            for x in range(k + 1, stop):
+                existing = _EXCLUDE_CHARS_RE.match(lines[x])
+                if existing and len(existing.group("ind")) == len(child_indent):
+                    lines[x] = f"{child_indent}ExcludeCharacters: {desired}"
+                    break
+            else:
+                insertions.append((k + 1, [f"{child_indent}ExcludeCharacters: {desired}"]))
 
     for at, new_lines in sorted(insertions, reverse=True):
         lines[at:at] = new_lines
@@ -1273,6 +1333,7 @@ def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_rds_deletion_policy(template)
     template = enforce_log_group_naming(template)
     template = enforce_security_group_rules(template, spec)
+    template = enforce_secret_url_safe_charset(template)
     template = enforce_required_env(template, spec)
     template = enforce_env_values(template, spec)
     template = enforce_ecs_desired_count(template, spec)
