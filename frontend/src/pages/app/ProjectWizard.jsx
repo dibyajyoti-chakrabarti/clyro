@@ -54,6 +54,10 @@ export default function ProjectWizard() {
           scale: intent.scale,
           criticality: intent.criticality,
           environment: intent.environment,
+          // Omitting this made Step 2 forget a saved free-tier choice on resume: it
+          // re-hydrated blank and re-saved as the `paid` default, which then provisions
+          // paid-tier RDS on a free-tier account and rolls the stack back.
+          aws_account_type: intent.aws_account_type,
           database_choice: intent.database_choice,
           worker_compute_choice: intent.worker_compute_choice,
           domain_has: intent.domain_has,
