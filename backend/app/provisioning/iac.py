@@ -1860,6 +1860,15 @@ def refine(project: Project, instruction: str, history: list | None = None,
             "security_findings": findings}
 
 
+# Statuses that mean "a CloudFormation stack exists in the user's account right now."
+# DELETED/DELETING are excluded: nothing is left to protect.
+_STACK_EXISTS_STATUSES = (
+    Deployment.Status.SUBMITTING, Deployment.Status.IN_PROGRESS, Deployment.Status.BUILDING,
+    Deployment.Status.COMPLETE, Deployment.Status.BUILD_FAILED, Deployment.Status.FAILED,
+    Deployment.Status.PAUSED,
+)
+
+
 def validate(project: Project, template: str) -> dict[str, Any]:
     """Persist the (possibly manually edited) template and lint it. On a clean
     template the deployment moves to IAC_READY (validated, ready to provision)."""
@@ -1871,11 +1880,21 @@ def validate(project: Project, template: str) -> dict[str, Any]:
     has_blocker = any(f["severity"] == "blocker" for f in findings)
 
     deployment.cloudformation_template = template
-    deployment.status = (
-        Deployment.Status.IAC_READY if validation["is_valid"] and not has_blocker
-        else Deployment.Status.GENERATING_IAC
-    )
-    deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
+
+    # A deployment that already created a stack keeps its status. Found live: after a
+    # failed deploy, clicking Validate demoted the deployment to GENERATING_IAC, which
+    # makes Step 4 render the IaC editor instead of the provision log — and the only
+    # teardown control lives in that log. The stack stayed up, billing, with no way to
+    # delete it from the UI. Validating a template says nothing about a stack that
+    # already exists; Clyro has no update path, so it must be torn down first.
+    if deployment.cloudformation_stack_name and deployment.status in _STACK_EXISTS_STATUSES:
+        deployment.save(update_fields=["cloudformation_template", "updated_at"])
+    else:
+        deployment.status = (
+            Deployment.Status.IAC_READY if validation["is_valid"] and not has_blocker
+            else Deployment.Status.GENERATING_IAC
+        )
+        deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
     return {"validation": validation, "status": deployment.status, "security_findings": findings}
 
