@@ -108,7 +108,7 @@ export default function useQuestionFlow({ projectId, projectData, setProjectData
       .then(() => setIsSaving(false))
       .catch((err) => {
         setIsSaving(false)
-        setSaveError(err.message || 'Failed to save Ã¢â‚¬â€ your answers may not be persisted')
+        setSaveError(err.message || 'Failed to save — your answers may not be persisted')
       })
   }
 

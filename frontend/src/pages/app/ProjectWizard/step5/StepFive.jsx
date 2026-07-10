@@ -25,9 +25,9 @@ function StepFivePanel() {
           <h3 className='text-lg font-semibold'>Cost</h3>
           <div className='mt-3 grid gap-3 md:grid-cols-3'>
             {[
-              ['This month so far', 'â€”'],
-              ['Projected', 'â€”'],
-              ['Last month', 'â€”'],
+              ['This month so far', '—'],
+              ['Projected', '—'],
+              ['Last month', '—'],
             ].map(([k, v]) => (
               <div key={k} className='rounded-lg border border-border bg-surface p-3'>
                 <p className='text-xs text-text-muted'>{k}</p>

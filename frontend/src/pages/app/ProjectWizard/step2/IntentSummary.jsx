@@ -11,7 +11,7 @@ function IntentSummary({ summaryQuestions, answers, formatAnswer, isSaving, save
             <Check className='h-3.5 w-3.5' strokeWidth={3} />
           </span>
         )}
-        <h3 className='text-xl font-semibold tracking-tight'>{isSaving ? 'Saving your answersâ€¦' : 'All set'}</h3>
+        <h3 className='text-xl font-semibold tracking-tight'>{isSaving ? 'Saving your answers…' : 'All set'}</h3>
       </div>
       <div className='mt-4 overflow-hidden rounded-md border border-border'>
         <table className='w-full text-left text-sm'>
@@ -33,7 +33,7 @@ function IntentSummary({ summaryQuestions, answers, formatAnswer, isSaving, save
       ) : !isSaving ? (
         <p className='mt-4 flex items-center gap-1.5 text-xs font-normal text-text-muted'>
           <Check className='h-3.5 w-3.5 text-success' />
-          Intent saved â€” your architecture is ready to review
+          Intent saved — your architecture is ready to review
         </p>
       ) : null}
     </div>

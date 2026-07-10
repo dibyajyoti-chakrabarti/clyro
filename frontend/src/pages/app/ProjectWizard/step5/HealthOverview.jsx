@@ -4,7 +4,7 @@ function HealthOverview({ healthItems, statusIcon }) {
       <h3 className='text-lg font-semibold'>Health overview</h3>
       {healthItems.length === 0 ? (
         <p className='mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-center text-sm text-text-muted'>
-          Waiting for the first health check to reportâ€¦
+          Waiting for the first health check to report…
         </p>
       ) : (
         <div className='mt-3 grid gap-3 md:grid-cols-3'>
