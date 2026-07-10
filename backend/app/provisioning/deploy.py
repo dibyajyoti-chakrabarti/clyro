@@ -91,6 +91,22 @@ def start(project: Project) -> dict[str, Any]:
     if deployment.status not in _RETRYABLE_STATUSES:
         raise DeployError("The template hasn't been validated yet — validate it, then provision.")
 
+    # Re-check the template against the CURRENT blocker set — never trust a stale
+    # IAC_READY. A template validated before a blocker check existed (e.g. the
+    # CloudFront S3-origin gate, or the new capability gate) would otherwise deploy
+    # unchecked; this nearly re-shipped a known-bad template from the review screen.
+    # Deterministic and agent-free, so it stays a fast precondition (no AWS call yet).
+    from . import iac
+    spec = iac._spec_for(deployment)
+    blockers = [f for f in iac._collect_findings(deployment.cloudformation_template, spec)
+                if f["severity"] == "blocker"]
+    if blockers:
+        raise DeployError(
+            "This template has unresolved issues and can't be provisioned yet:\n- "
+            + "\n- ".join(b["message"] for b in blockers[:5])
+            + "\n\nRegenerate or refine the template to resolve them, then provision."
+        )
+
     creds, region = _assume(deployment)
     stack_name = _stack_name(deployment)
     existing = aws_client.find_stack(creds, region, stack_name)
