@@ -1,6 +1,25 @@
 @import '@fontsource/geist';
 @import 'tailwindcss';
 
+/* Tailwind v4 resolves its theme from CSS, not tailwind.config.js — that file is
+   only read when a stylesheet asks for it with `@config`. Nothing did, so every
+   custom colour in it (`bg-surface`, `text-text-muted`, `bg-danger/8`, …) compiled
+   to nothing and the components using them rendered unstyled. Most of the app
+   happened to survive because it leans on built-ins (`amber-400`) and arbitrary
+   values (`bg-white/[0.04]`); ConfirmDialog, which uses only these tokens, came out
+   as a transparent box. Values mirror tailwind.config.js exactly. */
+@theme {
+  --color-background: #111318;
+  --color-surface: #1c1e26;
+  --color-border: #2c2e38;
+  --color-accent: #f97316;
+  --color-accent-soft: #431407;
+  --color-text-primary: #eeeef0;
+  --color-text-muted: #6b7080;
+  --color-success: #22c55e;
+  --color-danger: #ef4444;
+}
+
 :root {
   font-family: 'Geist', Inter, system-ui, -apple-system, sans-serif;
   width: 100%;
