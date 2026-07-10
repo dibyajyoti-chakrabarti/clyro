@@ -365,3 +365,110 @@ def batch_get_builds(credentials: dict, region: str, build_ids: list[str]) -> li
     codebuild = _codebuild_client(credentials, region)
     response = codebuild.batch_get_builds(ids=build_ids)
     return response.get('builds') or []
+
+
+# ── Runtime probes ───────────────────────────────────────────────────────────
+#
+# Everything above answers "did AWS accept our API call?". These answer "is the
+# customer's app actually working?" — the question CloudFormation cannot, since
+# a stack reaches CREATE_COMPLETE the moment its resources exist, regardless of
+# whether a single container inside them can serve a request. Consumed by
+# runtime_probe.py, which turns them into a root cause.
+
+
+def _elbv2_client(credentials: dict, region: str):
+    return boto3.client(
+        'elbv2',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def _logs_client(credentials: dict, region: str):
+    return boto3.client(
+        'logs',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def describe_ecs_service(credentials: dict, region: str, cluster: str, service: str) -> dict:
+    """The full service dict. get_ecs_service_counts() throws away everything but
+    the three counts; a runtime diagnosis needs ``loadBalancers`` (to find the
+    target group), ``deployments`` (rolloutState) and ``events``."""
+    ecs = _ecs_client(credentials, region)
+    services = ecs.describe_services(cluster=cluster, services=[service]).get('services') or []
+    return services[0] if services else {}
+
+
+def describe_stopped_tasks(credentials: dict, region: str, cluster: str, service: str,
+                           limit: int = 5) -> list[dict]:
+    """The most recently stopped tasks for a service. ECS keeps stopped tasks
+    queryable for roughly an hour — long enough to explain a crash-loop, and the
+    only place ``stoppedReason`` and a container's ``exitCode`` ever appear."""
+    ecs = _ecs_client(credentials, region)
+    arns = ecs.list_tasks(
+        cluster=cluster, serviceName=service, desiredStatus='STOPPED',
+    ).get('taskArns') or []
+    if not arns:
+        return []
+    return ecs.describe_tasks(cluster=cluster, tasks=arns[:limit]).get('tasks') or []
+
+
+def task_definition_log_groups(credentials: dict, region: str, task_definition: str) -> list[str]:
+    """The awslogs group each container in a task definition writes to. Derived
+    from the task definition rather than guessed from a naming convention, since
+    the template is authored by an LLM and its log-group names vary."""
+    ecs = _ecs_client(credentials, region)
+    task_def = ecs.describe_task_definition(
+        taskDefinition=task_definition,
+    ).get('taskDefinition') or {}
+    groups = []
+    for container in task_def.get('containerDefinitions') or []:
+        options = (container.get('logConfiguration') or {}).get('options') or {}
+        group = options.get('awslogs-group')
+        if group and group not in groups:
+            groups.append(group)
+    return groups
+
+
+def describe_target_health(credentials: dict, region: str, target_group_arn: str) -> list[dict]:
+    """``[{state, reason, description}]`` per registered target. The decisive signal
+    for "the container runs but the load balancer refuses to send it traffic"."""
+    elbv2 = _elbv2_client(credentials, region)
+    descriptions = elbv2.describe_target_health(
+        TargetGroupArn=target_group_arn,
+    ).get('TargetHealthDescriptions') or []
+    return [
+        {
+            'state': d.get('TargetHealth', {}).get('State', ''),
+            'reason': d.get('TargetHealth', {}).get('Reason', ''),
+            'description': d.get('TargetHealth', {}).get('Description', ''),
+        }
+        for d in descriptions
+    ]
+
+
+def tail_log_group(credentials: dict, region: str, log_group: str, limit: int = 20) -> list[str]:
+    """The last ``limit`` messages from the most recently active stream in a log
+    group. Returns [] rather than raising when the group does not exist yet — a
+    container that dies before its first write leaves no stream at all, and that
+    absence is itself diagnostic rather than an error."""
+    logs = _logs_client(credentials, region)
+    try:
+        streams = logs.describe_log_streams(
+            logGroupName=log_group, orderBy='LastEventTime', descending=True, limit=1,
+        ).get('logStreams') or []
+        if not streams:
+            return []
+        events = logs.get_log_events(
+            logGroupName=log_group, logStreamName=streams[0]['logStreamName'],
+            limit=limit, startFromHead=False,
+        ).get('events') or []
+    except ClientError:
+        return []
+    return [e.get('message', '').rstrip() for e in events]
