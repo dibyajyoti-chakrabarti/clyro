@@ -102,8 +102,8 @@ export default function ChatSidebar({
         ) : null}
 
         <div className='shrink-0 px-4 pb-4 pt-3'>
-          <div className='rounded-[16px] border border-[rgba(255,193,7,0.10)] bg-[rgba(255,255,255,0.03)] shadow-[0_8px_24px_rgba(0,0,0,0.12)] backdrop-blur-[14px] transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] focus-within:border-[rgba(255,193,7,0.22)]'>
-            <div className='flex h-20 items-center px-4'>
+          <div className='overflow-hidden rounded-[20px] border border-[rgba(255,193,7,0.12)] bg-gradient-to-b from-[rgba(255,255,255,0.04)] to-[rgba(255,255,255,0.015)] shadow-[0_10px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-[14px] transition-all duration-200 ease-out focus-within:border-[rgba(255,193,7,0.38)] focus-within:shadow-[0_0_0_4px_rgba(255,193,7,0.10),0_10px_30px_rgba(0,0,0,0.2)]'>
+            <div className='flex h-20 items-center px-4 shadow-[inset_0_1px_3px_rgba(0,0,0,0.15)]'>
               <input
                 ref={chatInputRef}
                 type='text'
@@ -115,19 +115,19 @@ export default function ChatSidebar({
                     handleSend()
                   }
                 }}
-                className='w-full bg-transparent text-sm text-text-primary placeholder:text-text-muted focus-visible:outline-none'
+                className='w-full bg-transparent text-sm text-text-primary placeholder:font-medium placeholder:tracking-wide placeholder:text-text-muted focus-visible:outline-none'
                 placeholder='Ask about this architecture...'
               />
             </div>
 
-            <div className='flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] px-4 py-3'>
+            <div className='flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.08] px-4 py-3'>
               <div className='flex min-w-0 flex-wrap items-center gap-2'>
                 <button
                   type='button'
                   onClick={clearConversation}
                   disabled={agentLoading}
                   title='Clear conversation'
-                  className='inline-flex shrink-0 items-center gap-1 rounded-[10px] border border-white/[0.14] bg-white/[0.02] px-2.5 py-1.5 text-xs font-medium text-text-muted transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-[rgba(255,193,7,0.22)] hover:bg-white/[0.04] hover:text-text-primary disabled:opacity-50'
+                  className='inline-flex shrink-0 items-center gap-1 rounded-full border border-white/[0.14] bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-text-muted transition-all duration-200 ease-out hover:border-[rgba(255,193,7,0.28)] hover:bg-white/[0.06] hover:text-text-primary active:scale-[0.97] disabled:opacity-50'
                 >
                   <Trash2 className='h-3.5 w-3.5' />
                   Clear
@@ -138,10 +138,10 @@ export default function ChatSidebar({
                   type='button'
                   disabled
                   title='Select model (coming soon)'
-                  className='inline-flex min-w-0 shrink items-center gap-1 truncate rounded-[10px] border border-white/[0.14] bg-white/[0.02] px-2.5 py-1.5 text-xs font-medium text-text-muted opacity-60'
+                  className='group inline-flex min-w-0 shrink items-center gap-1 truncate rounded-full border border-white/[0.14] bg-white/[0.02] px-3 py-1.5 text-xs font-medium text-text-muted opacity-60 transition-all duration-200 ease-out hover:border-[rgba(255,193,7,0.24)] hover:bg-white/[0.05]'
                 >
                   <span className='truncate'>Select model</span>
-                  <ChevronDown className='h-3.5 w-3.5 shrink-0' />
+                  <ChevronDown className='h-3.5 w-3.5 shrink-0 transition-transform duration-200 ease-out group-hover:rotate-180' />
                 </button>
               </div>
 
@@ -149,7 +149,7 @@ export default function ChatSidebar({
                 type='button'
                 onClick={handleSend}
                 disabled={agentLoading}
-                className='grid h-9 w-9 shrink-0 place-items-center rounded-[12px] border border-[rgba(255,193,7,0.18)] bg-gradient-to-b from-[#FFD54A] to-[#FFC107] text-black shadow-[0_8px_18px_rgba(0,0,0,0.16)] transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_22px_rgba(0,0,0,0.18)] disabled:opacity-50'
+                className='grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[rgba(255,193,7,0.18)] bg-gradient-to-b from-[#FFD54A] to-[#FFC107] text-black shadow-[0_8px_18px_rgba(0,0,0,0.16)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-[0_10px_24px_rgba(255,193,7,0.35)] hover:brightness-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 disabled:hover:translate-y-0'
                 aria-label='Send message'
               >
                 <ArrowUp className='h-4 w-4' />
