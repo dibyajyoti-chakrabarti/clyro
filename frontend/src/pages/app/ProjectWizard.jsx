@@ -283,7 +283,10 @@ export default function ProjectWizard() {
                     disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
                     className='h-12 rounded-[18px] px-5 transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(255,196,0,0.18)]'
                   >
-                    Finalize
+                    {/* Use continueLabel: after the first click finalizes, this becomes
+                        "Continue to step 4" instead of a stuck "Finalize" that gave no
+                        signal the second click advances (the "click Finalize twice" bug). */}
+                    {continueLabel}
                     <ArrowRight className='h-4 w-4' />
                   </Button>
                 ) : (
