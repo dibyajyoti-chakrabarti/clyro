@@ -208,13 +208,13 @@ function StepThreePanel({
             confirmProposal={confirmProposal}
             dismissProposal={dismissProposal}
             handleSend={handleSend}
-            ChatBubble={ChatBubble}
             onClose={() => setActiveDrawer(null)}
+            ChatBubble={ChatBubble}
           />
         </div>
 
         <div
-          className={`absolute inset-y-0 right-0 z-40 h-full min-h-0 w-full max-w-[380px] p-4 ${drawerMotion('cost')}`}
+          className={`absolute inset-y-0 right-0 z-40 h-full min-h-0 w-full max-w-[420px] p-4 ${drawerMotion('cost')}`}
           aria-hidden={activeDrawer !== 'cost'}
         >
           <CostPanel canvasCost={canvasCost} totalCost={totalCost} onClose={() => setActiveDrawer(null)} />

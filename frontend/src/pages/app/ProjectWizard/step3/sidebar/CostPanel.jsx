@@ -15,7 +15,7 @@ export default function CostPanel({ canvasCost, totalCost, onClose }) {
   return (
     <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[rgba(255,193,7,0.10)] bg-[rgba(10,10,10,0.42)] shadow-[0_24px_80px_rgba(0,0,0,0.28),0_0_60px_rgba(255,193,7,0.05)] backdrop-blur-[20px]'>
       <div className='shrink-0 px-4 pt-4 pb-3'>
-        <div className='flex items-center justify-between'>
+        <div className='flex items-start justify-between gap-3'>
           <div className='flex items-center gap-2'>
             <span className='grid h-8 w-8 place-items-center rounded-full border border-[rgba(255,193,7,0.12)] bg-[rgba(255,193,7,0.06)] text-accent'>
               <DollarSign className='h-4 w-4' />
@@ -29,8 +29,9 @@ export default function CostPanel({ canvasCost, totalCost, onClose }) {
             <button
               type='button'
               onClick={onClose}
-              title='Close panel'
-              className='grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.02] text-text-muted transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-white/[0.18] hover:bg-[rgba(255,255,255,0.04)] hover:text-text-primary'
+              title='Close cost drawer'
+              aria-label='Close cost drawer'
+              className='grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.02] text-text-muted transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-[rgba(255,193,7,0.18)] hover:bg-[rgba(255,255,255,0.04)] hover:text-text-primary'
             >
               <X className='h-4 w-4' />
             </button>
