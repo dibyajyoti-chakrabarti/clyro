@@ -484,6 +484,134 @@ def scale_services_to_spec(project: Project) -> dict[str, Any]:
     return {"scaled": scaled, "steady": False, "error": error}
 
 
+# ── Database migrations (run once, before scale-up) ────────────────────────────
+#
+# CloudFormation brings up an empty database; the app image's CMD is the server
+# only. Without this step every ORM query 500s against a schema that was never
+# created. This runs the framework's migrate command ONCE on the app's own task
+# definition (image, DB secret, execution role, log config all inherited), lifting
+# the live service's exact network config so the one-off task reaches RDS the same
+# way the app does. Idempotent by design (a framework only earns a migrate command
+# in build_spec once its command is safe to re-run), so a build retry re-runs it
+# harmlessly. Best-effort to LOCATE (a service it can't map is skipped, not failed);
+# strict on OUTCOME (a migrate that runs and exits non-zero fails the deploy).
+
+_MIGRATE_TIMEOUT_SECONDS = 300
+_MIGRATE_POLL_SECONDS = 6
+
+
+def _service_for_node(services: list[tuple[str, str]], node_id: str) -> tuple[str, str] | None:
+    """Pick the ``(cluster, service)`` whose ECS service name maps to ``node_id`` —
+    same suffix-anchored matching as _desired_for_service, so a `-backend-worker`
+    service is never mistaken for `backend`."""
+    for cluster, service in services:
+        name = service.lower()
+        for suffix in _SERVICE_NAME_SUFFIXES:
+            if name.endswith(suffix):
+                name = name[: -len(suffix)]
+                break
+        if name.endswith(node_id.lower()):
+            return cluster, service
+    for cluster, service in services:  # looser fallback
+        if node_id.lower() in service.lower():
+            return cluster, service
+    return None
+
+
+def _migrate_container(creds: dict, region: str, task_def: str, node_id: str) -> str:
+    """Which container in the task definition to run the migrate command in — the app
+    container, matched by name suffix, else the first one."""
+    containers = aws_client.task_definition_containers(creds, region, task_def)
+    names = [c["name"] for c in containers if c.get("name")]
+    for name in names:
+        if name.lower().endswith(node_id.lower()):
+            return name
+    return names[0] if names else node_id
+
+
+def _wait_migrate_task(creds: dict, region: str, cluster: str, task_arn: str,
+                       task_def: str) -> dict[str, Any]:
+    """Poll a one-off task to STOPPED and turn its exit into ``{ran, ok, error}``.
+    On failure, enrich with the stopped reason and a tail of the task's log group so
+    the user sees the actual migration error, not 'the task stopped'."""
+    elapsed = 0
+    task: dict[str, Any] = {}
+    while elapsed < _MIGRATE_TIMEOUT_SECONDS:
+        task = aws_client.describe_task(creds, region, cluster, task_arn)
+        if task.get("lastStatus") == "STOPPED":
+            break
+        time.sleep(_MIGRATE_POLL_SECONDS)
+        elapsed += _MIGRATE_POLL_SECONDS
+
+    if task.get("lastStatus") != "STOPPED":
+        return {"ran": True, "ok": False, "error": "Database migration timed out."}
+
+    containers = task.get("containers") or []
+    failed = [c for c in containers if c.get("exitCode") not in (0, None)]
+    could_not_start = [c for c in containers if c.get("exitCode") is None and c.get("reason")]
+    if not failed and not could_not_start:
+        return {"ran": True, "ok": True, "error": None}
+
+    if could_not_start and not failed:
+        reason = could_not_start[0]["reason"]
+        return {"ran": True, "ok": False,
+                "error": f"The database migration task could not start: {reason}"}
+
+    error = "Database migrations failed."
+    if task.get("stoppedReason"):
+        error += f" {task['stoppedReason']}"
+    tail: list[str] = []
+    for group in aws_client.task_definition_log_groups(creds, region, task_def):
+        tail += aws_client.tail_log_group(creds, region, group, limit=15)
+    if tail:
+        error += "\n\n" + "\n".join(tail[-15:])
+    return {"ran": True, "ok": False, "error": error}
+
+
+def run_migrations(project: Project) -> dict[str, Any]:
+    """Run the spec's database-migration command once, before services scale up.
+    Returns ``{ran, ok, error}``: ``ran=False`` means there was nothing to do (no
+    migrate framework, or the service couldn't be located) and is never a failure;
+    ``ok=False`` means the migration ran and failed, which must stop the deploy."""
+    from . import iac
+
+    deployment = _active_deployment(project)
+    if deployment is None:
+        raise DeployError("No active deployment to migrate.")
+    migrate = iac._spec_for(deployment).get("migrate")
+    if not migrate:
+        return {"ran": False, "ok": True, "error": None}
+
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+    match = _service_for_node(_stack_ecs_services(creds, region, stack_name), migrate["node_id"])
+    if not match:
+        log.warning("run_migrations: no ECS service matched node %s; skipping", migrate["node_id"])
+        return {"ran": False, "ok": True, "error": None}
+
+    cluster, service = match
+    detail = aws_client.describe_ecs_service(creds, region, cluster, service)
+    task_def = detail.get("taskDefinition")
+    awsvpc = (detail.get("networkConfiguration") or {}).get("awsvpcConfiguration") or {}
+    subnets = awsvpc.get("subnets") or []
+    if not task_def or not subnets:
+        log.warning("run_migrations: service %s has no task def / networking; skipping", service)
+        return {"ran": False, "ok": True, "error": None}
+
+    container = _migrate_container(creds, region, task_def, migrate["node_id"])
+    try:
+        task_arn = aws_client.run_task(
+            creds, region, cluster, task_def, container, migrate["command"],
+            subnets, awsvpc.get("securityGroups") or [],
+            awsvpc.get("assignPublicIp") or "DISABLED",
+        )
+    except Exception as exc:  # noqa: BLE001 — surfaced as a migration failure
+        log.exception("run_migrations: could not start task for project %s", project.id)
+        return {"ran": True, "ok": False, "error": f"Could not start the database migration: {exc}"}
+
+    return _wait_migrate_task(creds, region, cluster, task_arn, task_def)
+
+
 def _live_deployment(project: Project) -> Deployment:
     deployment = _active_deployment(project)
     if deployment is None or deployment.status not in (

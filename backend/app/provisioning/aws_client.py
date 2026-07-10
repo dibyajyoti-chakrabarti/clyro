@@ -453,6 +453,61 @@ def describe_target_health(credentials: dict, region: str, target_group_arn: str
     ]
 
 
+def task_definition_containers(credentials: dict, region: str, task_definition: str) -> list[dict]:
+    """``[{name, image}]`` for every container in a task definition. Used to pick
+    which container a one-off migration run overrides the command of — the task
+    definition is authored by an LLM, so container names aren't guessable."""
+    ecs = _ecs_client(credentials, region)
+    task_def = ecs.describe_task_definition(
+        taskDefinition=task_definition,
+    ).get('taskDefinition') or {}
+    return [
+        {'name': c.get('name'), 'image': c.get('image')}
+        for c in task_def.get('containerDefinitions') or []
+        if c.get('name')
+    ]
+
+
+def run_task(credentials: dict, region: str, cluster: str, task_definition: str,
+             container_name: str, command: list[str], subnets: list[str],
+             security_groups: list[str], assign_public_ip: str = 'DISABLED') -> str:
+    """Run a task definition ONCE (RunTask), overriding one container's command —
+    how a database migration runs: it reuses the app's own task definition (image,
+    secret injection, execution role, log config all intact) and just changes the
+    entrypoint to the migrate command. ``subnets``/``security_groups``/
+    ``assign_public_ip`` are lifted from the live service so the one-off task has
+    identical network reachability to the database. Returns the task ARN, or raises
+    if ECS refused to place the task."""
+    ecs = _ecs_client(credentials, region)
+    response = ecs.run_task(
+        cluster=cluster,
+        taskDefinition=task_definition,
+        launchType='FARGATE',
+        count=1,
+        overrides={'containerOverrides': [{'name': container_name, 'command': command}]},
+        networkConfiguration={'awsvpcConfiguration': {
+            'subnets': subnets,
+            'securityGroups': security_groups,
+            'assignPublicIp': assign_public_ip,
+        }},
+    )
+    tasks = response.get('tasks') or []
+    if not tasks:
+        failures = response.get('failures') or []
+        reason = '; '.join(f.get('reason', '') for f in failures) or 'unknown reason'
+        raise RuntimeError(f'ECS refused to start the task: {reason}')
+    return tasks[0]['taskArn']
+
+
+def describe_task(credentials: dict, region: str, cluster: str, task_arn: str) -> dict:
+    """The full task dict for one task — ``lastStatus``, ``stoppedReason``, and each
+    container's ``exitCode``/``reason``, which is how a one-off run reports success
+    (exit 0) or failure."""
+    ecs = _ecs_client(credentials, region)
+    tasks = ecs.describe_tasks(cluster=cluster, tasks=[task_arn]).get('tasks') or []
+    return tasks[0] if tasks else {}
+
+
 def tail_log_group(credentials: dict, region: str, log_group: str, limit: int = 20) -> list[str]:
     """The last ``limit`` messages from the most recently active stream in a log
     group. Returns [] rather than raising when the group does not exist yet — a

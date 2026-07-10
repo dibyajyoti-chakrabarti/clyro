@@ -27,6 +27,7 @@ from core.models import (
     EnvVarKey,
     IntentRecord,
     Project,
+    ScanResult,
 )
 
 from app import agentcore
@@ -263,12 +264,46 @@ def ensure_deployment(project: Project) -> Deployment:
     return deployment
 
 
+def _frameworks_for(project: Project) -> dict[str, str]:
+    """Map a canvas node id to its RepoRecon-detected framework, read from the latest
+    completed scan. The canvas keeps only a pretty label, but build_spec needs the raw
+    framework to decide the database-migration step, so pull it from the scan record
+    (durable, per-project) rather than re-deriving it. The worker shares the backend
+    image, so it inherits the backend's framework.
+
+    RepoRecon nests the per-service detection under a ``services`` key
+    (``detected_resources["services"]["backend"]["framework"]``); fall back to the
+    top level so an already-unwrapped shape still resolves."""
+    scan = (
+        ScanResult.objects.filter(project=project, status=ScanResult.Status.COMPLETE)
+        .order_by("-created_at")
+        .first()
+    )
+    detected = (scan and scan.detected_resources) or {}
+    if not isinstance(detected, dict):
+        return {}
+    services = detected.get("services") if isinstance(detected.get("services"), dict) else detected
+
+    def framework(node_id: str) -> str | None:
+        node = services.get(node_id) if isinstance(services.get(node_id), dict) else {}
+        return node.get("framework")
+
+    out: dict[str, str] = {}
+    if framework("backend"):
+        out["backend"] = framework("backend")
+        out["worker"] = framework("backend")  # worker shares the backend image
+    if framework("frontend"):
+        out["frontend"] = framework("frontend")
+    return out
+
+
 def _spec_for(deployment: Deployment) -> dict[str, Any]:
     canvas = canvas_ops.parse_canvas(deployment.canvas_version.canvas_yaml)
     intent = _intent_for_spec(deployment.intent_record)
     env_vars = _env_vars_for_spec(deployment.project)
     region = deployment.aws_connection.aws_region or "us-east-1"
-    return build_spec(canvas, intent, env_vars, region=region)
+    frameworks = _frameworks_for(deployment.project)
+    return build_spec(canvas, intent, env_vars, region=region, frameworks=frameworks)
 
 
 # ── Validation (deterministic, cfn-lint in-process) ────────────────────────────
