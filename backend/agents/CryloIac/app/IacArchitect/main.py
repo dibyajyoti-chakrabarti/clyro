@@ -463,6 +463,12 @@ def _build_user_message(payload: dict[str, Any]) -> str:
 async def invoke(payload, context):
     payload = _normalize_payload(payload)
     mode = payload.get("mode", "generate")
+    # A warm-up ping (fired on canvas finalize, just before Step-4 Generate) only
+    # needs the runtime container hot — yield immediately, before building the agent
+    # or making any LLM/tool call, so warming costs essentially nothing.
+    if mode == "warmup":
+        yield json.dumps({"warmed": True})
+        return
     # The caller picks the model per slot (generate / chat) and sends its key;
     # fall back to the mode default if absent or unknown.
     default_key = DEFAULT_REFINE if mode == "refine" else DEFAULT_GENERATE
