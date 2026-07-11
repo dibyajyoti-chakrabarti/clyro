@@ -3,7 +3,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import AgentJob, GitHubInstallation, IntentRecord, Project, ScanResult
+from core.models import AgentJob, AWSAccountConnection, GitHubInstallation, IntentRecord, Project, ScanResult
 from core.serializers import (
     GitHubInstallationSerializer, IntentRecordSerializer,
     ProjectSerializer, ScanResultSerializer, UserProfileSerializer,
@@ -176,10 +176,21 @@ def wizard_state(request, pk):
     scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
     intent = project.intent_records.order_by('-created_at').first()
 
+    # AWS-connect + secret entry now live in Step 2, so the wizard needs to know
+    # on load whether the account is already connected — otherwise a refresh
+    # mid-Step-2 would re-prompt the role stack instead of resuming at secrets.
+    connection = AWSAccountConnection.objects.filter(
+        project=project, connected_at__isnull=False
+    ).order_by('-connected_at').first()
+
     return Response({
         'project': ProjectSerializer(project).data,
         'scan': ScanResultSerializer(scan).data if scan else None,
         'intent': IntentRecordSerializer(intent).data if intent else None,
+        'connection': {
+            'connected': bool(connection),
+            'region': connection.aws_region if connection else None,
+        },
     })
 
 
