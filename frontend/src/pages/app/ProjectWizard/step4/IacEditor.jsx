@@ -120,6 +120,7 @@ export default function IacEditor({
   validation,
   findings,
   generating,
+  generatePhase,
   refining,
   validating,
   error,
@@ -341,6 +342,13 @@ export default function IacEditor({
                 <RefreshCw className={`h-3.5 w-3.5 ${generating ? 'animate-spin' : ''}`} />
                 {generating ? 'Regenerating…' : 'Regenerate'}
               </button>
+              {/* Live phase while the agent authors the template (B2 L2). */}
+              {generating && generatePhase && (
+                <span className='flex items-center gap-1.5 text-xs capitalize text-accent'>
+                  <span className='h-1.5 w-1.5 animate-pulse rounded-full bg-accent' />
+                  {generatePhase}…
+                </span>
+              )}
               {/* Inline error from a failed regeneration (template is still shown) */}
               {error && !generating && (
                 <span className='flex items-center gap-1 text-xs text-red-400'>
