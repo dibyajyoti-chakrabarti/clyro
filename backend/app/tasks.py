@@ -74,24 +74,45 @@ def run_iac_generate_task(job_id: str, project_id: str, model: str | None):
     from core.models import AgentJob
     import time as _time
 
-    # Accumulate the streamed template and flush it to the job's `progress` at most
-    # every ~1.5s (not per token). The row-scoped .update() touches only `progress`,
-    # so it never clobbers the _run wrapper's status/result save on the same job.
-    state = {"buf": "", "last": 0.0}
+    # Derive a live phase from the agent's streamed events (B2 L2): text deltas build
+    # the template; tool calls mark validate / compliance. Text after a validate is
+    # the model fixing errors; after compliance it's finalizing. The template flush
+    # is throttled to ~1.5s; a phase change flushes immediately so the label is
+    # responsive. The row-scoped .update() touches only `progress`, so it never
+    # clobbers the _run wrapper's status/result save on the same job.
+    state = {"buf": "", "last_write": 0.0, "phase": "drafting", "last_tool": None}
 
-    def on_delta(text: str):
-        state["buf"] += text
-        now = _time.monotonic()
-        if now - state["last"] < 1.5:
-            return
-        state["last"] = now
+    def _write():
         AgentJob.objects.filter(id=job_id).update(
-            progress={"phase": "drafting", "partial_template": state["buf"][:100_000]}
+            progress={"phase": state["phase"], "partial_template": state["buf"][:100_000]}
         )
+
+    def on_event(event):
+        if not isinstance(event, dict):
+            return
+        tool = event.get("tool")
+        if isinstance(tool, str):
+            low = tool.lower()
+            if "compliance" in low:
+                state["last_tool"], state["phase"] = "compliance", "checking compliance"
+            elif "validate" in low:
+                state["last_tool"], state["phase"] = "validate", "validating"
+            _write()
+            return
+        data = event.get("data")
+        if isinstance(data, str):
+            state["buf"] += data
+            state["phase"] = {"validate": "fixing", "compliance": "finalizing"}.get(
+                state["last_tool"], "drafting"
+            )
+            now = _time.monotonic()
+            if now - state["last_write"] >= 1.5:
+                state["last_write"] = now
+                _write()
 
     def _do():
         project = Project.objects.get(id=project_id)
-        return iac.generate(project, model=model, on_delta=on_delta)
+        return iac.generate(project, model=model, on_event=on_event)
 
     _run(job_id, _do)
 

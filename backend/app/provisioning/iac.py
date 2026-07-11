@@ -2168,19 +2168,15 @@ def _invoke_iac(payload: dict, project: Project, on_event=None) -> dict[str, Any
     return agentcore.invoke_runtime(arn, payload, str(project.id))
 
 
-def generate(project: Project, model: str | None = None, on_delta=None) -> dict[str, Any]:
+def generate(project: Project, model: str | None = None, on_event=None) -> dict[str, Any]:
     """Author a fresh template from the build spec, persist it, and return it with
     backend cfn-lint diagnostics. ``model`` is the user-selected generate model key
-    (the agent falls back to its default when omitted). ``on_delta(text)`` — when
-    given — is called with each streamed text delta so callers can surface live
-    progress (B2); the final persisted result is unchanged either way."""
+    (the agent falls back to its default when omitted). ``on_event(event)`` — when
+    given — is called with each streamed event: text deltas ``{"data": ...}`` and
+    tool-call markers ``{"tool": ...}``, so callers can surface live progress (B2).
+    The final persisted result is unchanged either way."""
     deployment = ensure_deployment(project)
     spec = _spec_for(deployment)
-    on_event = None
-    if on_delta is not None:
-        def on_event(event):
-            if isinstance(event, dict) and isinstance(event.get("data"), str):
-                on_delta(event["data"])
     resp = _invoke_iac({"mode": "generate", "build_spec": spec, "model": model}, project, on_event=on_event)
     if (resp or {}).get("error"):
         raise IacError((resp or {})["error"])
