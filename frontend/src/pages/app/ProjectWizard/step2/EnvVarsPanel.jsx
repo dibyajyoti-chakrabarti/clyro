@@ -49,6 +49,7 @@ function EnvVarsPanel({
                 <input
                   type={showSecrets[field.key_name] ? 'text' : 'password'}
                   value={secretValues[field.key_name] || ''}
+                  placeholder={field.secrets_manager_arn ? 'Saved — leave blank to keep' : ''}
                   onChange={(event) => onSecretValueChange(field.key_name, event.target.value)}
                   className='w-full rounded-lg border border-white/[0.09] bg-background px-3.5 py-2.5 text-sm text-text-primary transition-[border-color,box-shadow] duration-150 hover:border-white/[0.15] focus-visible:outline-none focus-visible:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/20'
                 />

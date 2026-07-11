@@ -29,6 +29,7 @@ export default function ProjectWizard() {
     repo: null,
     intent: {},
     scanResult: null,
+    connection: null,
     canvas: null,
     provision: null,
   })
@@ -48,7 +49,7 @@ export default function ProjectWizard() {
     setLoading(true)
 
     api.getWizardState(id)
-      .then(({ project, scan, intent }) => {
+      .then(({ project, scan, intent, connection }) => {
         const intentAnswers = intent ? {
           description: intent.description,
           scale: intent.scale,
@@ -70,6 +71,9 @@ export default function ProjectWizard() {
             : null,
           scanResult: scan || null,
           intent: intentAnswers,
+          // Step 2 resumes into AWS connect vs. secrets based on this — without
+          // it a refresh mid-Step-2 would re-prompt the CloudFormation role stack.
+          connection: connection || null,
           canvas: null,
           provision: null,
         })
@@ -252,6 +256,7 @@ export default function ProjectWizard() {
                   <StepFour
                     projectId={projectId}
                     setStep4CanContinue={setStep4CanContinue}
+                    onBackToCanvas={() => setStep(3)}
                     onAdvanceToStepFive={() => {
                       setStep(5)
                     }}
