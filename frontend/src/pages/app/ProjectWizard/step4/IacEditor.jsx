@@ -489,7 +489,8 @@ export default function IacEditor({
                   <div className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/20'>
                     <span className='h-2 w-2 rounded-full border border-accent border-t-transparent animate-spin' />
                   </div>
-                  Updating the template…
+                  {/* Live phase from the stream (B2) — falls back to a static label. */}
+                  <span className='capitalize'>{generatePhase ? `${generatePhase}…` : 'Updating the template…'}</span>
                 </div>
               )}
             </div>

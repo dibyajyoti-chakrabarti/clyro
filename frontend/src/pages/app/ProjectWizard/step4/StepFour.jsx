@@ -177,6 +177,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
     const instruction = refineInput.trim()
     if (!instruction || iacRefining) return
     setIacRefining(true)
+    setGeneratePhase('refining')
     setIacError(null)
     setRefineHistory((prev) => [...prev, { role: 'user', text: instruction }])
     setRefineInput('')
@@ -184,7 +185,11 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
       // Send the current editor content so the agent refines what the user sees
       // (manual edits included), not a stale server copy.
       const { job_id: jobId } = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, model: chatModel })
-      const data = await pollJob(projectId, jobId)
+      // Refine emits edit blocks, not a clean template, so we DON'T stream content
+      // into the editor — only the live phase, to replace the static spinner.
+      const data = await pollJob(projectId, jobId, {
+        onProgress: (p) => { if (p && p.phase) setGeneratePhase(p.phase) },
+      })
       if (data.outcome === 'answer') {
         // A question — the agent answered without touching the template.
         setIacFindings(data.security_findings || [])
@@ -200,6 +205,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
       setIacError(err.data?.error || 'Failed to refine the template.')
     } finally {
       setIacRefining(false)
+      setGeneratePhase(null)
     }
   }
 
