@@ -133,7 +133,17 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
     setIacError(null)
     try {
       const { job_id: jobId } = await api.generateIac(projectId, { model: generateModel })
-      const data = await pollJob(projectId, jobId)
+      // Stream the template into the editor as the agent writes it (B2): once a
+      // partial arrives, IacEditor swaps its spinner for the read-only editor and
+      // the template visibly builds. The final `data.template` below snaps to the
+      // clean, enforced version.
+      const data = await pollJob(projectId, jobId, {
+        onProgress: (p) => {
+          if (p && typeof p.partial_template === 'string' && p.partial_template) {
+            setIacTemplate(p.partial_template)
+          }
+        },
+      })
       if (!data.template) {
         setIacError('Generation returned an empty template — please try again.')
       } else {
