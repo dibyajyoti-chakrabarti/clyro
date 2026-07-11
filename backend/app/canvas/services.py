@@ -166,6 +166,12 @@ def finalize(project: Project) -> dict[str, Any] | None:
     project.status = Project.Status.CANVAS_FINALIZED
     project.save(update_fields=["status", "updated_at"])
     chat_memory.flush(project)  # the canvas conversation has no use after finalize
+    # Warm the IaC runtime now (finalize is the step right before Step-4 Generate)
+    # so the container is hot and Generate skips cold-start. Flag-gated + best-effort.
+    from django.conf import settings
+    if getattr(settings, "IAC_WARMUP_ENABLED", False):
+        from app import tasks
+        tasks.run_warmup_task.delay(str(project.id))
     return serialize_version(version)
 
 

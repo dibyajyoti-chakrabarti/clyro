@@ -120,6 +120,15 @@ def run_recreate_task(job_id: str, project_id: str):
     _run(job_id, _do)
 
 
+@shared_task
+def run_warmup_task(project_id: str):
+    # Warm the IaC runtime so Step-4 Generate doesn't pay cold-start. Fired on
+    # canvas finalize; best-effort — agentcore.warm_runtime swallows all errors,
+    # and no AgentJob is tracked (there's nothing for the user to watch).
+    from app import agentcore
+    agentcore.warm_runtime("IAC_RUNTIME_ARN", f"warmup-{project_id}")
+
+
 @shared_task(soft_time_limit=2100, time_limit=2400)
 def run_build_task(job_id: str, project_id: str):
     # A "Retry build" click after Deployment.Status.BUILD_FAILED — deliberately
