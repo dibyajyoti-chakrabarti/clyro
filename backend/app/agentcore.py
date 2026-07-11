@@ -84,6 +84,34 @@ def parse_runtime_response(raw: bytes | str) -> dict[str, Any]:
     return obj
 
 
+# A warm-up ping should return almost instantly (the agent short-circuits
+# mode='warmup'); keep its window tight so a slow/cold runtime can't make the
+# fire-and-forget call hang.
+_WARMUP_CONFIG = Config(connect_timeout=5, read_timeout=45, retries={"max_attempts": 0})
+
+
+def warm_runtime(name: str, session_id: str) -> None:
+    """Best-effort: fire a cheap ``mode='warmup'`` ping so the runtime container is
+    hot before the user's real call (cold vs warm is ~17s vs ~3s). Swallows every
+    error — warming must NEVER break the flow it's meant to speed up. The agent
+    returns immediately for a warmup payload without an LLM/tool round; if the ARN
+    isn't configured, this is a no-op."""
+    try:
+        arn = require_runtime_arn(name)
+    except ImproperlyConfigured:
+        return
+    try:
+        client = boto3.client("bedrock-agentcore", region_name=settings.AWS_REGION, config=_WARMUP_CONFIG)
+        client.invoke_agent_runtime(
+            agentRuntimeArn=arn,
+            qualifier="DEFAULT",
+            runtimeSessionId=session_id,
+            payload=json.dumps({"mode": "warmup"}).encode(),
+        )
+    except Exception as exc:  # noqa: BLE001 — warming is best-effort
+        logger.info("runtime warm-up skipped (%s)", exc)
+
+
 def invoke_runtime(arn: str, payload: dict, session_id: str) -> dict[str, Any]:
     """Invoke a deployed AgentCore runtime and return the parsed JSON reply.
 
