@@ -526,6 +526,11 @@ async def invoke(payload, context):
                     return
                 if "data" in item and isinstance(item["data"], str):
                     full_text += item["data"]
+                    # Forward each delta so the backend can stream the template into
+                    # the Step-4 editor as it's authored (B2). Backward-compatible:
+                    # the blocking consumer keeps only the LAST event (the final
+                    # result below), so these intermediate deltas are ignored there.
+                    yield json.dumps({"data": item["data"]})
         finally:
             for _t in (pump, getter):
                 if _t is not None and not _t.done():
