@@ -30,13 +30,16 @@ async function request(method, path, body) {
 // Poll a submitted AgentJob until it reaches a terminal state (done/failed).
 // Shared by scan, Step-3 chat, and IaC generate/refine — all of which now
 // return {job_id} immediately instead of blocking on the agent call.
-export async function pollJob(projectId, jobId, { intervalMs = 3000 } = {}) {
+export async function pollJob(projectId, jobId, { intervalMs = 3000, onProgress } = {}) {
   for (;;) {
     const data = await api.getJobStatus(projectId, jobId)
     if (data.status === 'done') return data.result
     if (data.status === 'failed') {
       throw Object.assign(new Error(data.error || 'Job failed'), { data })
     }
+    // Live progress while running (B2): {phase, partial_template}. Best-effort —
+    // a stale/absent progress is simply skipped.
+    if (onProgress && data.progress) onProgress(data.progress)
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 }
