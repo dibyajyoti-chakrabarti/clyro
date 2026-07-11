@@ -6,8 +6,8 @@ export const stepConfig = [
   },
   {
     number: 2,
-    title: 'Tell us about your app',
-    subtitle: 'Answer a few questions to shape the infrastructure to your actual needs.',
+    title: 'Set up your app',
+    subtitle: 'Answer a few questions, connect your AWS account, and add your secrets.',
   },
   {
     number: 3,
@@ -16,8 +16,8 @@ export const stepConfig = [
   },
   {
     number: 4,
-    title: 'Connect AWS & provision',
-    subtitle: 'Link your AWS account, confirm secrets, and deploy your infrastructure.',
+    title: 'Review & provision',
+    subtitle: 'Generate, review, and deploy your infrastructure.',
   },
   {
     number: 5,
