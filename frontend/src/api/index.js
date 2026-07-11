@@ -89,6 +89,7 @@ export const api = {
   pauseDeploy: (id) => request('POST', `/api/projects/${id}/deploy/pause/`),
   resumeDeploy: (id) => request('POST', `/api/projects/${id}/deploy/resume/`),
   teardownDeploy: (id) => request('POST', `/api/projects/${id}/deploy/teardown/`),
+  recreateDeploy: (id) => request('POST', `/api/projects/${id}/deploy/recreate/`),
   retryBuild: (id) => request('POST', `/api/projects/${id}/deploy/retry-build/`),
 
   // GitHub

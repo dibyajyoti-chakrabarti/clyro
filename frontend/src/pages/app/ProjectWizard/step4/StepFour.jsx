@@ -44,6 +44,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
   const [deployError, setDeployError] = useState(null)
   const [deployCorrecting, setDeployCorrecting] = useState(false)
   const [stackOutputs, setStackOutputs] = useState([])
+  const [canRecreate, setCanRecreate] = useState(false)
   const deployPollRef = useRef(null)
   const provisionJobIdRef = useRef(null)
 
@@ -51,6 +52,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
   const [infraActionLoading, setInfraActionLoading] = useState(false)
   const [infraActionError, setInfraActionError] = useState(null)
   const [teardownOpen, setTeardownOpen] = useState(false)
+  const [recreateOpen, setRecreateOpen] = useState(false)
 
   // shared
   const [showTemplate, setShowTemplate] = useState(false)
@@ -96,6 +98,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
             setProvisioningLog(deployData.log || [])
             setDeployStatus(deployData.status)
             setStackOutputs(deployData.outputs || [])
+            setCanRecreate(Boolean(deployData.can_recreate))
             if (deployData.error) setDeployError(deployData.error)
             if (deployData.status === 'complete') {
               setPhase('success')
@@ -224,6 +227,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
       setProvisioningLog(data.log || [])
       setDeployStatus(data.status)
       setStackOutputs(data.outputs || [])
+      setCanRecreate(Boolean(data.can_recreate))
       if (data.error) setDeployError(data.error)
 
       if (data.status === 'complete') {
@@ -367,6 +371,44 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
     />
   )
 
+  // Rebuild from scratch: teardown + a fresh provision (deploy.recreate). Offered
+  // only when the backend says can_recreate (a failed, never-been-live deploy), so
+  // destroying the stack loses nothing. Confirmed because it is still destructive.
+  const handleRecreate = () => {
+    setInfraActionError(null)
+    setRecreateOpen(true)
+  }
+
+  const confirmRecreate = async () => {
+    setRecreateOpen(false)
+    setDeployError(null)
+    setDeployCorrecting(false)
+    setCanRecreate(false)
+    setProvisioningLog([])
+    setStackOutputs([])
+    setDeployStatus('submitting')
+    setPhase('provisioning')
+    try {
+      const { job_id: jobId } = await api.recreateDeploy(projectId)
+      provisionJobIdRef.current = jobId
+      startDeployPoll()
+    } catch (err) {
+      setDeployError(err.data?.error || 'Failed to start the rebuild.')
+      setDeployStatus('failed')
+    }
+  }
+
+  const recreateDialog = (
+    <ConfirmDialog
+      open={recreateOpen}
+      title='Rebuild from scratch'
+      description='This deletes the current failed infrastructure and provisions it again from a clean slate, applying the latest fixes. Nothing has gone live yet, so no data is lost — but the current stack is destroyed and rebuilt. This can take 10–15 minutes.'
+      confirmText='Yes, rebuild from scratch'
+      onCancel={() => setRecreateOpen(false)}
+      onConfirm={confirmRecreate}
+    />
+  )
+
   if (hydrating) {
     return (
       <div className='flex flex-1 flex-col items-center justify-center p-8'>
@@ -436,8 +478,11 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
           onCancel={handleTeardown}
           cancelLoading={infraActionLoading}
           cancelError={infraActionError}
+          canRecreate={canRecreate}
+          onRecreate={handleRecreate}
         />
         {teardownDialog}
+        {recreateDialog}
       </div>
     )
   }
