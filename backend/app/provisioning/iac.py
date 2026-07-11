@@ -1517,6 +1517,68 @@ def enforce_rds_deletion_policy(template: str) -> str:
     return _DB_INSTANCE_BLOCK_RE.sub(_fix_block, template)
 
 
+_RDS_INSTANCE_TYPE = "AWS::RDS::DBInstance"
+# Pull the (RDS logical id, database name) pair straight out of a DATABASE_URL
+# whose host is the instance's own endpoint, e.g.
+#   …@${DBInstance.Endpoint.Address}:5432/appdb  ->  (DBInstance, appdb)
+# The ${DBSecret} password-resolve earlier in the URL has no `.Endpoint.Address`,
+# so it can't be mistaken for the host.
+_DB_URL_DBNAME_RE = re.compile(
+    r"\$\{(?P<lid>[A-Za-z0-9_]+)\.Endpoint\.Address\}[^\s'\"]*?/(?P<db>[A-Za-z_][A-Za-z0-9_]*)"
+)
+
+
+def enforce_rds_dbname(template: str) -> str:
+    """Found live (migration step + app at runtime): `FATAL: database "appdb" does
+    not exist`. The generated DATABASE_URL targets a named database
+    (…@${DBInstance.Endpoint.Address}:5432/appdb), but the RDS::DBInstance declared
+    no `DBName` — and PostgreSQL RDS, unlike MySQL, creates NO user database when
+    DBName is omitted (only the internal `postgres` db). So the database the app
+    (and `manage.py migrate`) connects to never exists, and every deploy dies the
+    moment anything touches the DB. Deterministically set DBName on each instance to
+    the db its own DATABASE_URL names — matched via the ${<LID>.Endpoint.Address}
+    reference so the right instance is pinned — letting RDS create it at
+    instance-creation time. Idempotent: an instance already declaring DBName is left
+    untouched."""
+    if not template or _RDS_INSTANCE_TYPE not in template:
+        return template
+
+    wanted: dict[str, str] = {}
+    for m in _DB_URL_DBNAME_RE.finditer(template):
+        wanted.setdefault(m.group("lid"), m.group("db"))
+    if not wanted:
+        return template
+
+    lines = template.splitlines()
+    starts = [i for i, line in enumerate(lines) if _RESOURCE_KEY_RE.match(line)]
+    insertions: list[tuple[int, list[str]]] = []
+
+    for n, start in enumerate(starts):
+        lid = _RESOURCE_KEY_RE.match(lines[start]).group("lid")
+        if lid not in wanted:
+            continue
+        end = starts[n + 1] if n + 1 < len(starts) else len(lines)
+        for k in range(start + 1, end):
+            if lines[k] and not lines[k].startswith(" "):
+                end = k
+                break
+        block = lines[start:end]
+        if not any(line.strip() == f"Type: {_RDS_INSTANCE_TYPE}" for line in block):
+            continue
+        if any(re.match(r"\s+DBName:\s*\S", line) for line in block):
+            continue  # already declares DBName — leave it
+        for k in range(start, end):
+            if lines[k].strip() == "Properties:":
+                insertions.append((k + 1, [f"      DBName: {wanted[lid]}"]))
+                break
+
+    for at, new_lines in sorted(insertions, reverse=True):
+        lines[at:at] = new_lines
+
+    result = "\n".join(lines)
+    return result + "\n" if template.endswith("\n") else result
+
+
 _CLOUDFRONT_DIST_RE = re.compile(
     r"^  (\w+):\n    Type: AWS::CloudFront::Distribution\b", re.M
 )
@@ -1815,6 +1877,7 @@ def _apply_enforcers(template: str, spec: dict) -> str:
     template = enforce_free_tier_limits(template, spec)
     template = enforce_elasticache_deletion_policy(template)
     template = enforce_rds_deletion_policy(template)
+    template = enforce_rds_dbname(template)
     template = enforce_log_group_naming(template)
     template = enforce_security_group_rules(template, spec)
     template = enforce_task_egress(template, spec)
