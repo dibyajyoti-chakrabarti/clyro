@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
 import { api } from '../../../../api'
 import { getQuestions } from '../constants/questions'
+import AwsSetup from './AwsSetup'
 import ChoiceOption from './ChoiceOption'
 
 const PAGE_SIZE = 3
@@ -42,6 +43,10 @@ export default function StepTwoPanel({ projectId, projectData, setProjectData, s
 
   const pages = useMemo(() => [questions.slice(0, PAGE_SIZE), questions.slice(PAGE_SIZE, PAGE_SIZE * 2)], [questions])
 
+  // Step 2 runs two sub-phases: the intent questions, then AWS connect + secret
+  // entry (AwsSetup). A resumed project whose intent is already saved skips
+  // straight to the AWS/secrets half rather than re-asking every question.
+  const [phase, setPhase] = useState(projectData.intent?.description ? 'setup' : 'intent')
   const [page, setPage] = useState(0)
   const [answers, setAnswers] = useState(() => ({ ...(projectData.intent || {}) }))
   const [isSaving, setIsSaving] = useState(false)
@@ -90,12 +95,25 @@ export default function StepTwoPanel({ projectId, projectData, setProjectData, s
 
     try {
       await api.saveIntent(projectId, payload)
-      onComplete?.()
+      // Intent saved — stay in Step 2 and move on to AWS connect + secrets.
+      // onComplete (advance to Step 3) now fires from AwsSetup once the secrets
+      // are written, so Step 4's IaC generation has nothing left to wait on.
+      setPhase('setup')
     } catch (err) {
       setSaveError(err.message || 'Failed to save your answers')
     } finally {
       setIsSaving(false)
     }
+  }
+
+  if (phase === 'setup') {
+    return (
+      <AwsSetup
+        projectId={projectId}
+        initiallyConnected={projectData.connection?.connected}
+        onDone={onComplete}
+      />
+    )
   }
 
   return (

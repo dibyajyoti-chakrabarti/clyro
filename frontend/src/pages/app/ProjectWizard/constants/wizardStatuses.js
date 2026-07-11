@@ -1,6 +1,8 @@
 export const STATUS_STEP = {
   created: 1, repo_connected: 1, scanning: 1, scan_complete: 2,
-  intent_collected: 3, canvas_draft: 3, canvas_finalized: 4,
+  // intent_collected stays on Step 2: after the intent questions the user still
+  // has AWS connect + secret entry to do there (AwsSetup) before the canvas.
+  intent_collected: 2, canvas_draft: 3, canvas_finalized: 4,
   // A failed deployment is a Step-4-scoped problem (the retry UI lives there,
   // in ProvisionLog.jsx) — bouncing all the way back to Step 1 on reload would
   // silently discard the user's repo connection, finalized architecture, AWS

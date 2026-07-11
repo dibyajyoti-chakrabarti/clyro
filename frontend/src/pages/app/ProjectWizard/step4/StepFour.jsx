@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { api, pollJob } from '../../../../api'
 import ConfirmDialog from '../../../../components/ui/ConfirmDialog'
-import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPanel'
-import AwsConnectCard from './AwsConnectCard'
+import { WizardCard } from '../../../../components/wizard/WizardPanel'
 import DeploymentSuccess from './DeploymentSuccess'
-import EnvVarsPanel from './EnvVarsPanel'
 import IacEditor from './IacEditor'
 import ProvisionLog from './ProvisionLog'
 import ReviewArchitecture from './ReviewArchitecture'
@@ -16,28 +14,12 @@ const DEPLOY_PHASE_STATUSES = [
   'failed', 'rolled_back', 'build_failed',
 ]
 
-function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) {
-  const [phase, setPhase] = useState('aws_connect')
+function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvanceToStepFive }) {
+  // AWS connect + secret entry moved to Step 2 (AwsSetup); Step 4 now opens
+  // straight into the IaC editor — by here the account is connected and every
+  // secret is in Secrets Manager.
+  const [phase, setPhase] = useState('iac')
   const [hydrating, setHydrating] = useState(true)
-
-  // aws_connect phase state
-  const [cfnConsoleUrl, setCfnConsoleUrl] = useState(null)
-  const [urlLoading, setUrlLoading] = useState(false)
-  const [stackOpened, setStackOpened] = useState(false)
-  const [arnInput, setArnInput] = useState('')
-  const [verifying, setVerifying] = useState(false)
-  const [verifyError, setVerifyError] = useState(null)
-  const [roleConnected, setRoleConnected] = useState(false)
-
-  // env_vars phase state
-  const [envVarsLoading, setEnvVarsLoading] = useState(false)
-  const [userSecretVars, setUserSecretVars] = useState([])
-  const [generatedVars, setGeneratedVars] = useState([])
-  const [secretValues, setSecretValues] = useState({})
-  const [showSecrets, setShowSecrets] = useState({})
-  const [extraVars, setExtraVars] = useState([])
-  const [savingEnvVars, setSavingEnvVars] = useState(false)
-  const [saveError, setSaveError] = useState(null)
 
   // iac phase state
   const [iacTemplate, setIacTemplate] = useState('')
@@ -90,7 +72,6 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
       try {
         const data = await api.getIac(projectId)
         if (cancelled) return
-        setRoleConnected(true)
         if (data.template) {
           setIacTemplate(data.template)
           setIacValidation(data.validation || null)
@@ -128,18 +109,14 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
             setPhase('iac')
           }
         } else {
-          // Connected but nothing authored yet — skip to iac (pre-generate screen)
-          // only if the secrets were already saved; otherwise resume at env_vars.
-          let envSaved = false
-          try {
-            const env = await api.getEnvVars(projectId)
-            const secrets = env.user_secret || []
-            envSaved = secrets.length > 0 && secrets.every((v) => v.secrets_manager_arn)
-          } catch { /* fall through to env_vars */ }
-          if (!cancelled) setPhase(envSaved ? 'iac' : 'env_vars')
+          // Connected but nothing authored yet — open the pre-generate screen.
+          if (!cancelled) setPhase('iac')
         }
       } catch {
-        if (!cancelled) setPhase('aws_connect')  // AWS not connected yet
+        // getIac 400s only if AWS isn't connected — which shouldn't happen since
+        // Step 2 gates on it. Fall through to the editor; generate will surface a
+        // clear connection error if the account really isn't linked.
+        if (!cancelled) setPhase('iac')
       } finally {
         if (!cancelled) setHydrating(false)
       }
@@ -147,68 +124,6 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
     hydrate()
     return () => { cancelled = true }
   }, [projectId])
-
-  // Fetch the CloudFormation console URL only when the user actually needs the
-  // connect step — avoids minting a spurious pending connection on every refresh
-  // once the account is already connected.
-  useEffect(() => {
-    if (hydrating || phase !== 'aws_connect' || !projectId || roleConnected || cfnConsoleUrl) return
-    setUrlLoading(true)
-    api.initAwsConnection(projectId)
-      .then((data) => setCfnConsoleUrl(data.cfn_console_url))
-      .catch(() => {})
-      .finally(() => setUrlLoading(false))
-  }, [hydrating, phase, projectId, roleConnected, cfnConsoleUrl])
-
-  // Fetch env vars when entering env_vars phase
-  useEffect(() => {
-    if (phase !== 'env_vars' || !projectId) return
-    setEnvVarsLoading(true)
-    api.getEnvVars(projectId)
-      .then((data) => {
-        setUserSecretVars(data.user_secret || [])
-        setGeneratedVars(data.generated || [])
-      })
-      .catch(() => {})
-      .finally(() => setEnvVarsLoading(false))
-  }, [phase, projectId])
-
-  const allSecretsFilled = userSecretVars.length === 0 || userSecretVars.every(
-    (field) => (secretValues[field.key_name] || '').trim() !== ''
-  )
-
-  const handleOpenStack = () => {
-    if (cfnConsoleUrl) {
-      window.open(cfnConsoleUrl, '_blank', 'noopener,noreferrer')
-      setStackOpened(true)
-    }
-  }
-
-  const handleVerify = async () => {
-    setVerifying(true)
-    setVerifyError(null)
-    try {
-      await api.verifyAwsConnection(projectId, { role_arn: arnInput.trim(), region: 'us-east-1' })
-      setRoleConnected(true)
-    } catch (err) {
-      setVerifyError(err.data?.error || 'Verification failed — check the role ARN and try again.')
-    } finally {
-      setVerifying(false)
-    }
-  }
-
-  const handleSaveEnvVars = async () => {
-    setSavingEnvVars(true)
-    setSaveError(null)
-    try {
-      await api.saveEnvVars(projectId, { values: secretValues, extra_vars: extraVars })
-      setPhase('iac')
-    } catch (err) {
-      setSaveError(err.data?.error || 'Failed to save secrets — please try again.')
-    } finally {
-      setSavingEnvVars(false)
-    }
-  }
 
   const runGenerate = async () => {
     setIacGenerating(true)
@@ -465,53 +380,6 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
 
   // Non-IaC phases get their own padded container since the outer section has p-0.
   // The IaC editor is full-bleed and manages its own layout.
-  if (phase === 'aws_connect') {
-    return (
-      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
-        <AwsConnectCard
-          cfnConsoleUrl={cfnConsoleUrl}
-          urlLoading={urlLoading}
-          stackOpened={stackOpened}
-          arnInput={arnInput}
-          setArnInput={setArnInput}
-          verifying={verifying}
-          verifyError={verifyError}
-          roleConnected={roleConnected}
-          onOpenStack={handleOpenStack}
-          onVerify={handleVerify}
-          onContinue={() => setPhase('env_vars')}
-        />
-      </div>
-    )
-  }
-
-  if (phase === 'env_vars') {
-    return (
-      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
-        <EnvVarsPanel
-          envVarsLoading={envVarsLoading}
-          userSecretVars={userSecretVars}
-          generatedVars={generatedVars}
-          secretValues={secretValues}
-          showSecrets={showSecrets}
-          extraVars={extraVars}
-          allSecretsFilled={allSecretsFilled}
-          savingEnvVars={savingEnvVars}
-          saveError={saveError}
-          onSecretValueChange={(keyName, value) => setSecretValues((prev) => ({ ...prev, [keyName]: value }))}
-          onToggleSecretVisibility={(keyName) => setShowSecrets((prev) => ({ ...prev, [keyName]: !prev[keyName] }))}
-          onAddVariable={() => setExtraVars((prev) => [...prev, { key: '', value: '' }])}
-          onExtraVariableChange={(index, field, value) => {
-            const next = [...extraVars]
-            next[index] = { ...next[index], [field]: value }
-            setExtraVars(next)
-          }}
-          onContinue={handleSaveEnvVars}
-        />
-      </div>
-    )
-  }
-
   if (phase === 'iac') {
     return (
       <IacEditor
@@ -534,7 +402,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) 
         setGenerateModel={setGenerateModel}
         chatModel={chatModel}
         setChatModel={setChatModel}
-        onBack={() => setPhase('env_vars')}
+        onBack={onBackToCanvas}
         onContinue={() => setPhase('review')}
       />
     )
