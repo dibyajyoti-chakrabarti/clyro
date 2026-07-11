@@ -492,6 +492,7 @@ async def invoke(payload, context):
         # "ValueError: <Token ...> was created in a different Context" on every tool call.
         # Keeping the stream on a single context fixes that.
         full_text = ""
+        last_tool = None  # dedupe tool-use events so we emit one per distinct tool
         queue: asyncio.Queue = asyncio.Queue()
         _DONE = object()
 
@@ -531,6 +532,12 @@ async def invoke(payload, context):
                     # the blocking consumer keeps only the LAST event (the final
                     # result below), so these intermediate deltas are ignored there.
                     yield json.dumps({"data": item["data"]})
+                # Emit the name of each tool the agent starts calling (validate /
+                # compliance) so the backend can show a real phase label (B2 L2).
+                tool_use = item.get("current_tool_use") if isinstance(item, dict) else None
+                if isinstance(tool_use, dict) and tool_use.get("name") and tool_use["name"] != last_tool:
+                    last_tool = tool_use["name"]
+                    yield json.dumps({"tool": last_tool})
         finally:
             for _t in (pump, getter):
                 if _t is not None and not _t.done():
