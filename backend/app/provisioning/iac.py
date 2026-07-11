@@ -2223,7 +2223,7 @@ def generate(project: Project, model: str | None = None, on_event=None) -> dict[
 
 
 def refine(project: Project, instruction: str, history: list | None = None,
-           template: str | None = None, model: str | None = None) -> dict[str, Any]:
+           template: str | None = None, model: str | None = None, on_event=None) -> dict[str, Any]:
     """Refine the current template via the agent. The agent decides whether the
     instruction is a *question* (answer it, leave the template untouched) or a
     *change* (edit the template). ``template`` is the live editor content so the
@@ -2248,7 +2248,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
         "build_spec": spec,
         "history": history or [],
         "model": model,
-    }, project)
+    }, project, on_event=on_event)
     if (resp or {}).get("error"):
         raise IacError((resp or {})["error"])
 

@@ -68,19 +68,17 @@ def run_canvas_agent_task(job_id: str, project_id: str, prompt: str, confirm: bo
     _run(job_id, _do)
 
 
-@shared_task
-def run_iac_generate_task(job_id: str, project_id: str, model: str | None):
-    from app.provisioning import iac
+def _iac_progress_callback(job_id: str, initial_phase: str = "drafting"):
+    """Shared on_event for generate/refine (B2): derive a live phase from the agent's
+    streamed events — text deltas build the template; tool calls mark validate /
+    compliance; text after a validate is the model fixing errors, after compliance
+    it's finalizing — and throttled-write {phase, partial_template} to the job's
+    progress (~1.5s; a phase change flushes immediately). The row-scoped .update()
+    touches only `progress`, so it never clobbers the _run status/result save."""
     from core.models import AgentJob
     import time as _time
 
-    # Derive a live phase from the agent's streamed events (B2 L2): text deltas build
-    # the template; tool calls mark validate / compliance. Text after a validate is
-    # the model fixing errors; after compliance it's finalizing. The template flush
-    # is throttled to ~1.5s; a phase change flushes immediately so the label is
-    # responsive. The row-scoped .update() touches only `progress`, so it never
-    # clobbers the _run wrapper's status/result save on the same job.
-    state = {"buf": "", "last_write": 0.0, "phase": "drafting", "last_tool": None}
+    state = {"buf": "", "last_write": 0.0, "phase": initial_phase, "last_tool": None}
 
     def _write():
         AgentJob.objects.filter(id=job_id).update(
@@ -103,12 +101,21 @@ def run_iac_generate_task(job_id: str, project_id: str, model: str | None):
         if isinstance(data, str):
             state["buf"] += data
             state["phase"] = {"validate": "fixing", "compliance": "finalizing"}.get(
-                state["last_tool"], "drafting"
+                state["last_tool"], initial_phase
             )
             now = _time.monotonic()
             if now - state["last_write"] >= 1.5:
                 state["last_write"] = now
                 _write()
+
+    return on_event
+
+
+@shared_task
+def run_iac_generate_task(job_id: str, project_id: str, model: str | None):
+    from app.provisioning import iac
+
+    on_event = _iac_progress_callback(job_id, initial_phase="drafting")
 
     def _do():
         project = Project.objects.get(id=project_id)
@@ -122,9 +129,12 @@ def run_iac_refine_task(job_id: str, project_id: str, instruction: str, history:
                          template: str | None, model: str | None):
     from app.provisioning import iac
 
+    on_event = _iac_progress_callback(job_id, initial_phase="refining")
+
     def _do():
         project = Project.objects.get(id=project_id)
-        return iac.refine(project, instruction, history=history, template=template, model=model)
+        return iac.refine(project, instruction, history=history, template=template,
+                          model=model, on_event=on_event)
 
     _run(job_id, _do)
 
