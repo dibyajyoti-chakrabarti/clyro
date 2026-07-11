@@ -26,6 +26,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
   const [iacValidation, setIacValidation] = useState(null)
   const [iacFindings, setIacFindings] = useState([])
   const [iacGenerating, setIacGenerating] = useState(false)
+  const [generatePhase, setGeneratePhase] = useState(null)
   const [iacRefining, setIacRefining] = useState(false)
   const [iacValidating, setIacValidating] = useState(false)
   const [iacError, setIacError] = useState(null)
@@ -130,6 +131,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
 
   const runGenerate = async () => {
     setIacGenerating(true)
+    setGeneratePhase('drafting')
     setIacError(null)
     try {
       const { job_id: jobId } = await api.generateIac(projectId, { model: generateModel })
@@ -139,9 +141,11 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
       // clean, enforced version.
       const data = await pollJob(projectId, jobId, {
         onProgress: (p) => {
-          if (p && typeof p.partial_template === 'string' && p.partial_template) {
+          if (!p) return
+          if (typeof p.partial_template === 'string' && p.partial_template) {
             setIacTemplate(p.partial_template)
           }
+          if (p.phase) setGeneratePhase(p.phase)
         },
       })
       if (!data.template) {
@@ -159,6 +163,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
       setIacError(err.data?.error || 'Failed to generate the template.')
     } finally {
       setIacGenerating(false)
+      setGeneratePhase(null)
     }
   }
 
@@ -440,6 +445,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
         validation={iacValidation}
         findings={iacFindings}
         generating={iacGenerating}
+        generatePhase={generatePhase}
         refining={iacRefining}
         validating={iacValidating}
         error={iacError}
