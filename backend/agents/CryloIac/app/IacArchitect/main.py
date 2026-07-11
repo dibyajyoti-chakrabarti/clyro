@@ -123,6 +123,12 @@ AUTHORING RULES (from the build spec):
       ROLLBACK_FAILED with the cache and its security group still running and billing.
       Snapshot deletes the replication group (after taking a final snapshot) exactly
       like RDS, so rollback/teardown can actually complete.
+    * RDS DBInstance MUST set `DBName` to the exact database your DATABASE_URL
+      connects to — the path segment of the URL. e.g. for
+      `…@${DbInstance.Endpoint.Address}:5432/appdb` set `DBName: appdb`. PostgreSQL
+      RDS creates NO user database when DBName is omitted (only the internal
+      `postgres` db), so the app and `manage.py migrate` both die with
+      `FATAL: database "appdb" does not exist` the instant they connect.
 - naming: three prefixes are provided — use the right one per resource type, they are
   NOT interchangeable:
     * `naming_prefix` — the default. Use it for everything not listed below.
