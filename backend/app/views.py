@@ -137,6 +137,7 @@ def agent_job_status(request, pk, job_id):
         'kind': job.kind,
         'status': job.status,
         'result': job.result,
+        'progress': job.progress,  # live {phase, partial_template} while running (B2)
         'error': job.error,
     })
 
