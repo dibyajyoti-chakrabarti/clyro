@@ -5,7 +5,7 @@ import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPan
 
 const VISIBLE_TAIL = 6
 
-function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrecting, onRetry, onRetryBuild, onBack, onCancel, cancelLoading, cancelError }) {
+function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrecting, onRetry, onRetryBuild, onBack, onCancel, cancelLoading, cancelError, canRecreate, onRecreate }) {
   const [expanded, setExpanded] = useState(false)
   const rawFailed = deployStatus === 'failed' || deployStatus === 'rolled_back'
   // A raw failed/rolled_back status isn't necessarily terminal — the backend may
@@ -184,6 +184,15 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
                 Retry
                 <ArrowRight className='h-4 w-4' />
               </Button>
+              {/* When an in-place retry can't fix the failure (e.g. a stateful
+                  resource needs a different creation-time property like RDS
+                  DBName) and the stack has never gone live, offer a clean
+                  teardown + reprovision. Gated by the backend (can_recreate). */}
+              {canRecreate ? (
+                <Button variant='secondary' onClick={onRecreate}>
+                  Rebuild from scratch
+                </Button>
+              ) : null}
               <button
                 type='button'
                 onClick={onCancel}
