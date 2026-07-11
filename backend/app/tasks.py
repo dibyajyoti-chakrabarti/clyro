@@ -71,10 +71,27 @@ def run_canvas_agent_task(job_id: str, project_id: str, prompt: str, confirm: bo
 @shared_task
 def run_iac_generate_task(job_id: str, project_id: str, model: str | None):
     from app.provisioning import iac
+    from core.models import AgentJob
+    import time as _time
+
+    # Accumulate the streamed template and flush it to the job's `progress` at most
+    # every ~1.5s (not per token). The row-scoped .update() touches only `progress`,
+    # so it never clobbers the _run wrapper's status/result save on the same job.
+    state = {"buf": "", "last": 0.0}
+
+    def on_delta(text: str):
+        state["buf"] += text
+        now = _time.monotonic()
+        if now - state["last"] < 1.5:
+            return
+        state["last"] = now
+        AgentJob.objects.filter(id=job_id).update(
+            progress={"phase": "drafting", "partial_template": state["buf"][:100_000]}
+        )
 
     def _do():
         project = Project.objects.get(id=project_id)
-        return iac.generate(project, model=model)
+        return iac.generate(project, model=model, on_delta=on_delta)
 
     _run(job_id, _do)
 

@@ -386,6 +386,10 @@ class AgentJob(models.Model):
     kind = models.TextField(choices=Kind.choices)
     status = models.TextField(choices=Status.choices, default=Status.PENDING)
     result = models.JSONField(null=True, blank=True)
+    # Live progress while the job runs (B2): {"phase": str, "partial_template": str}.
+    # Written throttled by the generate task as the agent streams; read by the
+    # frontend's poll loop to show the template forming instead of a spinner.
+    progress = models.JSONField(null=True, blank=True)
     error = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -126,3 +126,51 @@ def invoke_runtime(arn: str, payload: dict, session_id: str) -> dict[str, Any]:
         payload=json.dumps(payload).encode(),
     )
     return parse_runtime_response(response["response"].read())
+
+
+def invoke_runtime_streaming(arn: str, payload: dict, session_id: str, on_event) -> dict[str, Any]:
+    """Like ``invoke_runtime`` but consume the SSE stream INCREMENTALLY: decode each
+    ``data:`` event as it arrives and hand it to ``on_event(event)`` (heartbeats
+    dropped), so a long generation can surface partial progress. Returns the last
+    real event — the final result — identical to ``invoke_runtime``'s return."""
+    client = boto3.client("bedrock-agentcore", region_name=settings.AWS_REGION, config=_RUNTIME_CONFIG)
+    response = client.invoke_agent_runtime(
+        agentRuntimeArn=arn,
+        qualifier="DEFAULT",
+        runtimeSessionId=session_id,
+        payload=json.dumps(payload).encode(),
+    )
+    last: Any = None
+    buffer = ""
+
+    def _handle_line(line: str) -> None:
+        nonlocal last
+        line = line.strip()
+        if not line.startswith("data:"):
+            return
+        raw = line[len("data:"):].strip()
+        if not raw:
+            return
+        try:
+            obj = json.loads(raw)
+            event = json.loads(obj) if isinstance(obj, str) else obj
+        except (ValueError, TypeError):
+            return  # a value split across chunks that didn't reassemble cleanly — skip
+        if isinstance(event, dict) and event.get("__heartbeat__"):
+            return
+        last = event
+        try:
+            on_event(event)
+        except Exception:  # noqa: BLE001 — a progress-callback error must never kill the stream
+            logger.exception("invoke_runtime_streaming on_event callback failed")
+
+    for chunk in response["response"].iter_chunks():
+        # A data: line can split across chunk boundaries — buffer and only process
+        # complete lines (up to the last newline), keeping the partial tail.
+        buffer += chunk.decode() if isinstance(chunk, (bytes, bytearray)) else chunk
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            _handle_line(line)
+    if buffer.strip():
+        _handle_line(buffer)
+    return last if last is not None else {}
