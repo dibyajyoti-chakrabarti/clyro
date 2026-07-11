@@ -17,6 +17,7 @@ from typing import Any
 
 from botocore.exceptions import ClientError
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from core.models import Deployment, DeploymentStackOutput, Project, ProvisioningLogEntry
@@ -315,12 +316,23 @@ def poll(project: Project) -> dict[str, Any]:
         # *runtime* failure on a stack that stays CREATE_COMPLETE, so this branch
         # would otherwise flip it back to BUILDING on the frontend's next poll and
         # bury the diagnosis. Found live on deploy #3.
-        if deployment.status not in (
-            Deployment.Status.BUILDING, Deployment.Status.BUILD_FAILED,
-            Deployment.Status.COMPLETE, Deployment.Status.FAILED,
-        ):
-            deployment.status = Deployment.Status.BUILDING
-            deployment.save(update_fields=["status", "updated_at"])
+        #
+        # The exclusion check must run against a FRESH status under a row lock, not
+        # this poll()'s in-memory copy: poll() runs in a web request and races the
+        # provision task's status writes (celery worker), and the describe_stack
+        # calls above take seconds — long enough for the build step to write FAILED
+        # in between. A stale IN_PROGRESS read here would pass the check and clobber
+        # that FAILED back to BUILDING, stranding the deploy at "building" with no
+        # failure screen. Found live testing the migration-failure path.
+        with transaction.atomic():
+            locked = Deployment.objects.select_for_update().get(pk=deployment.pk)
+            if locked.status not in (
+                Deployment.Status.BUILDING, Deployment.Status.BUILD_FAILED,
+                Deployment.Status.COMPLETE, Deployment.Status.FAILED,
+            ):
+                locked.status = Deployment.Status.BUILDING
+                locked.save(update_fields=["status", "updated_at"])
+            deployment.status = locked.status
     elif cfn_events.is_terminal(stack_status) and cfn_events.is_failure(stack_status):
         new_status = (
             Deployment.Status.ROLLED_BACK if "ROLLBACK" in stack_status else Deployment.Status.FAILED
