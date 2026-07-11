@@ -758,6 +758,92 @@ def teardown(project: Project) -> dict[str, Any]:
     return {"status": deployment.status}
 
 
+# ── Rebuild from scratch (user-confirmed) ────────────────────────────────────
+#
+# Some first-deploy failures can't be fixed on the live stack: the correction
+# needs a stateful resource created with a different property (e.g. RDS DBName,
+# settable only at creation), which CloudFormation can only apply by REPLACING
+# the resource — exactly what _heal_live_stack's guarded update refuses, because
+# a replace destroys data. When the stack has never gone live there IS no data to
+# protect, so the honest fix is to tear it down and reprovision from a clean
+# slate. Kept behind an explicit user action and HARD-GATED to never-been-live
+# projects: this destroys every stateful resource and must never touch a stack
+# that has served traffic.
+
+_DELETE_TIMEOUT_SECONDS = 900
+_DELETE_POLL_SECONDS = 12
+
+
+def _has_been_live(project: Project) -> bool:
+    """True once a project has ever reached a live/complete deploy — the point
+    past which its stateful resources may hold real data."""
+    return (project.status == Project.Status.LIVE
+            or Deployment.objects.filter(project=project, status=Deployment.Status.COMPLETE).exists())
+
+
+def can_recreate(project: Project) -> bool:
+    """Whether 'rebuild from scratch' should be offered: a failed deploy on a
+    project that has never gone live (so recreating stateful resources loses
+    nothing)."""
+    if _has_been_live(project):
+        return False
+    deployment = _active_deployment(project)
+    return bool(deployment and deployment.status in (
+        Deployment.Status.FAILED, Deployment.Status.BUILD_FAILED, Deployment.Status.ROLLED_BACK,
+    ))
+
+
+def _wait_stack_deleted(deployment: Deployment) -> None:
+    """Block until the stack is actually gone — a fresh CreateStack with the same
+    name fails while the old stack is still DELETE_IN_PROGRESS."""
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+    deadline = time.time() + _DELETE_TIMEOUT_SECONDS
+    while time.time() < deadline:
+        stack_status = aws_client.find_stack(creds, region, stack_name)
+        if stack_status is None or stack_status == "DELETE_COMPLETE":
+            return
+        if stack_status.endswith("DELETE_FAILED"):
+            raise DeployError("Teardown failed — the stack couldn't be deleted, so a rebuild can't proceed.")
+        time.sleep(_DELETE_POLL_SECONDS)
+    raise DeployError("Teardown is taking too long — the stack is still deleting; try the rebuild again shortly.")
+
+
+def recreate(project: Project) -> dict[str, Any]:
+    """User-confirmed 'rebuild from scratch': tear the stack down and reprovision
+    from a clean slate, re-running the deterministic enforcers so the rebuild
+    carries corrections the failed template lacked (e.g. RDS DBName). HARD-GATED
+    to never-been-live projects — it destroys every stateful resource. Long-
+    running (teardown + a full provision), so call it from a background task."""
+    from . import iac
+    if _has_been_live(project):
+        raise DeployError(
+            "Rebuild-from-scratch isn't available once a project has gone live — "
+            "it would destroy the database and every other stateful resource."
+        )
+    deployment = _active_deployment(project) or _ready_deployment(project)
+    if deployment is None or not deployment.cloudformation_template:
+        raise DeployError("No infrastructure to rebuild.")
+
+    # 1. Tear the old stack down and wait for it to actually disappear.
+    if deployment.cloudformation_stack_id and deployment.status not in (
+        Deployment.Status.DELETING, Deployment.Status.DELETED,
+    ):
+        teardown(project)
+    _wait_stack_deleted(deployment)
+
+    # 2. Re-run the deterministic enforcers so the rebuild carries the fixes the
+    #    failed template lacked (e.g. RDS DBName), and mark it provision-ready.
+    spec = iac._spec_for(deployment)
+    deployment.cloudformation_template = iac._apply_enforcers(deployment.cloudformation_template, spec)
+    deployment.status = Deployment.Status.IAC_READY
+    deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
+
+    # 3. Reprovision from scratch through the normal supervised loop.
+    start(project)
+    return provision_with_feedback(project)
+
+
 def _root_failure(deployment: Deployment) -> str | None:
     """The first failed resource event (root cause) — later failures are usually
     'Resource creation cancelled' cascades."""

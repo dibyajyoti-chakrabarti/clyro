@@ -106,6 +106,20 @@ def run_provision_task(job_id: str, project_id: str):
     _run(job_id, _do)
 
 
+@shared_task(soft_time_limit=3300, time_limit=3600)
+def run_recreate_task(job_id: str, project_id: str):
+    # 'Rebuild from scratch' — teardown + a full reprovision (deploy.recreate).
+    # Same generous ceiling as run_provision_task, which it wraps after the
+    # teardown wait; the never-been-live gate is enforced in deploy.recreate.
+    from app.provisioning import deploy
+
+    def _do():
+        project = Project.objects.get(id=project_id)
+        return deploy.recreate(project)
+
+    _run(job_id, _do)
+
+
 @shared_task(soft_time_limit=2100, time_limit=2400)
 def run_build_task(job_id: str, project_id: str):
     # A "Retry build" click after Deployment.Status.BUILD_FAILED — deliberately

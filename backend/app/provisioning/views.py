@@ -310,7 +310,11 @@ def deploy_status(request, pk):
     if err:
         return err
     try:
-        return Response(deploy.poll(project))
+        data = deploy.poll(project)
+        # Tells the failure screen whether to offer "Rebuild from scratch" — only
+        # on a failed, never-been-live deploy (see deploy.can_recreate).
+        data['can_recreate'] = deploy.can_recreate(project)
+        return Response(data)
     except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -352,6 +356,27 @@ def deploy_teardown(request, pk):
         return Response(deploy.teardown(project))
     except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_recreate(request, pk):
+    """'Rebuild from scratch' after a failed, never-been-live deploy: tear the
+    stack down and reprovision from a clean slate (deploy.recreate). Guarded here
+    so the user gets an immediate error; the long teardown+reprovision runs in a
+    background task and is watched via deploy_status like a normal provision."""
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    if not deploy.can_recreate(project):
+        return Response(
+            {'error': "Rebuild-from-scratch isn't available for this project right now."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.PROVISION)
+    tasks.run_recreate_task.delay(str(job.id), str(project.id))
+    return Response({'status': 'submitting', 'job_id': str(job.id)})
 
 
 @api_view(['POST'])
