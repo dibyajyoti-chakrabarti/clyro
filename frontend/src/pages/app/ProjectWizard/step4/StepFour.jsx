@@ -27,6 +27,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
   const [iacFindings, setIacFindings] = useState([])
   const [iacGenerating, setIacGenerating] = useState(false)
   const [generatePhase, setGeneratePhase] = useState(null)
+  const [generateThinking, setGenerateThinking] = useState('')
   const [iacRefining, setIacRefining] = useState(false)
   const [iacValidating, setIacValidating] = useState(false)
   const [iacError, setIacError] = useState(null)
@@ -131,7 +132,8 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
 
   const runGenerate = async () => {
     setIacGenerating(true)
-    setGeneratePhase('drafting')
+    setGeneratePhase('thinking')
+    setGenerateThinking('')
     setIacError(null)
     try {
       const { job_id: jobId } = await api.generateIac(projectId, { model: generateModel })
@@ -146,6 +148,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
             setIacTemplate(p.partial_template)
           }
           if (p.phase) setGeneratePhase(p.phase)
+          if (typeof p.thinking === 'string') setGenerateThinking(p.thinking)
         },
       })
       if (!data.template) {
@@ -164,6 +167,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
     } finally {
       setIacGenerating(false)
       setGeneratePhase(null)
+      setGenerateThinking('')
     }
   }
 
@@ -452,6 +456,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
         findings={iacFindings}
         generating={iacGenerating}
         generatePhase={generatePhase}
+        generateThinking={generateThinking}
         refining={iacRefining}
         validating={iacValidating}
         error={iacError}
