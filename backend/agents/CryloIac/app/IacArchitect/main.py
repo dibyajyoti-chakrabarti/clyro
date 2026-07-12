@@ -381,11 +381,12 @@ if mcp_client:
 _models: dict[str, Any] = {}
 
 
-def _get_model(model_id: str):
-    # Cache one client per resolved model id so warm runtimes reuse them across calls.
-    if model_id not in _models:
-        _models[model_id] = load_model(model_id)
-    return _models[model_id]
+def _get_model(model_id: str, thinking: bool = False):
+    # Cache one client per (model id, thinking) so warm runtimes reuse them across calls.
+    key = (model_id, thinking)
+    if key not in _models:
+        _models[key] = load_model(model_id, thinking=thinking)
+    return _models[key]
 
 
 # Model families that handle the Converse tool-call sequence strands emits, so they run
@@ -402,14 +403,15 @@ def _supports_tool_use(model_id: str) -> bool:
     return any(fam in mid for fam in _TOOLFUL_FAMILIES)
 
 
-def build_agent(model_id: str) -> Agent:
+def build_agent(model_id: str, thinking: bool = False) -> Agent:
     # Fresh agent per call — the runtime may stay warm across unrelated projects, so a
-    # reused Agent would leak template/history between requests.
+    # reused Agent would leak template/history between requests. ``thinking`` streams
+    # Claude reasoning for the Step-4 'Thinking…' UX (Anthropic-only; see load_model).
     if _supports_tool_use(model_id):
-        return Agent(model=_get_model(model_id), system_prompt=SYSTEM_PROMPT, tools=_tools)
+        return Agent(model=_get_model(model_id, thinking), system_prompt=SYSTEM_PROMPT, tools=_tools)
     # Nova and other non-Claude models: no MCP tools, simplified system prompt.
     # cfn-lint still runs server-side on every response.
-    return Agent(model=_get_model(model_id), system_prompt=SYSTEM_PROMPT_NO_TOOLS, tools=[])
+    return Agent(model=_get_model(model_id, thinking), system_prompt=SYSTEM_PROMPT_NO_TOOLS, tools=[])
 
 
 def _format_history(history: list) -> str:
@@ -476,7 +478,9 @@ async def invoke(payload, context):
     log.info("IacArchitect invoked (mode=%s, model=%s)", mode, model_id)
 
     try:
-        agent = build_agent(model_id)
+        # Extended thinking only on generate (Claude models) — refine stays fast, and
+        # the 'Thinking…' UX is generate-only. load_model gates to Anthropic ids.
+        agent = build_agent(model_id, thinking=(mode == "generate"))
         user_message = _build_user_message(payload)
 
         # Stream the model, only emitting the parsed result at the end. A generate can
@@ -538,6 +542,12 @@ async def invoke(payload, context):
                 if isinstance(tool_use, dict) and tool_use.get("name") and tool_use["name"] != last_tool:
                     last_tool = tool_use["name"]
                     yield json.dumps({"tool": last_tool})
+                # Forward Claude's extended-thinking (and MiniMax's native) reasoning
+                # deltas so the backend can show a live 'Thinking…' stream before the
+                # template starts appearing. Separate from `data` — not part of the
+                # template — so it never pollutes full_text / the final output.
+                if isinstance(item, dict) and item.get("reasoning") and isinstance(item.get("reasoningText"), str):
+                    yield json.dumps({"reasoning": item["reasoningText"]})
         finally:
             for _t in (pump, getter):
                 if _t is not None and not _t.done():
