@@ -1,50 +1,167 @@
 import {
+  AlertTriangle,
+  Boxes,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
   CheckCircle2,
   Copy,
-  XCircle,
-  GitBranch,
-  Layers3,
-  Globe,
-  Server,
-  Cpu,
   Database,
-  Zap,
-  HardDrive,
-  MessageSquare,
+  FolderGit2,
+  GitBranch,
+  Package,
+  Server,
+  ShieldCheck,
+  Sparkles,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import GitHubLogo from '../../../../components/common/GitHubLogo'
 
-const SEVERITY_LABEL = { blocker: 'Blocks deploy', warning: 'Will misbehave', info: 'Info' }
+const SEVERITY_META = {
+  blocker: {
+    label: 'Blocks deploy',
+    badgeClass: 'border-red-400/25 bg-red-400/10 text-red-300',
+    iconClass: 'text-red-400',
+  },
+  warning: {
+    label: 'Will misbehave',
+    badgeClass: 'border-amber-400/25 bg-amber-400/10 text-amber-300',
+    iconClass: 'text-amber-400',
+  },
+  info: {
+    label: 'Info',
+    badgeClass: 'border-sky-400/25 bg-sky-400/10 text-sky-300',
+    iconClass: 'text-sky-400',
+  },
+}
 
-function ComplianceRow({ finding }) {
-  const Icon = finding.passed ? CheckCircle2 : XCircle
+const PASSED_META = {
+  label: 'Passed',
+  badgeClass: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300',
+  iconClass: 'text-emerald-400',
+}
+
+const LAYER_ICON = {
+  Frontend: Package,
+  Backend: Server,
+  Workers: Boxes,
+  'Data Layer': Database,
+}
+
+const CARD_CLASS =
+  'w-full rounded-[22px] border border-[rgba(255,179,0,0.15)] bg-[#111111] px-7 py-6 transition-colors duration-200 hover:border-[rgba(255,179,0,0.3)]'
+
+function ProgressFlow() {
+  const steps = [
+    { label: 'Repository Connected', Icon: GitBranch },
+    { label: 'Stack Detected', Icon: Boxes },
+    { label: 'Repository Analyzed', Icon: ShieldCheck },
+  ]
   return (
-    <div className='flex items-start gap-3 border-b border-white/[0.05] py-3 last:border-b-0'>
-      <Icon
-        className={`mt-0.5 h-4 w-4 shrink-0 ${finding.passed ? 'text-emerald-400' : 'text-red-400'}`}
-        strokeWidth={2}
-      />
-      <div className='min-w-0 flex-1'>
-        <div className='flex flex-wrap items-center gap-2'>
-          <p className='text-[14px] font-medium text-white/85'>{finding.title}</p>
-          {!finding.passed && (
-            <span className='rounded-full border border-red-400/25 bg-red-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-300'>
-              {SEVERITY_LABEL[finding.severity] || finding.severity}
-            </span>
+    <div className='flex items-start gap-2.5'>
+      {steps.map((s, idx) => (
+        <div key={s.label} className='flex items-start gap-2.5'>
+          <div className='flex w-[104px] flex-col items-center gap-2'>
+            <div className='grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#E8B84B] bg-[#E8B84B] text-[#111111]'>
+              <s.Icon className='h-4 w-4' strokeWidth={2.4} />
+            </div>
+            <p className='text-center text-[11.5px] font-medium leading-snug text-white/60'>{s.label}</p>
+          </div>
+          {idx < steps.length - 1 && (
+            <ChevronRight className='mt-2.5 h-4 w-4 shrink-0 text-white/20' strokeWidth={2} />
           )}
         </div>
-        <p className='mt-0.5 text-[12.5px] leading-snug text-white/45'>{finding.detail}</p>
+      ))}
+    </div>
+  )
+}
+
+function ComplianceRow({ finding, expanded, onToggle }) {
+  const meta = finding.passed ? PASSED_META : SEVERITY_META[finding.severity] || SEVERITY_META.info
+  const Icon = finding.passed ? CheckCircle2 : AlertTriangle
+
+  return (
+    <div className='border-b border-white/[0.05] last:border-b-0'>
+      <div className='flex items-center gap-3 py-3.5'>
+        <Icon className={`h-4 w-4 shrink-0 ${meta.iconClass}`} strokeWidth={2} />
+        <span
+          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${meta.badgeClass}`}
+        >
+          {meta.label}
+        </span>
+        <p className='min-w-0 flex-1 truncate text-[14px] font-medium text-white/85'>{finding.title}</p>
+        <button
+          type='button'
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className='inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11.5px] font-medium text-white/60 transition-colors hover:border-white/20 hover:text-white/85'
+        >
+          Details
+          {expanded ? <ChevronUp className='h-3.5 w-3.5' /> : <ChevronDown className='h-3.5 w-3.5' />}
+        </button>
+      </div>
+
+      <div
+        className='grid transition-[grid-template-rows] duration-300 ease-out'
+        style={{ gridTemplateRows: expanded ? '1fr' : '0fr' }}
+      >
+        <div className='overflow-hidden'>
+          <div className='space-y-2 pb-4 pl-7 pr-1 text-[12.5px] leading-relaxed text-white/50'>
+            <p>{finding.detail}</p>
+            {finding.fix_hint && (
+              <p className='rounded-lg border border-[rgba(255,196,0,0.14)] bg-[rgba(255,196,0,0.04)] px-3 py-2 text-white/60'>
+                <span className='font-semibold text-[#E8B84B]'>Recommendation — </span>
+                {finding.fix_hint}
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-function CompliancePanel({ complianceFindings, compliancePrompt }) {
-  const [copied, setCopied] = useState(false)
+function ComplianceChecklistCard({ complianceFindings }) {
+  const [expandedIds, setExpandedIds] = useState(() => new Set())
   if (!complianceFindings || complianceFindings.length === 0) return null
 
   const failedCount = complianceFindings.filter((f) => !f.passed).length
+
+  const toggle = (id) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div className={CARD_CLASS} style={{ animation: 'cardIn 360ms ease-out 380ms both' }}>
+      <div className='mb-3 flex items-center justify-between'>
+        <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-white/28'>
+          Cloud Compliance Checklist
+        </p>
+        <span
+          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+            failedCount === 0 ? 'bg-emerald-400/10 text-emerald-300' : 'bg-red-400/10 text-red-300'
+          }`}
+        >
+          {failedCount === 0 ? 'All checks passed' : `${failedCount} issue${failedCount === 1 ? '' : 's'} found`}
+        </span>
+      </div>
+
+      <div>
+        {complianceFindings.map((f) => (
+          <ComplianceRow key={f.id} finding={f} expanded={expandedIds.has(f.id)} onToggle={() => toggle(f.id)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AIPromptCard({ compliancePrompt }) {
+  const [copied, setCopied] = useState(false)
+  if (!compliancePrompt) return null
 
   const handleCopy = async () => {
     try {
@@ -57,154 +174,83 @@ function CompliancePanel({ complianceFindings, compliancePrompt }) {
   }
 
   return (
-    <div
-      className='w-full rounded-[22px] border border-white/[0.06] bg-[rgba(255,255,255,0.015)] px-8 py-5'
-      style={{ animation: 'cardIn 360ms ease-out 380ms both' }}
-    >
-      <div className='mb-4 flex items-center justify-between'>
-        <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-white/28'>
-          Cloud Compliance Checklist
-        </p>
-        <span
-          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-            failedCount === 0
-              ? 'bg-emerald-400/10 text-emerald-300'
-              : 'bg-red-400/10 text-red-300'
-          }`}
+    <div className={CARD_CLASS} style={{ animation: 'cardIn 360ms ease-out 450ms both' }}>
+      <div className='flex flex-wrap items-start justify-between gap-4'>
+        <div className='min-w-0'>
+          <div className='flex items-center gap-2'>
+            <Sparkles className='h-4 w-4 text-[#E8B84B]' strokeWidth={2.2} />
+            <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-white/28'>
+              AI Generated Fix Prompt
+            </p>
+          </div>
+          <p className='mt-1.5 text-[13px] leading-snug text-white/45'>
+            Paste this into any AI coding agent (Claude Code, Cursor, etc.) to resolve every detected issue.
+          </p>
+        </div>
+        <button
+          type='button'
+          onClick={handleCopy}
+          className='inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3.5 py-2 text-[12.5px] font-medium text-white/75 transition-colors hover:bg-white/[0.08]'
         >
-          {failedCount === 0 ? 'All checks passed' : `${failedCount} issue${failedCount === 1 ? '' : 's'} found`}
+          <Copy className='h-3.5 w-3.5' strokeWidth={2} />
+          {copied ? 'Copied!' : 'Copy Prompt'}
+        </button>
+      </div>
+
+      <div className='mt-4'>
+        <p className='mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/25'>
+          Prompt preview
+        </p>
+        <pre className='max-h-[280px] overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-white/[0.08] bg-black/40 p-4 font-mono text-[12px] leading-relaxed text-white/70'>
+          {compliancePrompt}
+        </pre>
+      </div>
+
+      <div className='mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/[0.05] pt-4 text-[12px] text-white/40'>
+        <span className='inline-flex items-center gap-1.5'>
+          <CheckCircle2 className='h-3.5 w-3.5 text-emerald-400' strokeWidth={2} />
+          Optimized for all AI coding agents
+        </span>
+        <span className='inline-flex items-center gap-1.5'>
+          <CheckCircle2 className='h-3.5 w-3.5 text-emerald-400' strokeWidth={2} />
+          Includes all detected issues
+        </span>
+        <span className='inline-flex items-center gap-1.5'>
+          <CheckCircle2 className='h-3.5 w-3.5 text-emerald-400' strokeWidth={2} />
+          Ready to copy
         </span>
       </div>
-
-      <div>
-        {complianceFindings.map((f) => (
-          <ComplianceRow key={f.id} finding={f} />
-        ))}
-      </div>
-
-      {compliancePrompt && (
-        <div className='mt-5'>
-          <div className='mb-2 flex items-center justify-between'>
-            <p className='text-[12.5px] font-medium text-white/60'>
-              Paste this into an AI coding agent (Claude Code, Cursor, etc.) to fix your repo
-            </p>
-            <button
-              type='button'
-              onClick={handleCopy}
-              className='inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-white/75 hover:bg-white/[0.08]'
-            >
-              <Copy className='h-3.5 w-3.5' strokeWidth={2} />
-              {copied ? 'Copied!' : 'Copy prompt'}
-            </button>
-          </div>
-          <textarea
-            readOnly
-            value={compliancePrompt}
-            rows={6}
-            className='w-full resize-none rounded-xl border border-white/[0.08] bg-black/40 p-3 font-mono text-[12px] leading-relaxed text-white/70'
-            onFocus={(e) => e.target.select()}
-          />
-        </div>
-      )}
     </div>
   )
 }
 
 function StackPill({ children }) {
   return (
-    <span
-      style={{
-        display: 'inline-flex',
-        padding: '6px 14px',
-        borderRadius: '999px',
-        background: 'rgba(255,255,255,0.06)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        fontSize: '12px',
-        fontWeight: 600,
-        color: 'rgba(255,255,255,0.85)',
-        margin: '4px 6px 4px 0',
-      }}
-    >
+    <span className='rounded-full border border-[rgba(255,196,0,0.18)] bg-[rgba(255,255,255,0.04)] px-[18px] py-[9px] text-[13px] font-medium text-white/75'>
       {children}
     </span>
   )
 }
 
-function SummaryCard({ icon: Icon, title, subtitle }) {
+function ArchLayer({ label, items, isLast }) {
+  const Icon = LAYER_ICON[label] || Boxes
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        padding: '16px 20px',
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '12px',
-      }}
-    >
-      <div
-        style={{
-          width: '40px',
-          height: '40px',
-          borderRadius: '8px',
-          background: 'rgba(212,160,23,0.1)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-        }}
-      >
-        <Icon style={{ width: '18px', height: '18px', color: '#D4A017' }} strokeWidth={2} />
+    <div className='flex items-center gap-3'>
+      <div className='flex flex-1 flex-col items-center gap-2 rounded-xl border border-white/[0.06] bg-[rgba(255,255,255,0.02)] px-3 py-4'>
+        <div className='grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[rgba(255,196,0,0.08)] text-[#E8B84B]'>
+          <Icon className='h-4 w-4' strokeWidth={2.2} />
+        </div>
+        <p className='text-[10px] uppercase tracking-[0.18em] text-white/30'>{label}</p>
+        <div className='flex flex-col items-center gap-0.5'>
+          {items.map((item) => (
+            <p key={item} className='text-center text-[13px] font-medium leading-snug text-white/70'>
+              {item}
+            </p>
+          ))}
+        </div>
       </div>
-      <div style={{ minWidth: 0 }}>
-        <p
-          style={{
-            fontSize: '14px',
-            fontWeight: 700,
-            color: '#ffffff',
-            margin: 0,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {title}
-        </p>
-        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', margin: '2px 0 0 0' }}>
-          {subtitle}
-        </p>
-      </div>
+      {!isLast && <ChevronRight className='h-4 w-4 shrink-0 text-white/15' strokeWidth={1.5} />}
     </div>
-  )
-}
-
-function StatusBadge({ label, color }) {
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '6px',
-        padding: '4px 10px',
-        borderRadius: '999px',
-        fontSize: '11px',
-        fontWeight: 600,
-        background: `${color}1f`,
-        color: color,
-      }}
-    >
-      <span
-        style={{
-          width: '6px',
-          height: '6px',
-          borderRadius: '50%',
-          background: 'currentColor',
-          flexShrink: 0,
-        }}
-      />
-      {label}
-    </span>
   )
 }
 
@@ -223,43 +269,49 @@ export default function ScanResults({
     return inferred.length > 0 ? inferred : ['Django', 'React', 'Celery', 'PostgreSQL']
   }, [detectedInfra, detectedServices])
 
-  const repoShort = selectedRepo ? selectedRepo.split('/').pop() : 'repository'
+  const archLayers = useMemo(() => {
+    const hasFrontend = detectedServices.some(
+      (s) => s.toLowerCase().includes('react') || s.toLowerCase().includes('frontend'),
+    )
+    const hasBackend = detectedServices.some(
+      (s) => s.toLowerCase().includes('django') || s.toLowerCase().includes('backend'),
+    )
+    const hasWorker = detectedServices.some(
+      (s) => s.toLowerCase().includes('celery') || s.toLowerCase().includes('worker'),
+    )
+    const dataItems = detectedInfra
+      .filter((i) =>
+        ['postgres', 'mysql', 'redis', 's3', 'mongo', 'sqs'].some((k) =>
+          i.toLowerCase().includes(k),
+        ),
+      )
+      .map((i) => i.replace(' cache', '').replace(' storage', '').replace(' queue', ''))
+      .slice(0, 3)
 
-  const tableRows = useMemo(() => {
-    const rows = []
-    if (detectedServices.some((s) => s.toLowerCase().includes('react')))
-      rows.push({ layer: 'Frontend', tech: 'React', Icon: Globe, role: 'Web interface', statusLabel: 'Detected', color: '#5eead4' })
-    if (detectedServices.some((s) => s.toLowerCase().includes('django')))
-      rows.push({ layer: 'Backend', tech: 'Django', Icon: Server, role: 'Application server', statusLabel: 'Detected', color: '#86efac' })
-    if (detectedServices.some((s) => s.toLowerCase().includes('celery')))
-      rows.push({ layer: 'Workers', tech: 'Celery', Icon: Cpu, role: 'Background processing', statusLabel: 'Detected', color: '#fdba74' })
-    if (detectedInfra.some((s) => s.toLowerCase().includes('postgres')))
-      rows.push({ layer: 'Database', tech: 'PostgreSQL', Icon: Database, role: 'Primary database', statusLabel: 'Detected', color: '#93c5fd' })
-    if (detectedInfra.some((s) => s.toLowerCase().includes('redis')))
-      rows.push({ layer: 'Cache', tech: 'Redis', Icon: Zap, role: 'Caching layer', statusLabel: 'Detected', color: '#fca5a5' })
-    if (detectedInfra.some((s) => s.toLowerCase().includes('s3')))
-      rows.push({ layer: 'Storage', tech: 'S3', Icon: HardDrive, role: 'Object storage', statusLabel: 'Detected', color: '#fde68a' })
-    if (detectedInfra.some((s) => s.toLowerCase().includes('sqs')))
-      rows.push({ layer: 'Queue', tech: 'SQS', Icon: MessageSquare, role: 'Message queue', statusLabel: 'Detected', color: '#c4b5fd' })
-    return rows.length
-      ? rows
+    const layers = []
+    if (hasFrontend) layers.push({ label: 'Frontend', items: ['React Application'] })
+    if (hasBackend) layers.push({ label: 'Backend', items: ['Django API'] })
+    if (hasWorker) layers.push({ label: 'Workers', items: ['Celery'] })
+    if (dataItems.length > 0) layers.push({ label: 'Data Layer', items: dataItems })
+
+    return layers.length >= 2
+      ? layers
       : [
-          { layer: 'Frontend', tech: 'React', Icon: Globe, role: 'Web interface', statusLabel: 'Detected', color: '#5eead4' },
-          { layer: 'Backend', tech: 'Django', Icon: Server, role: 'Application server', statusLabel: 'Detected', color: '#86efac' },
+          { label: 'Frontend', items: ['React Application'] },
+          { label: 'Backend', items: ['Django API'] },
+          { label: 'Workers', items: ['Celery'] },
+          { label: 'Data Layer', items: ['PostgreSQL', 'Redis'] },
         ]
   }, [detectedServices, detectedInfra])
 
   return (
     <div
+      className='h-full min-h-0 w-full overflow-y-auto'
       style={{
-        height: '100%',
-        width: '100%',
-        overflowY: 'auto',
-        padding: '40px 32px',
-        boxSizing: 'border-box',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '20px',
+        background: [
+          'radial-gradient(ellipse 65% 50% at 50% -5%, rgba(245,185,66,0.07) 0%, transparent 60%)',
+          'radial-gradient(ellipse 45% 40% at 50% 62%, rgba(245,185,66,0.03) 0%, transparent 55%)',
+        ].join(', '),
       }}
     >
       <style>{`
@@ -277,291 +329,99 @@ export default function ScanResults({
         }
       `}</style>
 
-      {/* Section A + B — top two-column row */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '40px',
-          alignItems: 'start',
-        }}
-      >
-        {/* Section A — Status badge + headline + summary */}
-        <div
-          style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
-        >
+      <div className='mx-auto flex w-full max-w-[900px] flex-col gap-6 px-5 py-8 sm:px-9 sm:py-10'>
+
+        {/* ── Hero ── */}
+        <div className='flex flex-col items-center gap-4 py-2 text-center'>
           <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '5px 12px',
-              borderRadius: '999px',
-              background: 'rgba(212,160,23,0.12)',
-              border: '1px solid rgba(212,160,23,0.3)',
-              fontSize: '11px',
-              fontWeight: 700,
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              color: '#D4A017',
-              alignSelf: 'flex-start',
-              animation: 'badgePop 280ms ease-out both',
-            }}
+            className='inline-flex items-center gap-2.5 rounded-full bg-[rgba(255,196,0,0.08)] px-6 py-2 text-[12px] font-bold uppercase tracking-[0.2em] text-[#E8B84B]'
+            style={{ animation: 'badgePop 280ms ease-out both' }}
           >
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: '#D4A017',
-                flexShrink: 0,
-              }}
-            />
+            <span className='h-1.5 w-1.5 rounded-full bg-[#E8B84B]' />
             Step 1 Complete
           </span>
 
           <h2
+            className='font-extrabold leading-[0.95] tracking-[-0.065em] text-white'
             style={{
-              fontSize: '40px',
-              fontWeight: 800,
-              lineHeight: 1.05,
-              margin: 0,
+              fontSize: 'clamp(40px, 4.4vw, 60px)',
               animation: 'titleIn 380ms ease-out 80ms both',
             }}
           >
-            <span style={{ color: '#ffffff', display: 'block' }}>Repository</span>
-            <span
-              style={{
-                display: 'block',
-                background: 'linear-gradient(90deg,#FFF2C4 0%,#FFD35C 30%,#E8B84B 62%,#C49000 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-            >
+            Repository
+            <br />
+            <span className='bg-[linear-gradient(90deg,#FFF2C4_0%,#FFD35C_30%,#E8B84B_62%,#C49000_100%)] bg-clip-text text-transparent'>
               Analyzed.
             </span>
           </h2>
 
           <p
-            style={{
-              fontSize: '15px',
-              fontWeight: 400,
-              lineHeight: 1.6,
-              color: 'rgba(255,255,255,0.6)',
-              margin: 0,
-              maxWidth: '520px',
-              animation: 'titleIn 380ms ease-out 140ms both',
-            }}
+            className='max-w-[560px] text-[15px] leading-[1.6] text-white/48'
+            style={{ animation: 'titleIn 380ms ease-out 140ms both' }}
           >
-            Your application stack has been identified and a production-ready
-            infrastructure blueprint is ready for configuration.
+            Your application stack has been identified and every file has been checked against
+            Clyro's cloud compliance rules.
           </p>
-        </div>
 
-        {/* Section B — Two summary cards */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '16px',
-            alignSelf: 'center',
-            animation: 'cardIn 360ms ease-out 210ms both',
-          }}
-        >
-          <SummaryCard
-            icon={GitHubLogo}
-            title={repoShort}
-            subtitle="Source repository"
-          />
-          <SummaryCard
-            icon={Layers3}
-            title="Blueprint ready"
-            subtitle="Infrastructure draft"
-          />
-        </div>
-      </div>
-
-      {/* Section C — Repo metadata + tech badge pills */}
-      <div
-        style={{
-          padding: '20px',
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '12px',
-          animation: 'cardIn 360ms ease-out 300ms both',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
-          <div
-            style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: 'rgba(255,255,255,0.06)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <GitHubLogo style={{ width: '20px', height: '20px' }} />
+          <div className='mt-1' style={{ animation: 'cardIn 360ms ease-out 210ms both' }}>
+            <ProgressFlow />
           </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <p
-              style={{
-                fontSize: '15px',
-                fontWeight: 600,
-                color: '#ffffff',
-                margin: 0,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {selectedRepo || 'repository'}
-            </p>
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '8px',
-                marginTop: '4px',
-                fontSize: '13px',
-                color: 'rgba(255,255,255,0.42)',
-              }}
-            >
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                <GitBranch style={{ width: '13px', height: '13px', color: '#E8B84B' }} strokeWidth={2.4} />
-                {selectedBranch || 'main'}
-              </span>
-              <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>
-              <span>{isMonorepo ? 'monorepo' : 'single-service'}</span>
+        </div>
+
+        {/* ── Repository Summary ── */}
+        <div className={CARD_CLASS} style={{ animation: 'cardIn 360ms ease-out 260ms both' }}>
+          <div className='flex items-center gap-4'>
+            <div className='grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/[0.06] text-[#E8B84B]'>
+              <FolderGit2 className='h-6 w-6' strokeWidth={2} />
+            </div>
+            <div className='min-w-0 flex-1'>
+              <p className='truncate text-[17px] font-semibold tracking-[-0.02em] text-white'>
+                {selectedRepo || 'bk9571/test-app'}
+              </p>
+              <div className='mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[13px] text-white/42'>
+                <span className='inline-flex items-center gap-1.5'>
+                  <GitBranch className='h-3.5 w-3.5 text-[#E8B84B]' strokeWidth={2.4} />
+                  {selectedBranch || 'main'}
+                </span>
+                <span className='text-white/20'>·</span>
+                <span>{isMonorepo ? 'monorepo' : 'single-service'}</span>
+              </div>
             </div>
           </div>
+
+          <div className='mt-5 flex flex-wrap gap-2.5'>
+            {stackSummary.map((item) => (
+              <StackPill key={item}>{item}</StackPill>
+            ))}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-          {stackSummary.map((item) => (
-            <StackPill key={item}>{item}</StackPill>
-          ))}
+        {/* ── Detected Architecture ── */}
+        <div className={CARD_CLASS} style={{ animation: 'cardIn 360ms ease-out 320ms both' }}>
+          <p className='mb-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/28'>
+            Detected Architecture
+          </p>
+          <div className='flex items-stretch justify-between gap-2'>
+            {archLayers.map((layer, idx) => (
+              <ArchLayer
+                key={layer.label}
+                label={layer.label}
+                items={layer.items}
+                isLast={idx === archLayers.length - 1}
+              />
+            ))}
+          </div>
         </div>
+
+        {/* ── Cloud Compliance Checklist ── */}
+        <ComplianceChecklistCard complianceFindings={complianceFindings} />
+
+        {/* ── AI Generated Fix Prompt ── */}
+        <AIPromptCard compliancePrompt={compliancePrompt} />
+
+        {/* spacing before the wizard shell's Continue button */}
+        <div className='h-3' />
       </div>
-
-      {/* Section D — Detected Architecture table */}
-      <div style={{ animation: 'cardIn 360ms ease-out 380ms both' }}>
-        <p
-          style={{
-            fontSize: '12px',
-            fontWeight: 700,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'rgba(255,255,255,0.4)',
-            margin: '0 0 10px 0',
-          }}
-        >
-          Detected Architecture
-        </p>
-        <div
-          style={{
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '12px',
-            overflow: 'hidden',
-          }}
-        >
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {['Layer', 'Technology', 'Role', 'Status'].map((col) => (
-                  <th
-                    key={col}
-                    style={{
-                      textAlign: 'left',
-                      fontSize: '11px',
-                      fontWeight: 700,
-                      letterSpacing: '0.06em',
-                      textTransform: 'uppercase',
-                      color: 'rgba(255,255,255,0.4)',
-                      padding: '12px 20px',
-                      background: 'rgba(255,255,255,0.02)',
-                      borderBottom: '1px solid rgba(255,255,255,0.08)',
-                    }}
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {tableRows.map((row, idx) => (
-                <tr key={row.layer}>
-                  <td
-                    style={{
-                      padding: '14px 20px',
-                      fontSize: '13px',
-                      color: 'rgba(255,255,255,0.85)',
-                      borderBottom: idx < tableRows.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                    }}
-                  >
-                    {row.layer}
-                  </td>
-                  <td
-                    style={{
-                      padding: '14px 20px',
-                      borderBottom: idx < tableRows.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div
-                        style={{
-                          width: '28px',
-                          height: '28px',
-                          borderRadius: '6px',
-                          background: 'rgba(255,255,255,0.06)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <row.Icon
-                          style={{ width: '14px', height: '14px', color: row.color }}
-                          strokeWidth={2}
-                        />
-                      </div>
-                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.85)' }}>
-                        {row.tech}
-                      </span>
-                    </div>
-                  </td>
-                  <td
-                    style={{
-                      padding: '14px 20px',
-                      fontSize: '13px',
-                      color: 'rgba(255,255,255,0.85)',
-                      borderBottom: idx < tableRows.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                    }}
-                  >
-                    {row.role}
-                  </td>
-                  <td
-                    style={{
-                      padding: '14px 20px',
-                      borderBottom: idx < tableRows.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
-                    }}
-                  >
-                    <StatusBadge label={row.statusLabel} color={row.color} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Section E — Cloud Compliance Checklist */}
-      <CompliancePanel complianceFindings={complianceFindings} compliancePrompt={compliancePrompt} />
     </div>
   )
 }
