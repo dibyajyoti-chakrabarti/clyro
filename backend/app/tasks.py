@@ -78,15 +78,30 @@ def _iac_progress_callback(job_id: str, initial_phase: str = "drafting"):
     from core.models import AgentJob
     import time as _time
 
-    state = {"buf": "", "last_write": 0.0, "phase": initial_phase, "last_tool": None}
+    state = {"buf": "", "thinking": "", "last_write": 0.0, "phase": initial_phase, "last_tool": None}
 
     def _write():
         AgentJob.objects.filter(id=job_id).update(
-            progress={"phase": state["phase"], "partial_template": state["buf"][:100_000]}
+            progress={
+                "phase": state["phase"],
+                "partial_template": state["buf"][:100_000],
+                "thinking": state["thinking"][:20_000],
+            }
         )
 
     def on_event(event):
         if not isinstance(event, dict):
+            return
+        # Reasoning/thinking deltas (Claude extended thinking / MiniMax native) —
+        # streamed before the template so the UI can show a live 'Thinking…' pane.
+        reasoning = event.get("reasoning")
+        if isinstance(reasoning, str):
+            state["thinking"] += reasoning
+            state["phase"] = "thinking"
+            now = _time.monotonic()
+            if now - state["last_write"] >= 1.0:
+                state["last_write"] = now
+                _write()
             return
         tool = event.get("tool")
         if isinstance(tool, str):
