@@ -121,6 +121,7 @@ export default function IacEditor({
   findings,
   generating,
   generatePhase,
+  generateThinking,
   refining,
   validating,
   error,
@@ -160,6 +161,12 @@ export default function IacEditor({
   }, [generating, template])
   const currentStage = stageIndex(elapsed)
   const stageMessage = STAGES[currentStage]
+
+  // Keep the streaming reasoning pane pinned to the newest text.
+  const thinkingRef = useRef(null)
+  useEffect(() => {
+    if (thinkingRef.current) thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight
+  }, [generateThinking])
 
   // ── Copy button ────────────────────────────────────────────────────────────
 
@@ -244,33 +251,54 @@ export default function IacEditor({
 
       {/* ── Body ── */}
       {generating && !template ? (
-        /* Full-screen spinner during generation */
-        <div className='flex flex-1 flex-col items-center justify-center gap-5 text-center'>
-          <span className='h-8 w-8 rounded-full border-2 border-accent border-t-transparent animate-spin' />
-          <div className='space-y-1'>
-            <p className='text-sm font-medium text-text-primary'>{stageMessage}</p>
-            <p className='text-xs text-text-muted'>
-              {elapsed < 5 ? 'Starting up…' : `${elapsed}s elapsed · usually ~3–4 min`}
+        generateThinking ? (
+          /* Thinking pane — streams the model's reasoning before the template appears.
+             Only for models that emit reasoning (Claude w/ thinking, MiniMax native);
+             others fall through to the spinner below. */
+          <div className='relative flex flex-1 flex-col items-center justify-center overflow-hidden p-8'>
+            <div className='pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_15%,rgba(232,184,75,0.07),transparent_60%)]' />
+            <div className='relative flex w-full max-w-2xl flex-col rounded-2xl border border-white/[0.08] bg-[rgba(12,14,20,0.72)] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] backdrop-blur-md'>
+              <div className='mb-3 flex items-center gap-2 text-sm font-medium text-accent'>
+                <Sparkles className='h-4 w-4 animate-pulse' />
+                Thinking…
+              </div>
+              <div ref={thinkingRef} className='max-h-[300px] overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-text-muted'>
+                {generateThinking}
+              </div>
+            </div>
+            <p className='relative mt-4 text-xs text-text-muted/70'>
+              Planning your infrastructure — the template appears here as it&apos;s written.
             </p>
           </div>
-          <div className='flex gap-1.5'>
-            {STAGES.map((_, i) => (
-              <span
-                key={i}
-                className={`h-1 rounded-full transition-all duration-700 ${
-                  i <= currentStage
-                    ? 'w-6 bg-accent'
-                    : 'w-3 bg-white/[0.12]'
-                }`}
-              />
-            ))}
+        ) : (
+          /* Full-screen spinner during generation (model emits no separate reasoning) */
+          <div className='flex flex-1 flex-col items-center justify-center gap-5 text-center'>
+            <span className='h-8 w-8 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+            <div className='space-y-1'>
+              <p className='text-sm font-medium text-text-primary'>{stageMessage}</p>
+              <p className='text-xs text-text-muted'>
+                {elapsed < 5 ? 'Starting up…' : `${elapsed}s elapsed · usually ~3–4 min`}
+              </p>
+            </div>
+            <div className='flex gap-1.5'>
+              {STAGES.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1 rounded-full transition-all duration-700 ${
+                    i <= currentStage
+                      ? 'w-6 bg-accent'
+                      : 'w-3 bg-white/[0.12]'
+                  }`}
+                />
+              ))}
+            </div>
+            {elapsed > 240 && (
+              <p className='max-w-xs text-xs text-text-muted/70'>
+                Taking longer than usual — the agent may be handling a complex architecture.
+              </p>
+            )}
           </div>
-          {elapsed > 240 && (
-            <p className='max-w-xs text-xs text-text-muted/70'>
-              Taking longer than usual — the agent may be handling a complex architecture.
-            </p>
-          )}
-        </div>
+        )
 
       ) : !template && error ? (
         /* Error state with retry + model picker */
