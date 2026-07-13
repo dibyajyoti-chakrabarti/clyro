@@ -15,6 +15,16 @@ chapter you need.
 | 5 | [Backend, Celery & Agents](ch_5_backend_and_celery.md) | The Django REST API, async task workers, and AI agents |
 | 6 | [Infrastructure & Deployment](ch_6_infrastructure_and_deployment.md) | Terraform foundation vs workloads, how to deploy Clyro itself |
 | 7 | [Local Development](ch_7_local_development.md) | Docker Compose bring-up, ports, testing, and E2E setup |
+| 8 | [Wizard Step 1: Connect](ch_8_wizard_step_1_connect.md) | GitHub repository connection and metadata sync |
+| 9 | [Wizard Step 2: Configure](ch_9_wizard_step_2_configure.md) | Environment variables and secret injection |
+| 10 | [Wizard Step 3: Canvas](ch_10_wizard_step_3_canvas.md) | Chatting with CryloCanvas to define the architecture spec |
+| 11 | [Wizard Step 4: Deploy](ch_11_wizard_step_4_deploy.md) | Reviewing the IaC and live provisioning |
+| 12 | [Wizard Step 5: Manage](ch_12_wizard_step_5_manage.md) | Ongoing operations, metrics, and teardown |
+| 13 | [Deterministic IaC Mechanism](ch_13_deterministic_iac_mechanism.md) | Detailed deep dive into the optimization and CFN generator design |
+| 14 | [Agentic Network Design](ch_14_agentic_network_design.md) | Theoretical architecture of the multi-agent design |
+| 15 | [Hardening and Latency Plan](ch_15_hardening_and_latency_plan.md) | Planning document for E2E improvements |
+| 16 | [E2E Latency Report](ch_16_e2e_latency_report.md) | Latency metrics and analysis of the wizard flow |
+| 17 | [E2E Hardening Report](ch_17_e2e_hardening_report.md) | Hardening test results post-optimization |
 
 ## Repo layout at a glance
 
