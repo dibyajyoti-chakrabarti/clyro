@@ -8,6 +8,7 @@ const VISIBLE_TAIL = 6
 function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrecting, onRetry, onRetryBuild, onBack, onCancel, cancelLoading, cancelError, canRecreate, onRecreate }) {
   const [expanded, setExpanded] = useState(false)
   const rawFailed = deployStatus === 'failed' || deployStatus === 'rolled_back'
+  const rollingBack = deployStatus === 'rolling_back'
   // A raw failed/rolled_back status isn't necessarily terminal — the backend may
   // still be mid its one-round auto-correction (real AWS error -> refine -> retry).
   const deployFailed = rawFailed && !deployCorrecting
@@ -17,25 +18,27 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
   // only the build needs retrying (see StepFour.jsx's handleRetryBuild).
   const building = deployStatus === 'building'
   const buildFailed = deployStatus === 'build_failed'
-  const isCancelable = !deployFailed && !buildFailed && deployStatus !== 'deleting' && deployStatus !== 'deleted'
+  const isCancelable = !rollingBack && !deployFailed && !buildFailed && deployStatus !== 'deleting' && deployStatus !== 'deleted'
 
   // Track only the latest event per resource — CFN emits both an IN_PROGRESS and a
   // COMPLETE/FAILED event per resource, so counting raw log rows overstates the total.
-  const { total, done, failed } = useMemo(() => {
+  const { total, done, failed, rolledBack } = useMemo(() => {
     const latest = new Map()
     for (const entry of provisioningLog) {
       if (entry.resource_id) latest.set(entry.resource_id, entry.status)
     }
     let done = 0
     let failed = 0
+    let rolledBack = 0
     for (const status of latest.values()) {
       if (status === 'done') done += 1
       else if (status === 'failed') failed += 1
+      else if (status === 'rolled_back') rolledBack += 1
     }
-    return { total: latest.size, done, failed }
+    return { total: latest.size, done, failed, rolledBack }
   }, [provisioningLog])
 
-  const pct = total > 0 ? Math.round(((done + failed) / total) * 100) : 0
+  const pct = total > 0 ? Math.round(((done + failed + rolledBack) / total) * 100) : 0
   const visibleLog = expanded ? provisioningLog : provisioningLog.slice(-VISIBLE_TAIL)
   const hiddenCount = provisioningLog.length - visibleLog.length
 
@@ -51,7 +54,9 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
           <h3 className='text-lg font-semibold'>
             {deployFailed
               ? 'Provisioning failed'
-              : buildFailed
+              : rollingBack
+                ? 'Provisioning failed — rolling back…'
+                : buildFailed
                 ? 'Build failed'
                 : rawFailed && deployCorrecting
                   ? 'Deploy failed — retrying with a correction…'
@@ -60,7 +65,12 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
                     : 'Provisioning infrastructure'}
           </h3>
         </div>
-        {rawFailed && deployCorrecting ? (
+        {rollingBack ? (
+          <p className='mt-1 text-sm text-text-muted'>
+            AWS is removing the resources from the failed attempt. Clyro will report the
+            root cause once rollback completes.
+          </p>
+        ) : rawFailed && deployCorrecting ? (
           <p className='mt-1 text-sm text-text-muted'>
             The last attempt hit a real AWS error — automatically applying one correction and
             retrying before giving up.
@@ -83,7 +93,7 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
         {total > 0 && (
           <div className='mt-4 space-y-1.5'>
             <div className='flex items-center justify-between text-xs text-text-muted'>
-              <span>{done + failed} of {total} resources processed{failed ? ` · ${failed} failed` : ''}</span>
+              <span>{done + failed + rolledBack} of {total} resources processed{failed ? ` · ${failed} failed` : ''}{rolledBack ? ` · ${rolledBack} rolled back` : ''}</span>
               <span>{pct}%</span>
             </div>
             <div className='h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]'>
@@ -140,13 +150,26 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
             const isDone = entry.status === 'done'
             const isActive = entry.status === 'in_progress'
             const isFailed = entry.status === 'failed'
-            const textClass = isFailed ? 'text-red-300' : isDone ? 'text-text-primary' : isActive ? 'text-accent' : 'text-text-muted'
+            const isRolledBack = entry.status === 'rolled_back'
+            const textClass = isFailed
+              ? 'text-red-300'
+              : isRolledBack
+                ? 'text-amber-300'
+                : isDone
+                  ? 'text-text-primary'
+                  : isActive
+                    ? 'text-accent'
+                    : 'text-text-muted'
 
             return (
               <div key={entry.sequence} className='flex items-start gap-3'>
                 {isFailed ? (
                   <span className='mt-0.5 grid h-5 w-5 place-items-center rounded-full border border-red-500/40 bg-red-500/15 text-red-300'>
                     <XCircle className='h-3.5 w-3.5' />
+                  </span>
+                ) : isRolledBack ? (
+                  <span className='mt-0.5 grid h-5 w-5 place-items-center rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-300'>
+                    <AlertTriangle className='h-3 w-3' />
                   </span>
                 ) : isDone ? (
                   <span className='mt-0.5 grid h-5 w-5 place-items-center rounded-full border border-green-500/40 bg-green-500/15 text-green-300'>

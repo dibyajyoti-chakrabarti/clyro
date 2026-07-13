@@ -88,7 +88,7 @@ export const api = {
 
   // Step 4.5 — provisioning (submit template + live feed)
   startDeploy: (id) => request('POST', `/api/projects/${id}/deploy/`),
-  getDeployStatus: (id) => request('GET', `/api/projects/${id}/deploy/status/`),
+  getDeployStatus: (id, since) => request('GET', `/api/projects/${id}/deploy/status/${since !== undefined && since !== null ? `?since=${since}` : ''}`),
   pauseDeploy: (id) => request('POST', `/api/projects/${id}/deploy/pause/`),
   resumeDeploy: (id) => request('POST', `/api/projects/${id}/deploy/resume/`),
   teardownDeploy: (id) => request('POST', `/api/projects/${id}/deploy/teardown/`),

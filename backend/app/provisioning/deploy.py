@@ -207,7 +207,10 @@ def _persist_new_events(deployment: Deployment, events: list[dict]) -> None:
         ProvisioningLogEntry.objects.bulk_create(rows, ignore_conflicts=True)
 
 
-def _serialize_log(deployment: Deployment) -> list[dict]:
+def _serialize_log(deployment: Deployment, since: int | None = None) -> list[dict]:
+    qs = ProvisioningLogEntry.objects.filter(deployment=deployment)
+    if since is not None:
+        qs = qs.filter(sequence__gt=since)
     return [
         {
             "sequence": e.sequence,
@@ -216,7 +219,7 @@ def _serialize_log(deployment: Deployment) -> list[dict]:
             "resource_type": e.resource_type,
             "resource_id": e.resource_id,
         }
-        for e in ProvisioningLogEntry.objects.filter(deployment=deployment).order_by("sequence")
+        for e in qs.order_by("sequence")
     ]
 
 
@@ -262,7 +265,7 @@ def _save_outputs(deployment: Deployment, outputs: list[dict]) -> None:
         )
 
 
-def poll(project: Project) -> dict[str, Any]:
+def poll(project: Project, since: int | None = None) -> dict[str, Any]:
     deployment = _active_deployment(project)
     if deployment is None:
         raise DeployError("No active deployment to report on.")
@@ -271,7 +274,7 @@ def poll(project: Project) -> dict[str, Any]:
     # the stack remains CREATE_COMPLETE throughout), so the CFN-status-driven logic
     # below would otherwise flip a PAUSED deployment straight back to COMPLETE.
     if deployment.status == Deployment.Status.PAUSED:
-        return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": [], "error": None}
+        return {"status": deployment.status, "log": _serialize_log(deployment, since), "outputs": [], "error": None}
 
     creds, region = _assume(deployment)
     stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
@@ -289,7 +292,7 @@ def poll(project: Project) -> dict[str, Any]:
                 project.save(update_fields=["status", "updated_at"])
             # Stack was deleted (e.g. mid-retry cleanup, or a completed teardown) —
             # report current state, keep polling.
-            return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": [], "error": None}
+            return {"status": deployment.status, "log": _serialize_log(deployment, since), "outputs": [], "error": None}
         raise DeployError(f"AWS error reading stack status: {exc.response['Error']['Message']}")
 
     _persist_new_events(deployment, events)
@@ -297,7 +300,7 @@ def poll(project: Project) -> dict[str, Any]:
     if deployment.status == Deployment.Status.DELETING:
         # Stack still exists — deletion is in progress; don't let the CREATE_COMPLETE
         # branch below resurrect the deployment to COMPLETE while it's tearing down.
-        return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": [], "error": None}
+        return {"status": deployment.status, "log": _serialize_log(deployment, since), "outputs": [], "error": None}
     stack_status = info["status"]
     error = None
 
@@ -333,6 +336,11 @@ def poll(project: Project) -> dict[str, Any]:
                 locked.status = Deployment.Status.BUILDING
                 locked.save(update_fields=["status", "updated_at"])
             deployment.status = locked.status
+    elif cfn_events.is_rolling_back(stack_status):
+        if deployment.status != Deployment.Status.ROLLING_BACK:
+            deployment.status = Deployment.Status.ROLLING_BACK
+            deployment.save(update_fields=["status", "updated_at"])
+        error = _root_failure(deployment) or info.get("reason")
     elif cfn_events.is_terminal(stack_status) and cfn_events.is_failure(stack_status):
         new_status = (
             Deployment.Status.ROLLED_BACK if "ROLLBACK" in stack_status else Deployment.Status.FAILED
@@ -354,7 +362,7 @@ def poll(project: Project) -> dict[str, Any]:
         {"key": o.output_key, "value": o.output_value, "description": o.description}
         for o in DeploymentStackOutput.objects.filter(deployment=deployment)
     ]
-    return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": outputs, "error": error}
+    return {"status": deployment.status, "log": _serialize_log(deployment, since), "outputs": outputs, "error": error}
 
 
 # ── Pause / resume (reversible scale-to-zero) ───────────────────────────────────
@@ -947,6 +955,29 @@ def _correction_instruction(root_cause: str) -> str:
     )
 
 
+_FREE_TIER_BACKUP_RE = re.compile(
+    r"backup retention period exceeds the maximum available to free tier customers",
+    re.I,
+)
+_BACKUP_RETENTION_LINE_RE = re.compile(r"(^\s*BackupRetentionPeriod:\s*)\d+\s*$", re.M)
+
+
+def _deterministic_template_fix(deployment: Deployment, root_cause: str | None) -> bool:
+    """Apply a known safe transform for a known AWS failure. Returns True only
+    when the template changed and was persisted. Unknown failures are deliberately
+    not sent through an LLM retry loop; the real AWS reason is surfaced."""
+    if not deployment or not root_cause:
+        return False
+    template = deployment.cloudformation_template or ""
+    if _FREE_TIER_BACKUP_RE.search(root_cause):
+        fixed = _BACKUP_RETENTION_LINE_RE.sub(r"\g<1>1", template)
+        if fixed != template:
+            deployment.cloudformation_template = fixed
+            deployment.save(update_fields=["cloudformation_template", "updated_at"])
+            return True
+    return False
+
+
 # ── In-place stack update (the guarded alternative to teardown-and-recreate) ────
 #
 # start() can only create (or delete-then-create) a stack — so once a stack is live,
@@ -1064,17 +1095,10 @@ def provision_with_feedback(project: Project) -> dict[str, Any]:
         root_cause = (deployment and _root_failure(deployment)) or result.get("error")
         if deployment:
             root_cause = _enriched_root_cause(deployment, root_cause)
-        if root_cause:
-            try:
-                refine_result = iac.refine(project, _correction_instruction(root_cause))
-                # refine() leaves the deployment in GENERATING_IAC even on a clean
-                # fix — validate() is what promotes it to IAC_READY, the
-                # precondition start() requires before it will resubmit.
-                validate_result = iac.validate(project, refine_result["template"])
-            except iac.IacError:
-                return result  # couldn't even refine — surface the original failure
+        if deployment and root_cause and _deterministic_template_fix(deployment, root_cause):
+            validate_result = iac.validate(project, deployment.cloudformation_template)
             if validate_result["status"] != Deployment.Status.IAC_READY:
-                return result  # the correction didn't produce a clean template — stop here
+                return result
             # start() itself now retries the rolled-back-stack delete/recreate
             # race internally (see its own docstring) — no need to duplicate
             # that here.

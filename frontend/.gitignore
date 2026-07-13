@@ -31,3 +31,7 @@ coverage
 # OS / temp
 *.tmp
 *.temp
+
+# Playwright
+/test-results/
+/playwright-report/

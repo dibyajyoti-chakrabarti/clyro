@@ -102,6 +102,8 @@ export default function CfnEditor({ value, onChange, markers = [], readOnly = fa
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace",
         fontLigatures: true,
         lineNumbers: 'on',
+        links: false,
+        folding: false,
         scrollBeyondLastLine: false,
         automaticLayout: true,
         tabSize: 2,
