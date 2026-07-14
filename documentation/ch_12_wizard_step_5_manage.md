@@ -1,5 +1,14 @@
 **Crylo — Step 5: Monitoring Dashboard (Final Documentation)**
 
+**Implementation status (2026-07-14):** Everything below is the target design. What's actually live today is a smaller first cut, built this session (previously this whole step was empty TODO stubs — `StepFive.jsx` held `useState([])` with no fetch behind it, `HealthOverview` showed a permanent "Waiting for the first health check to report…", and `MetricsGrid` was four hardcoded `'—'` placeholders):
+
+- **Live now**: `GET /api/projects/<pk>/deploy/health/` (`app/provisioning/deploy.py::health()`, `app/provisioning/views.py::deploy_health`), polled every 20s from `StepFive.jsx`.
+  - Health overview (§5.1): real ECS service status (running/desired task counts) and ALB target health per service, sourced via `aws_client.describe_ecs_service`/`describe_target_health` — not CloudWatch alarms as originally scoped.
+  - Key metrics (§5.2): only 4 of the many described here — ALB `TargetResponseTime`, `RequestCount` (→ req/min), `HTTPCode_Target_5XX_Count` (→ error rate), ECS `CPUUtilization` for the serving backend. No sparklines/trends, no Memory/DB/Cache/Queue metrics.
+  - Stack-gone detection: if the ECS/ALB resources can't be found (stack torn down outside Clyro), the endpoint returns `stack_status: "not_found"` and the UI shows an honest "infrastructure could not be found" message instead of hanging on the waiting state forever.
+  - `bootstrap.yaml` gained `cloudwatch:GetMetricData` (read-only) to support this. **Accounts whose bootstrap role was created before this change need to re-run the CFN quick-create to get real metrics** — until they do, the endpoint degrades gracefully (unavailable metrics render as `—`, not an error).
+- **Not built yet** (still exactly as designed below, not started): Cost Explorer integration (§5.3, real spend data — cost UI still shows `—` placeholders), Resource Detail Panel (§5.4), CloudWatch-alarm-based Alerts (§5.5 — current alerts are just derived from unhealthy ECS/ALB state, no alarm translation table, no severity levels), CloudFormation Stack Status block (§5.6, `StackStatus` component exists but nothing populates it).
+
 **Overview**
 
 Step 5 is the operational home for the user's infrastructure after provisioning. It surfaces health, performance, and cost information pulled from AWS in plain English — no AWS console knowledge required. For MVP, the dashboard is read-only and observational. One-click remediation and agentic operations are post-MVP.
@@ -340,6 +349,14 @@ Step 5 has no pipeline outputs — it is the end of the user flow. It is a persi
 | Alerts | CloudWatch Alarms | 60 seconds |
 | Stack status | CloudFormation | 5 minutes |
 | Resource logs | CloudWatch Logs | On panel open |
+
+**5.9 — Delete Project (2026-07-14, new)**
+
+Distinct from infrastructure teardown (§5.6/Step 4's "Delete infrastructure" — which only destroys the CloudFormation stack). Delete Project removes the `Project` row itself from Clyro's dashboard, available via a trash icon on each project card (`frontend/src/components/projects/ProjectCard.jsx`, wired through `frontend/src/pages/app/Projects.jsx`).
+
+Backend: `DELETE /api/projects/<pk>/` (`app/views.py::project_detail`). If the project has a deployment with real AWS resources, this first calls the same teardown path as §5.6 (`deploy.teardown()`) and returns `202 {"status": "tearing_down"}` — the client re-sends the delete once teardown finishes (poll-and-retry, same convention as pause/resume/teardown elsewhere). Once there's nothing live to tear down, the row (and its `Deployment`s) are hard-deleted.
+
+This gives users a way to clear out stale/failed test projects that previously had no removal path and accumulated on the dashboard indefinitely. Note this is a manual action, not automatic reconciliation — `Project.status` still has no periodic background check against real AWS state (see the deterministic-vs-LLM TODO for the related gap: a torn-down-outside-Clyro project still shows "Live" until someone opens Step 5, which now at least surfaces the real state instead of hanging forever, or until someone deletes it manually).
 
 **The Complete Crylo User Flow**
 

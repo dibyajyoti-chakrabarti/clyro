@@ -1,5 +1,20 @@
 # Fix Step 4: Deterministic IaC Generation + Provisioning Robustness + Latency
 
+## Status update (2026-07-14)
+
+This chapter was written as a fix plan; Part A (the deterministic generator itself) has since been built, verified against a real end-to-end run, and hardened further. Status per section:
+
+**Part A — done, and verified live.** `cfn_generator.py` exists and is the sole author of Step 4's initial template (confirmed: real E2E against `test-app` — CFN stack `CREATE_COMPLETE`, 56/56 resources, zero rollback, first attempt). Beyond what this chapter originally scoped:
+- The CodeBuild splice ("no more splice-by-regex via `enforce_codebuild_projects`", line 23 below) is *not* fully retired as this plan intended — `cfn_generator.generate_template()` does its own splice too, which had become a second, cruder, regex-based implementation running in parallel with `enforce_codebuild_projects`'s more robust one. Both were consolidated this session into one shared `codebuild_spec.splice_into_template()` used by both call sites, rather than eliminating one of the two paths (both are still needed: `enforce_codebuild_projects` also re-runs after LLM `refine()` output, which has no dict-form resources to splice into directly).
+- A free-tier bug this plan didn't anticipate: `DBInstanceClass`/`CacheNodeType` were taken from the spec uncritically, so a non-eligible instance class on a free-tier account failed at deploy time ("This instance size isn't available with free plan accounts") — same shape of bug as the `BackupRetentionPeriod` fix already in this plan (line 25), now fixed the same way (force the free-tier-safe class regardless of what the spec suggested).
+- Part C item 4 (Monaco console spam) — fixed. Root cause was more specific than "missing handlers": `monaco-yaml/yaml.worker?worker` imported directly under Vite breaks the worker's RPC registration (monaco-yaml's own documented Vite pitfall); fixed via the wrapper-file indirection it prescribes (`frontend/src/monaco/yaml.worker.js` + updated `CfnEditor.jsx`).
+
+**Part B — not done.** No evidence of `ROLLING_BACK` deployment status, the `cfn_events.py` rolled-back-vs-done distinction, or the deterministic failure auto-fix table having been implemented. Still open.
+
+**Part C — mostly done.** Monaco fix done (above). `IAC_WARMUP_ENABLED` already defaults `True` (`config/settings.py:150`) and `deploy.poll(project, since=...)` already supports incremental log fetch (`deploy.py:268`) with the frontend passing a high-water mark (`api.getDeployStatus(id, since)`) — both confirmed present in the current codebase. Frontend poll dedupe and the model-picker gate removal were not verified this session.
+
+The rest of this chapter is preserved as-authored below for context on the reasoning and remaining Part B/C scope.
+
 ## Context
 
 Live E2E test (Playwright, real AWS) + code exploration confirmed the user's four complaints and their root causes:
