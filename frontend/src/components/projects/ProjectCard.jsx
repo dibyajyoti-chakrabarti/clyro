@@ -22,7 +22,7 @@ function formatDate(value) {
   }).format(date);
 }
 
-export default function ProjectCard({ project }) {
+export default function ProjectCard({ project, onDelete }) {
   const status = project.status || "default";
   const iconClassName = "h-5 w-5";
 
@@ -103,7 +103,12 @@ export default function ProjectCard({ project }) {
             </p>
           </div>
 
-          <button className="flex items-center justify-center text-red-400 transition-all duration-200 hover:scale-110 hover:text-red-300">
+          <button
+            type="button"
+            aria-label="Delete project"
+            onClick={() => onDelete?.(project.id)}
+            className="flex items-center justify-center text-red-400 transition-all duration-200 hover:scale-110 hover:text-red-300"
+          >
             <Trash2 strokeWidth={2.2} className="h-6 w-6" />
           </button>
 

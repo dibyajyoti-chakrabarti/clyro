@@ -19,6 +19,20 @@ export default function Projects() {
       .finally(() => setLoading(false))
   }, [])
 
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this project? This cannot be undone.')) return
+    try {
+      const res = await api.deleteProject(id)
+      if (res && res.status === 'tearing_down') {
+        window.alert('Infrastructure teardown started — delete again once it finishes to remove the project.')
+        return
+      }
+      setProjects((prev) => prev.filter((project) => project.id !== id))
+    } catch (err) {
+      window.alert(err.message || 'Failed to delete project')
+    }
+  }
+
   const filtered = useMemo(() => {
     const query = search.toLowerCase()
 
@@ -71,7 +85,7 @@ export default function Projects() {
       ) : (
         <div className='space-y-3'>
           {filtered.map((project) => (
-            <ProjectCard key={project.id} project={project} />
+            <ProjectCard key={project.id} project={project} onDelete={handleDelete} />
           ))}
         </div>
       )}

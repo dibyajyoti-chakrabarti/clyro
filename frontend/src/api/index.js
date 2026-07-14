@@ -54,6 +54,7 @@ export const api = {
   createProject: (name) => request('POST', '/api/projects/', { name }),
   getProject: (id) => request('GET', `/api/projects/${id}/`),
   listProjects: () => request('GET', '/api/projects/'),
+  deleteProject: (id) => request('DELETE', `/api/projects/${id}/`),
   connectRepo: (id, payload) => request('POST', `/api/projects/${id}/connect-repo/`, payload),
   triggerScan: (id) => request('POST', `/api/projects/${id}/scan/`),
   saveIntent: (id, payload) => request('POST', `/api/projects/${id}/intent/`, payload),
