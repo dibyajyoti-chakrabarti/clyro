@@ -1661,14 +1661,7 @@ def enforce_codebuild_projects(template: str, spec: dict) -> str:
 
     fragment = codebuild_spec.generate_codebuild_resources(
         spec, cloudfront_logical_id, bucket_logical_id)
-    if not fragment:
-        return template
-
-    out_match = _OUTPUTS_SECTION_RE.search(template)
-    if out_match:
-        insert_at = out_match.start()
-        return template[:insert_at] + fragment + "\n" + template[insert_at:]
-    return template.rstrip("\n") + "\n" + fragment
+    return codebuild_spec.splice_into_template(template, fragment)
 
 
 def security_scan(template: str) -> list[dict[str, str]]:

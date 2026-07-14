@@ -474,7 +474,14 @@ def _add_data_resources(resources: dict[str, Any], spec: dict[str, Any], sg_by_n
                 "SubnetIds": [_ref("PrivateSubnet1"), _ref("PrivateSubnet2")],
             },
         }
-        backup = 1 if spec.get("account_type") == "free_tier" else 7
+        is_free_tier = spec.get("account_type") == "free_tier"
+        backup = 1 if is_free_tier else 7
+        # Free-tier accounts reject non-eligible instance classes at deploy time
+        # ("This instance size isn't available with free plan accounts") --
+        # found live provisioning a real free-tier account. Force the
+        # free-tier-eligible class regardless of what the spec suggested,
+        # same as the BackupRetentionPeriod cap below.
+        db_class = "db.t3.micro" if is_free_tier else (db.get("instance_class") or "db.t3.micro")
         resources[db_lid] = {
             "Type": "AWS::RDS::DBInstance",
             "DeletionPolicy": "Delete",
@@ -482,7 +489,7 @@ def _add_data_resources(resources: dict[str, Any], spec: dict[str, Any], sg_by_n
             "Properties": {
                 "DBInstanceIdentifier": _name(f"{prefix}-db", 63),
                 "Engine": "postgres",
-                "DBInstanceClass": db.get("instance_class") or "db.t3.micro",
+                "DBInstanceClass": db_class,
                 "AllocatedStorage": "20",
                 "StorageType": "gp2",
                 "DBName": db_name,
@@ -505,6 +512,9 @@ def _add_data_resources(resources: dict[str, Any], spec: dict[str, Any], sg_by_n
                 "SubnetIds": [_ref("PrivateSubnet1"), _ref("PrivateSubnet2")],
             },
         }
+        # Same free-tier instance-class cap as the RDS DBInstance above.
+        cache_class = ("cache.t3.micro" if spec.get("account_type") == "free_tier"
+                       else (cache.get("node_class") or "cache.t3.micro"))
         resources[cache_lid] = {
             "Type": "AWS::ElastiCache::ReplicationGroup",
             "DeletionPolicy": "Snapshot",
@@ -513,7 +523,7 @@ def _add_data_resources(resources: dict[str, Any], spec: dict[str, Any], sg_by_n
                 "ReplicationGroupId": _name(f"{prefix}-cache", 40),
                 "ReplicationGroupDescription": "Clyro Redis cache",
                 "Engine": "redis",
-                "CacheNodeType": cache.get("node_class") or "cache.t3.micro",
+                "CacheNodeType": cache_class,
                 "NumCacheClusters": int(cache.get("replicas") or 0) + 1,
                 "AutomaticFailoverEnabled": bool(cache.get("replicas")),
                 "CacheSubnetGroupName": _ref("CacheSubnetGroup"),
@@ -762,4 +772,12 @@ def generate_template(spec: dict[str, Any]) -> str:
         "Resources": resources,
         "Outputs": outputs,
     }
-    return yaml.dump(doc, Dumper=_Dumper, sort_keys=False, width=120)
+    yaml_str = yaml.dump(doc, Dumper=_Dumper, sort_keys=False, width=120)
+
+    from . import codebuild_spec
+    cloudfront = "FrontendDistribution" if "FrontendDistribution" in resources else None
+    bucket = "FrontendBucket" if "FrontendBucket" in resources else None
+    cb_yaml = codebuild_spec.generate_codebuild_resources(spec, cloudfront, bucket)
+    yaml_str = codebuild_spec.splice_into_template(yaml_str, cb_yaml)
+
+    return yaml_str
