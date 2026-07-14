@@ -244,6 +244,7 @@ export default function ProjectWizard() {
                 {step === 3 ? (
                   <StepThree
                     projectId={projectId}
+                    projectData={projectData}
                     step3InputPrefill={step3InputPrefill}
                     setStep3InputPrefill={setStep3InputPrefill}
                     step3ShowBanner={step3ShowBanner}

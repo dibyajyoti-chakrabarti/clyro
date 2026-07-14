@@ -10,6 +10,7 @@ import useCanvasAgent from '../hooks/useCanvasAgent'
 
 function StepThreePanel({
   projectId,
+  projectData,
   setStep3InputPrefill,
   step3InputPrefill,
   step3ShowBanner,
@@ -245,7 +246,12 @@ function StepThreePanel({
           className={`absolute inset-y-0 right-0 z-40 h-full min-h-0 w-full max-w-[420px] p-4 ${drawerMotion('cost')}`}
           aria-hidden={activeDrawer !== 'cost'}
         >
-          <CostPanel canvasCost={canvasCost} totalCost={totalCost} onClose={() => setActiveDrawer(null)} />
+          <CostPanel
+            canvasCost={canvasCost}
+            totalCost={totalCost}
+            environment={projectData?.intent?.environment}
+            onClose={() => setActiveDrawer(null)}
+          />
         </div>
       </div>
     </div>
