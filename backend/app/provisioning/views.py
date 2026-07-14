@@ -327,6 +327,19 @@ def deploy_status(request, pk):
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_health(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(deploy.health(project))
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
 @api_view(['POST'])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)

@@ -263,7 +263,7 @@ export default function ProjectWizard() {
                   />
                 ) : null}
 
-                {step === 5 ? <StepFive /> : null}
+                {step === 5 ? <StepFive projectId={projectId} /> : null}
             </div>
 
             {/* Step 4 and 2 manage their own navigation; step 3 uses Finalize inline */}

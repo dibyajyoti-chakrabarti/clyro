@@ -460,6 +460,97 @@ def _stack_ecs_services(creds: dict, region: str, stack_name: str) -> list[tuple
     return services
 
 
+def _lb_dimension_value(lb_arn: str) -> str | None:
+    """arn:...:loadbalancer/app/name/id -> app/name/id, the dimension value
+    ApplicationELB CloudWatch metrics key on."""
+    marker = ":loadbalancer/"
+    idx = lb_arn.find(marker)
+    return lb_arn[idx + len(marker):] if idx != -1 else None
+
+
+def health(project: Project) -> dict[str, Any]:
+    """Live health snapshot for Step 5: ECS service/ALB target status plus a
+    handful of CloudWatch metrics for the service that's actually serving
+    traffic. Returns ``stack_status: "not_found"`` (instead of raising) when the
+    stack's ECS resources are gone — the caller had already gone live once, so a
+    missing stack means it was torn down outside Clyro, not a real error."""
+    deployment = _active_deployment(project)
+    if deployment is None:
+        raise DeployError("No provisioned infrastructure to check.")
+
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+
+    try:
+        services = _stack_ecs_services(creds, region, stack_name)
+        resources = aws_client.list_stack_resources(creds, region, stack_name)
+    except ClientError:
+        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": []}
+
+    if not services:
+        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": []}
+
+    lb_arn = next(
+        (r["physical_id"] for r in resources
+         if r["resource_type"] == "AWS::ElasticLoadBalancingV2::LoadBalancer" and r["physical_id"]),
+        None,
+    )
+
+    health_items: list[dict[str, Any]] = []
+    alerts: list[str] = []
+    serving: tuple[str, str] | None = None  # (cluster, service) with a load balancer attached
+
+    for cluster, service in services:
+        detail = aws_client.describe_ecs_service(creds, region, cluster, service)
+        running = detail.get("runningCount", 0)
+        desired = detail.get("desiredCount", 0)
+        state = "healthy" if (desired == 0 or running >= desired) else "scaling"
+        health_items.append({
+            "name": service, "cluster": cluster,
+            "running": running, "desired": desired, "state": state,
+        })
+        if desired > 0 and running < desired:
+            alerts.append(f"{service}: {running}/{desired} tasks running")
+
+        for lb in detail.get("loadBalancers") or []:
+            target_group_arn = lb.get("targetGroupArn")
+            if not target_group_arn:
+                continue
+            serving = serving or (cluster, service)
+            targets = aws_client.describe_target_health(creds, region, target_group_arn)
+            unhealthy = [t for t in targets if t["state"] != "healthy"]
+            if unhealthy:
+                alerts.append(f"{service}: {len(unhealthy)} unhealthy load balancer target(s)")
+
+    metrics = {"response_time_ms": None, "request_rate": None, "error_rate": None, "cpu_percent": None}
+    lb_dimension = _lb_dimension_value(lb_arn) if lb_arn else None
+    if lb_dimension:
+        dims = [{"Name": "LoadBalancer", "Value": lb_dimension}]
+        response_time = aws_client.get_cloudwatch_metric(
+            creds, region, "AWS/ApplicationELB", "TargetResponseTime", dims, stat="Average")
+        metrics["response_time_ms"] = round(response_time * 1000, 1) if response_time is not None else None
+        request_count = aws_client.get_cloudwatch_metric(
+            creds, region, "AWS/ApplicationELB", "RequestCount", dims, stat="Sum")
+        metrics["request_rate"] = round(request_count / 5, 2) if request_count is not None else None
+        error_count = aws_client.get_cloudwatch_metric(
+            creds, region, "AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", dims, stat="Sum")
+        if error_count is not None and request_count:
+            metrics["error_rate"] = round(100 * error_count / request_count, 2)
+        elif error_count is not None:
+            metrics["error_rate"] = 0.0
+
+    if serving:
+        cluster, service = serving
+        cpu = aws_client.get_cloudwatch_metric(
+            creds, region, "AWS/ECS", "CPUUtilization", [
+                {"Name": "ClusterName", "Value": cluster},
+                {"Name": "ServiceName", "Value": service},
+            ], stat="Average")
+        metrics["cpu_percent"] = round(cpu, 1) if cpu is not None else None
+
+    return {"stack_status": "ok", "health_items": health_items, "metrics": metrics, "alerts": alerts}
+
+
 def scale_services_to_spec(project: Project) -> dict[str, Any]:
     """Scale every ECS service from its cold-start 0 up to the spec's task count,
     then wait for the tasks to actually run. Called once the build has pushed a real

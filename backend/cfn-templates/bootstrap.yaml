@@ -361,6 +361,11 @@ Resources:
                   - cloudwatch:DescribeAlarms
                   - cloudwatch:TagResource
                   - cloudwatch:UntagResource
+                  # Read-only: powers the Step 5 "Key metrics" panel (ALB response
+                  # time/request rate/error rate, ECS CPU). Same Resource: '*'
+                  # rationale as above — GetMetricData isn't scoped to individual
+                  # metrics by ARN.
+                  - cloudwatch:GetMetricData
                 Resource: '*'
               # S3 — static frontend assets and CF template staging — scoped to clyro-* buckets
               - Effect: Allow
