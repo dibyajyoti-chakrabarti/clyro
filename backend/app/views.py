@@ -210,9 +210,10 @@ def wizard_state(request, pk):
     scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
     intent = project.intent_records.order_by('-created_at').first()
 
-    # AWS-connect + secret entry now live in Step 2, so the wizard needs to know
-    # on load whether the account is already connected — otherwise a refresh
-    # mid-Step-2 would re-prompt the role stack instead of resuming at secrets.
+    # AWS-connect + secret entry live in Step 4's 'connect AWS' phase (after IaC
+    # generation, before provisioning), so the wizard needs to know on load
+    # whether the account is already connected — otherwise a refresh mid-connect
+    # would re-prompt the role stack instead of resuming at secrets.
     connection = AWSAccountConnection.objects.filter(
         project=project, connected_at__isnull=False
     ).order_by('-connected_at').first()

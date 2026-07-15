@@ -33,8 +33,11 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
   }, [])
 
   useEffect(() => {
-    setStep1CanContinue(phase === 'results')
-  }, [phase, setStep1CanContinue])
+    const hasBlockingFindings = (scanResult?.compliance_findings || []).some(
+      (f) => !f.passed && f.severity === 'blocker'
+    )
+    setStep1CanContinue(phase === 'results' && !hasBlockingFindings)
+  }, [phase, scanResult, setStep1CanContinue])
 
   const fetchRepos = async (installationId) => {
     setLoadingRepos(true)

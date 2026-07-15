@@ -32,6 +32,7 @@ function CompliancePanel({ complianceFindings, compliancePrompt }) {
   if (!complianceFindings || complianceFindings.length === 0) return null
 
   const failedCount = complianceFindings.filter((f) => !f.passed).length
+  const hasBlockers = complianceFindings.some((f) => !f.passed && f.severity === 'blocker')
 
   const handleCopy = async () => {
     try {
@@ -68,6 +69,12 @@ function CompliancePanel({ complianceFindings, compliancePrompt }) {
           <ComplianceRow key={f.id} finding={f} />
         ))}
       </div>
+
+      {hasBlockers && (
+        <p className='mt-3 text-[12.5px] leading-snug text-red-300/80'>
+          Resolve the blockers above to continue — they will fail the build.
+        </p>
+      )}
 
       {compliancePrompt && (
         <div className='mt-5'>
@@ -131,6 +138,8 @@ export default function ScanResults({
   detectedInfra,
   complianceFindings,
   compliancePrompt,
+  onContinue,
+  canContinue = true,
 }) {
   const stackSummary = useMemo(() => {
     const inferred = [...detectedServices, ...detectedInfra].slice(0, 7)
@@ -350,8 +359,17 @@ export default function ScanResults({
         >
           <p className='text-[15px] font-semibold text-white/70'>Ready to continue?</p>
           <p className='max-w-[500px] text-[13px] text-white/35'>
-            Configure infrastructure preferences, scaling requirements, and deployment settings.
+            Tell us the secrets your app needs, then connect your AWS account.
           </p>
+          <button
+            type='button'
+            onClick={onContinue}
+            disabled={!canContinue}
+            className='mt-4 inline-flex items-center gap-2 rounded-[16px] border border-[#F2D57B]/60 bg-[linear-gradient(180deg,#FFD54A,#F6B700)] px-6 py-3 text-[15px] font-semibold text-black shadow-[0_0_24px_rgba(232,184,75,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-[0_0_30px_rgba(232,184,75,0.3)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0'
+          >
+            Continue
+            <ChevronRight className='h-4 w-4' />
+          </button>
         </div>
 
       </div>

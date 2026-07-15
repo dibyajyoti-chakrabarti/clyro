@@ -5,8 +5,8 @@ export default function CanvasSurface({
   endPan,
   setSelectedNode,
   setChatInput,
-  step3ShowBanner,
-  onDismissStep3Banner,
+  step4ShowBanner,
+  onDismissStep4Banner,
   surfaceBounds,
   canvasNodes,
   canvasConnections,
@@ -59,7 +59,7 @@ export default function CanvasSurface({
         onMouseLeave={endPan}
         onClick={() => setSelectedNode(null)}
       >
-        {step3ShowBanner ? (
+        {step4ShowBanner ? (
           <div className="sticky top-0 z-20 border-b border-[rgba(255,179,0,0.15)] bg-[rgba(255,179,0,0.07)] px-4 py-3">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-[#FFB300]">
@@ -70,7 +70,7 @@ export default function CanvasSurface({
                 className="text-xs text-[rgba(255,179,0,0.6)] hover:text-[#FFB300] transition-colors duration-150"
                 onClick={(event) => {
                   event.stopPropagation();
-                  onDismissStep3Banner();
+                  onDismissStep4Banner();
                 }}
               >
                 Dismiss

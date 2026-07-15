@@ -69,11 +69,26 @@ class Project(models.Model):
     class Status(models.TextChoices):
         CREATED = 'created'
         REPO_CONNECTED = 'repo_connected'
+        # Set once env_vars_stage succeeds (Step 2 "set up your app" secrets
+        # entry) — staged only, nothing written to Secrets Manager yet.
+        SECRETS_STAGED = 'secrets_staged'
         SCANNING = 'scanning'
         SCAN_COMPLETE = 'scan_complete'
         INTENT_COLLECTED = 'intent_collected'
         CANVAS_DRAFT = 'canvas_draft'
         CANVAS_FINALIZED = 'canvas_finalized'
+        # AWS-connect substates (Step 4's "connect AWS" phase): pending is set by
+        # aws_connection_init (CFN console URL handed out, role not yet assumed);
+        # connected once assume_role/get_account_id succeed in aws_connection_verify;
+        # verified/mismatch once the account's verified_account_type is compared
+        # against the project's IntentRecord.aws_account_type claim.
+        AWS_CONNECT_PENDING = 'aws_connect_pending'
+        AWS_CONNECTED = 'aws_connected'
+        AWS_VERIFIED = 'aws_verified'
+        AWS_MISMATCH = 'aws_mismatch'
+        # Set at the end of iac.generate()/iac.validate() once each succeeds.
+        IAC_GENERATED = 'iac_generated'
+        IAC_VALIDATED = 'iac_validated'
         PROVISIONING = 'provisioning'
         LIVE = 'live'
         FAILED = 'failed'
@@ -246,6 +261,20 @@ class AWSAccountConnection(models.Model):
     bootstrap_stack_status = models.TextField(null=True, blank=True)
     connected_at = models.DateTimeField(null=True, blank=True)
     last_verified_at = models.DateTimeField(null=True, blank=True)
+    # Proactively queried from AWS itself (freetier:GetAccountPlanState) right after
+    # the role is assumed, rather than trusting only the user's Step-2 self-report
+    # (IntentRecord.aws_account_type) — an AWS account can be free-tier-restricted
+    # regardless of what the user picked. Null when the call failed/was unavailable.
+    verified_account_type = models.CharField(
+        max_length=16, choices=IntentRecord.AwsAccountType.choices, null=True, blank=True,
+    )
+    # The user's self-report, submitted alongside the connect flow (Step 2) — the
+    # question that used to live on IntentRecord moved here since AWS now connects
+    # before intent is collected. Compared against verified_account_type to flag
+    # account_type_mismatch; also the fallback source when verification fails.
+    claimed_account_type = models.CharField(
+        max_length=16, choices=IntentRecord.AwsAccountType.choices, null=True, blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -274,6 +303,11 @@ class EnvVarKey(models.Model):
     source_file = models.TextField(null=True, blank=True)
     context_block = models.TextField(null=True, blank=True)
     production_default = models.TextField(null=True, blank=True)
+    # Holds a value collected by env_vars_stage (Step 2, before an AWS connection
+    # exists) until env_vars_save actually writes it to Secrets Manager (Step 4).
+    # Cleared back to null once write_secret succeeds — plaintext secrets should
+    # not linger in the DB once they're safely in Secrets Manager.
+    staged_value = models.TextField(null=True, blank=True)
     secrets_manager_arn = models.TextField(null=True, blank=True)
     secrets_manager_key = models.TextField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -320,7 +354,10 @@ class Deployment(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='deployments')
     canvas_version = models.ForeignKey(CanvasVersion, on_delete=models.PROTECT, related_name='deployments')
     intent_record = models.ForeignKey(IntentRecord, on_delete=models.PROTECT, related_name='deployments')
-    aws_connection = models.ForeignKey(AWSAccountConnection, on_delete=models.PROTECT, related_name='deployments')
+    aws_connection = models.ForeignKey(
+        AWSAccountConnection, on_delete=models.PROTECT, related_name='deployments',
+        null=True, blank=True,
+    )
     environment = models.TextField(choices=Environment.choices)
     status = models.TextField(choices=Status.choices, default=Status.PENDING)
     cloudformation_stack_id = models.TextField(null=True, blank=True)

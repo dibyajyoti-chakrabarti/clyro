@@ -75,10 +75,14 @@ export const api = {
     request('POST', `/api/projects/${id}/canvas/versions/${version}/revert/`),
   finalizeCanvas: (id) => request('POST', `/api/projects/${id}/canvas/finalize/`),
 
-  // Step 4 — AWS connection & env vars
+  // Step 2 — AWS connection
   initAwsConnection: (id) => request('POST', `/api/projects/${id}/aws-connection/`),
   verifyAwsConnection: (id, payload) => request('POST', `/api/projects/${id}/aws-connection/verify/`, payload),
+
+  // Env vars — staged in Step 1 (no AWS connection required yet, values held
+  // pending), written for real in Step 6 (requires a connected AWS account).
   getEnvVars: (id) => request('GET', `/api/projects/${id}/env-vars/`),
+  stageEnvVars: (id, payload) => request('POST', `/api/projects/${id}/env-vars/stage/`, payload),
   saveEnvVars: (id, payload) => request('POST', `/api/projects/${id}/env-vars/save/`, payload),
 
   // Step 4 — IaC (CloudFormation) generation / refine / validate
