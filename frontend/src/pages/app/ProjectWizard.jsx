@@ -245,6 +245,7 @@ export default function ProjectWizard() {
                 {step === 3 ? (
                   <StepThree
                     projectId={projectId}
+                    projectData={projectData}
                     step3InputPrefill={step3InputPrefill}
                     setStep3InputPrefill={setStep3InputPrefill}
                     step3ShowBanner={step3ShowBanner}
@@ -264,7 +265,7 @@ export default function ProjectWizard() {
                   />
                 ) : null}
 
-                {step === 5 ? <StepFive /> : null}
+                {step === 5 ? <StepFive projectId={projectId} /> : null}
             </div>
 
             {/* Step 4 and 2 manage their own navigation; step 3 uses Finalize inline */}

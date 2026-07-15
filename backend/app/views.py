@@ -3,12 +3,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import AgentJob, AWSAccountConnection, GitHubInstallation, IntentRecord, Project, ScanResult
+from core.models import AgentJob, AWSAccountConnection, Deployment, GitHubInstallation, IntentRecord, Project, ScanResult
 from core.serializers import (
     GitHubInstallationSerializer, IntentRecordSerializer,
     ProjectSerializer, ScanResultSerializer, UserProfileSerializer,
 )
 from .auth import CognitoAuthentication
+from .provisioning import deploy
 from . import github_utils, tasks
 
 _AUTH = [CognitoAuthentication]
@@ -40,7 +41,7 @@ def projects_list(request):
     return Response(ProjectSerializer(project).data, status=status.HTTP_201_CREATED)
 
 
-@api_view(['GET', 'PATCH'])
+@api_view(['GET', 'PATCH', 'DELETE'])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)
 def project_detail(request, pk):
@@ -51,6 +52,38 @@ def project_detail(request, pk):
 
     if request.method == 'GET':
         return Response(ProjectSerializer(project).data)
+
+    if request.method == 'DELETE':
+        # A deployment that has ever left PENDING may have real AWS resources —
+        # tear those down before the DB row disappears, so we never orphan a
+        # live stack with nothing left in Clyro to manage it. deploy.teardown()
+        # itself only kicks off stack deletion (poll() picks up completion), so
+        # the row isn't removed yet -- the client retries the delete once
+        # teardown has actually finished (mirrors the existing pause/resume/
+        # teardown polling convention used by the provisioning UI).
+        deployment = (Deployment.objects.filter(project=project)
+                      .exclude(status=Deployment.Status.DELETED)
+                      .order_by('-created_at').first())
+        if deployment and deployment.status != Deployment.Status.PENDING:
+            try:
+                deploy.teardown(project)
+            except deploy.DeployError as exc:
+                if 'no provisioned infrastructure' not in str(exc).lower():
+                    return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
+            else:
+                return Response(
+                    {'status': 'tearing_down',
+                     'detail': 'Infrastructure teardown started — delete again once it finishes.'},
+                    status=status.HTTP_202_ACCEPTED)
+        # Deployment.canvas_version/intent_record/aws_connection are PROTECT
+        # (so a live Deployment can't have its CanvasVersion/IntentRecord/
+        # AWSAccountConnection pulled out from under it) -- but PROTECT still
+        # blocks Project.delete()'s cascade to those same rows even though the
+        # protecting Deployment is *also* being cascade-deleted here. Delete
+        # deployments first so nothing is left protecting them.
+        project.deployments.all().delete()
+        project.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     serializer = ProjectSerializer(project, data=request.data, partial=True)
     if serializer.is_valid():

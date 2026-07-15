@@ -303,6 +303,7 @@ class Deployment(models.Model):
         BUILD_FAILED = 'build_failed'
         COMPLETE = 'complete'
         FAILED = 'failed'
+        ROLLING_BACK = 'rolling_back'
         ROLLED_BACK = 'rolled_back'
         PAUSING = 'pausing'
         PAUSED = 'paused'

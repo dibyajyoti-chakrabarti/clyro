@@ -54,6 +54,7 @@ export const api = {
   createProject: (name) => request('POST', '/api/projects/', { name }),
   getProject: (id) => request('GET', `/api/projects/${id}/`),
   listProjects: () => request('GET', '/api/projects/'),
+  deleteProject: (id) => request('DELETE', `/api/projects/${id}/`),
   connectRepo: (id, payload) => request('POST', `/api/projects/${id}/connect-repo/`, payload),
   triggerScan: (id) => request('POST', `/api/projects/${id}/scan/`),
   saveIntent: (id, payload) => request('POST', `/api/projects/${id}/intent/`, payload),
@@ -88,7 +89,8 @@ export const api = {
 
   // Step 4.5 — provisioning (submit template + live feed)
   startDeploy: (id) => request('POST', `/api/projects/${id}/deploy/`),
-  getDeployStatus: (id) => request('GET', `/api/projects/${id}/deploy/status/`),
+  getDeployStatus: (id, since) => request('GET', `/api/projects/${id}/deploy/status/${since !== undefined && since !== null ? `?since=${since}` : ''}`),
+  getDeployHealth: (id) => request('GET', `/api/projects/${id}/deploy/health/`),
   pauseDeploy: (id) => request('POST', `/api/projects/${id}/deploy/pause/`),
   resumeDeploy: (id) => request('POST', `/api/projects/${id}/deploy/resume/`),
   teardownDeploy: (id) => request('POST', `/api/projects/${id}/deploy/teardown/`),

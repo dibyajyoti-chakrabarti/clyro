@@ -145,9 +145,9 @@ IAC_RUNTIME_ARN = env('IAC_RUNTIME_ARN', default='')
 
 # Fire a best-effort warm-up ping to the IaC runtime when the canvas is finalized,
 # so the container is hot before Step-4 Generate (cold-start is ~14s of overhead).
-# OFF by default: only safe once the agent is redeployed with the mode='warmup'
-# short-circuit — otherwise the ping would trigger a real (billable) generate.
-IAC_WARMUP_ENABLED = env.bool('IAC_WARMUP_ENABLED', default=False)
+# ON by default: the agent is deployed with the mode='warmup' short-circuit so
+# the ping is a cheap no-op that just keeps the container warm.
+IAC_WARMUP_ENABLED = env.bool('IAC_WARMUP_ENABLED', default=True)
 
 # AgentCore Memory id for persisting the canvas chat (so it survives a refresh).
 # When empty, chat persistence no-ops and the UI runs without it.

@@ -132,8 +132,6 @@ export default function IacEditor({
   onRefineInputChange,
   onRefine,
   refineHistory,
-  generateModel,
-  setGenerateModel,
   chatModel,
   setChatModel,
   onBack,
@@ -244,7 +242,7 @@ export default function IacEditor({
           <p className='text-xs text-text-muted'>
             {template
               ? 'Edit the template directly or ask Clyro for changes, then validate before provisioning.'
-              : 'Choose a model and generate a CloudFormation template for your architecture.'}
+              : 'Generate a CloudFormation template for your architecture.'}
           </p>
         </div>
       </div>
@@ -301,14 +299,12 @@ export default function IacEditor({
         )
 
       ) : !template && error ? (
-        /* Error state with retry + model picker */
+        /* Error state with retry */
         <div className='flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center'>
           <AlertTriangle className='h-6 w-6 text-red-400' />
           <p className='max-w-md text-sm text-red-300'>{error}</p>
-          <div className='w-full max-w-xs space-y-3'>
-            <p className='text-xs text-text-muted'>Select model and try again</p>
-            <ModelSelect value={generateModel} onChange={setGenerateModel} large />
-            <Button variant='primary' onClick={onRetryGenerate} disabled={!generateModel} className='w-full justify-center'>
+          <div className='w-full max-w-xs'>
+            <Button variant='primary' onClick={onRetryGenerate} className='w-full justify-center'>
               <RefreshCw className='h-4 w-4' />
               Retry generation
             </Button>
@@ -316,31 +312,26 @@ export default function IacEditor({
         </div>
 
       ) : !template ? (
-        /* Pre-generate: prominent model selector + generate button */
+        /* Pre-generate */
         <div className='flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center'>
           <div className='flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10'>
             <FileCode2 className='h-8 w-8 text-accent' />
           </div>
           <div className='space-y-2'>
-            <p className='text-base font-semibold text-text-primary'>Choose a model to generate</p>
+            <p className='text-base font-semibold text-text-primary'>Generate infrastructure</p>
             <p className='max-w-sm text-sm text-text-muted'>
-              Clyro will analyze your architecture and write a CloudFormation template. Pick the model that best fits your needs.
+              Clyro will write a deterministic CloudFormation template from your finalized architecture.
             </p>
           </div>
-          <div className='w-full max-w-xs space-y-3'>
-            <ModelSelect value={generateModel} onChange={setGenerateModel} large placeholder='Select a model…' />
+          <div className='w-full max-w-xs'>
             <Button
               variant='primary'
               onClick={onRetryGenerate}
-              disabled={!generateModel}
               className='w-full justify-center'
             >
               <Play className='h-4 w-4' />
               Generate template
             </Button>
-            {!generateModel && (
-              <p className='text-xs text-text-muted'>Select a model above to continue.</p>
-            )}
           </div>
         </div>
 
@@ -354,17 +345,13 @@ export default function IacEditor({
           {/* Left: editor panel */}
           <div className='flex min-w-0 flex-1 flex-col'>
 
-            {/* IaC model toolbar — switch model + regenerate */}
+            {/* IaC toolbar */}
             <div className='flex shrink-0 flex-wrap items-center gap-2 border-b border-white/[0.07] px-4 py-2'>
-              <span className='shrink-0 text-xs text-text-muted'>IaC model</span>
-              <div className='w-[200px]'>
-                <ModelSelect value={generateModel} onChange={setGenerateModel} />
-              </div>
               <button
                 type='button'
                 onClick={onRetryGenerate}
-                disabled={generating || refining || !generateModel}
-                title={!generateModel ? 'Select a model first' : 'Regenerate template'}
+                disabled={generating || refining}
+                title='Regenerate template'
                 className='flex items-center gap-1.5 rounded-md border border-white/[0.07] px-2 py-1 text-xs text-text-muted transition-colors hover:border-white/[0.15] hover:text-text-primary disabled:pointer-events-none disabled:opacity-40'
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${generating ? 'animate-spin' : ''}`} />

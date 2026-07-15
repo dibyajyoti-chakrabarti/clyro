@@ -11,7 +11,14 @@ const iconByLabel = (label) => {
   return { Icon: Package, color: 'text-text-muted', bg: 'bg-white/[0.03] border-white/[0.05]' }
 }
 
-export default function CostPanel({ canvasCost, totalCost, onClose }) {
+const ENVIRONMENT_LABELS = {
+  production: 'Production',
+  staging: 'Staging',
+  development: 'Development',
+}
+
+export default function CostPanel({ canvasCost, totalCost, environment, onClose }) {
+  const environmentLabel = ENVIRONMENT_LABELS[environment] || 'Production'
   return (
     <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[rgba(255,193,7,0.10)] bg-[rgba(10,10,10,0.42)] shadow-[0_24px_80px_rgba(0,0,0,0.28),0_0_60px_rgba(255,193,7,0.05)] backdrop-blur-[20px]'>
       <div className='shrink-0 px-4 pt-4 pb-3'>
@@ -48,7 +55,7 @@ export default function CostPanel({ canvasCost, totalCost, onClose }) {
           </div>
           <div className='mt-4 flex items-center gap-2'>
             <span className='h-1.5 w-1.5 rounded-full bg-emerald-400' />
-            <p className='text-xs text-text-muted'>Live estimate · Production · us-east-1</p>
+            <p className='text-xs text-text-muted'>Live estimate · {environmentLabel} · us-east-1</p>
           </div>
         </div>
 

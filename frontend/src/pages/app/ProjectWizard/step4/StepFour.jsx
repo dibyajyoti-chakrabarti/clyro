@@ -10,7 +10,7 @@ import ReviewArchitecture from './ReviewArchitecture'
 // Deployment statuses that describe a stack the provisioning screen can show.
 // Anything else (iac_ready, pending, deleted) belongs in the IaC editor.
 const DEPLOY_PHASE_STATUSES = [
-  'submitting', 'in_progress', 'building', 'complete',
+  'submitting', 'in_progress', 'rolling_back', 'building', 'complete',
   'failed', 'rolled_back', 'build_failed',
 ]
 
@@ -34,9 +34,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
   const [iacReady, setIacReady] = useState(false)
   const [refineInput, setRefineInput] = useState('')
   const [refineHistory, setRefineHistory] = useState([])
-  // Model choice: generate (initial template) and chat (refine turns).
-  // Generate defaults to null so the user must pick before generating.
-  const [generateModel, setGenerateModel] = useState(null)
+  // Model choice applies only to Ask Clyro refine turns. Initial generation is deterministic.
   const [chatModel, setChatModel] = useState('haiku-4-5')
   const iacGenStartedRef = useRef(false)
 
@@ -48,6 +46,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
   const [stackOutputs, setStackOutputs] = useState([])
   const [canRecreate, setCanRecreate] = useState(false)
   const deployPollRef = useRef(null)
+  const deployLogSinceRef = useRef(null)
   const provisionJobIdRef = useRef(null)
 
   // infra lifecycle (pause / resume / delete) state
@@ -97,7 +96,9 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
           // log with no controls at all, so a torn-down project could never be
           // provisioned again from the UI.
           if (!cancelled && deployData && DEPLOY_PHASE_STATUSES.includes(deployData.status)) {
-            setProvisioningLog(deployData.log || [])
+            const log = deployData.log || []
+            setProvisioningLog(log)
+            deployLogSinceRef.current = log.length ? Math.max(...log.map((entry) => entry.sequence ?? -1)) : null
             setDeployStatus(deployData.status)
             setStackOutputs(deployData.outputs || [])
             setCanRecreate(Boolean(deployData.can_recreate))
@@ -106,7 +107,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
               setPhase('success')
             } else {
               setPhase('provisioning')
-              if (['submitting', 'in_progress', 'building'].includes(deployData.status)) {
+              if (['submitting', 'in_progress', 'rolling_back', 'building'].includes(deployData.status)) {
                 startDeployPoll()
               }
             }
@@ -136,7 +137,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
     setGenerateThinking('')
     setIacError(null)
     try {
-      const { job_id: jobId } = await api.generateIac(projectId, { model: generateModel })
+      const { job_id: jobId } = await api.generateIac(projectId, {})
       // Stream the template into the editor as the agent writes it (B2): once a
       // partial arrives, IacEditor swaps its spinner for the read-only editor and
       // the template visibly builds. The final `data.template` below snaps to the
@@ -248,8 +249,16 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
 
   const pollDeployOnce = async () => {
     try {
-      const data = await api.getDeployStatus(projectId)
-      setProvisioningLog(data.log || [])
+      const data = await api.getDeployStatus(projectId, deployLogSinceRef.current)
+      const nextLog = data.log || []
+      if (nextLog.length) {
+        setProvisioningLog((prev) => {
+          const seen = new Set(prev.map((entry) => entry.sequence))
+          const merged = [...prev, ...nextLog.filter((entry) => !seen.has(entry.sequence))]
+          deployLogSinceRef.current = Math.max(...merged.map((entry) => entry.sequence ?? -1))
+          return merged
+        })
+      }
       setDeployStatus(data.status)
       setStackOutputs(data.outputs || [])
       setCanRecreate(Boolean(data.can_recreate))
@@ -307,6 +316,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
     setDeployError(null)
     setDeployCorrecting(false)
     setProvisioningLog([])
+    deployLogSinceRef.current = null
     setStackOutputs([])
     setDeployStatus('submitting')
     setPhase('provisioning')
@@ -410,6 +420,7 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
     setDeployCorrecting(false)
     setCanRecreate(false)
     setProvisioningLog([])
+    deployLogSinceRef.current = null
     setStackOutputs([])
     setDeployStatus('submitting')
     setPhase('provisioning')
@@ -467,8 +478,6 @@ function StepFourPanel({ projectId, setStep4CanContinue, onBackToCanvas, onAdvan
         onRefineInputChange={setRefineInput}
         onRefine={handleRefine}
         refineHistory={refineHistory}
-        generateModel={generateModel}
-        setGenerateModel={setGenerateModel}
         chatModel={chatModel}
         setChatModel={setChatModel}
         onBack={onBackToCanvas}

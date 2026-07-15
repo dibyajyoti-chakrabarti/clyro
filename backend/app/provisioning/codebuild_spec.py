@@ -49,9 +49,11 @@ either way, rather than on a repeated `cd` or a bare relative path.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 _BUILD_IMAGE = "aws/codebuild/standard:7.0"
+_OUTPUTS_SECTION_RE = re.compile(r"^Outputs:", re.M)
 
 
 def _pascal(node_id: str) -> str:
@@ -109,6 +111,9 @@ def _frontend_buildspec(build_path: str) -> str:
     return (
         "version: 0.2\n"
         "phases:\n"
+        "  install:\n"
+        "    commands:\n"
+        "      - n 20\n"
         "  build:\n"
         "    commands:\n"
         f"      - cd {build_path}\n"
@@ -254,7 +259,7 @@ def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: st
         Type: NO_ARTIFACTS
       Environment:
         Type: LINUX_CONTAINER
-        ComputeType: BUILD_GENERAL1_SMALL
+        ComputeType: BUILD_GENERAL1_MEDIUM
         Image: {_BUILD_IMAGE}
         EnvironmentVariables:
           - Name: BUCKET_NAME
@@ -321,6 +326,22 @@ def generate_codebuild_resources(spec: dict[str, Any], cloudfront_logical_id: st
             ExpirationInDays: 7
 """
     return archive_bucket + "\n" + "\n".join(blocks)
+
+
+def splice_into_template(template: str, fragment: str) -> str:
+    """Insert a Resources-entries YAML fragment into an already-rendered CFN
+    template. Anchored on the ``Outputs:`` section (falling back to
+    end-of-file) rather than on the ``Resources:`` header line, since the
+    header's exact formatting isn't guaranteed. Single implementation shared
+    by both `cfn_generator.generate_template` and `iac.enforce_codebuild_projects`
+    — they used to each splice this independently and had drifted."""
+    if not fragment:
+        return template
+    out_match = _OUTPUTS_SECTION_RE.search(template)
+    if out_match:
+        insert_at = out_match.start()
+        return template[:insert_at] + fragment + "\n" + template[insert_at:]
+    return template.rstrip("\n") + "\n" + fragment
 
 
 def buildable_node_ids(spec: dict[str, Any]) -> list[str]:

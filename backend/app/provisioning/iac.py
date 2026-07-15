@@ -33,7 +33,7 @@ from core.models import (
 
 from app import agentcore
 
-from . import codebuild_spec
+from . import cfn_generator, codebuild_spec
 from .build_spec import build_spec
 
 log = logging.getLogger(__name__)
@@ -1031,9 +1031,24 @@ def enforce_required_env(template: str, spec: dict) -> str:
             match = _ENV_LIST_RE.match(lines[k])
             if not match:
                 continue
-            item_indent = match.group("ind") + "  "
+            env_indent = match.group("ind")
+            env_indent_len = len(env_indent)
+            item_indent = env_indent + "  "
             stop = k + 1
-            while stop < end and (not lines[stop].strip() or lines[stop].startswith(item_indent)):
+            while stop < end:
+                line = lines[stop]
+                if not line.strip():
+                    stop += 1
+                    continue
+                leading = len(line) - len(line.lstrip(" "))
+                stripped = line.strip()
+                if leading < env_indent_len:
+                    break
+                if leading == env_indent_len and not stripped.startswith("- "):
+                    break
+                item = _ENV_ITEM_RE.match(line)
+                if item:
+                    item_indent = line[:leading]
                 stop += 1
             present = {
                 item.group("key")
@@ -1646,14 +1661,7 @@ def enforce_codebuild_projects(template: str, spec: dict) -> str:
 
     fragment = codebuild_spec.generate_codebuild_resources(
         spec, cloudfront_logical_id, bucket_logical_id)
-    if not fragment:
-        return template
-
-    out_match = _OUTPUTS_SECTION_RE.search(template)
-    if out_match:
-        insert_at = out_match.start()
-        return template[:insert_at] + fragment + "\n" + template[insert_at:]
-    return template.rstrip("\n") + "\n" + fragment
+    return codebuild_spec.splice_into_template(template, fragment)
 
 
 def security_scan(template: str) -> list[dict[str, str]]:
@@ -2170,48 +2178,29 @@ def _invoke_iac(payload: dict, project: Project, on_event=None) -> dict[str, Any
 
 def generate(project: Project, model: str | None = None, on_event=None) -> dict[str, Any]:
     """Author a fresh template from the build spec, persist it, and return it with
-    backend cfn-lint diagnostics. ``model`` is the user-selected generate model key
-    (the agent falls back to its default when omitted). ``on_event(event)`` — when
-    given — is called with each streamed event: text deltas ``{"data": ...}`` and
-    tool-call markers ``{"tool": ...}``, so callers can surface live progress (B2).
-    The final persisted result is unchanged either way."""
+    backend cfn-lint diagnostics.
+
+    Initial generation is deterministic. The IacArchitect runtime remains in use
+    for refine/chat, but no model is needed to transcribe the build spec into a
+    first CloudFormation template."""
     deployment = ensure_deployment(project)
     spec = _spec_for(deployment)
-    resp = _invoke_iac({"mode": "generate", "build_spec": spec, "model": model}, project, on_event=on_event)
-    if (resp or {}).get("error"):
-        raise IacError((resp or {})["error"])
-    template = (resp or {}).get("template", "") or ""
-    message = (resp or {}).get("message") or "Generated your CloudFormation template."
+    if on_event is not None:
+        on_event({"data": "Generating deterministic CloudFormation template…", "phase": "generating"})
+    template = cfn_generator.generate_template(spec)
+    message = "Generated a deterministic CloudFormation template from your finalized architecture."
     template = _apply_enforcers(template, spec)
 
     region = deployment.aws_connection.aws_region or "us-east-1"
     validation = lint_template(template, region)
-    # Server-side enforcement: if the agent returned a template with cfn-lint ERRORS
-    # despite its own validation rounds, drive them to zero with a bounded fix loop.
     if validation["errors"]:
-        template, validation, fix_msg = _lint_fix_loop(
-            template, validation, spec=spec, project=project, model=model, region=region)
-        if fix_msg:
-            message = fix_msg
-        template = _apply_enforcers(template, spec)
+        log.error("deterministic generator emitted cfn-lint errors: %s", validation)
 
-    findings = _collect_findings(template, spec)
-    if any(f["severity"] == "blocker" for f in findings):
-        template, findings, fix_msg = _security_fix_loop(
-            template, findings, spec=spec, project=project, model=model, region=region)
-        if fix_msg:
-            message = fix_msg
-        template = _apply_enforcers(template, spec)
-        validation = lint_template(template, region)
-
-    # Runs last, once, after every LLM-facing fix loop is done — not before,
-    # because feeding this back through _lint_fix_loop/_security_fix_loop would
-    # let the LLM "fix" resources it was never told about and doesn't
-    # understand, risking corruption of the deterministic build pipeline.
+    # Runs last after the core app resources exist. CodeBuild resources are still
+    # deterministic and use the existing generator because it already handles the
+    # build archive bucket, frontend bucket reference, and worker-image de-dupe.
     template = enforce_codebuild_projects(template, spec)
     validation = lint_template(template, region)
-    # Re-run against the final template: the build pipeline only exists now, so the
-    # frontend-bucket conformance check couldn't have run above.
     findings = _collect_findings(template, spec)
 
     deployment.cloudformation_template = template
@@ -2308,7 +2297,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
             new_template, validation, spec=spec, project=project, model=model,
             region=region, history=history)
         if fix_msg:
-            message = fix_msg
+            message = f"{message} Also auto-fixed lint errors: {fix_msg}"
         new_template = _apply_enforcers(new_template, spec)
 
     findings = _collect_findings(new_template, spec)
@@ -2317,7 +2306,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
             new_template, findings, spec=spec, project=project, model=model,
             region=region, history=history)
         if fix_msg:
-            message = fix_msg
+            message = f"{message} Also auto-fixed deployment blockers: {fix_msg}"
         new_template = _apply_enforcers(new_template, spec)
         validation = lint_template(new_template, region)
 

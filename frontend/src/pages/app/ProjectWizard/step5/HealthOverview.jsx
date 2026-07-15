@@ -1,8 +1,12 @@
-function HealthOverview({ healthItems, statusIcon }) {
+function HealthOverview({ healthItems, statusIcon, notFound }) {
   return (
     <div>
       <h3 className='text-lg font-semibold'>Health overview</h3>
-      {healthItems.length === 0 ? (
+      {notFound ? (
+        <p className='mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-6 text-center text-sm text-red-300'>
+          This project's AWS infrastructure could not be found — it may have been deleted outside Clyro.
+        </p>
+      ) : healthItems.length === 0 ? (
         <p className='mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-center text-sm text-text-muted'>
           Waiting for the first health check to report…
         </p>

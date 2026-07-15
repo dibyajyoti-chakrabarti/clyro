@@ -1,4 +1,5 @@
 import uuid
+from django.conf import settings
 from django.utils import timezone
 from botocore.exceptions import ClientError
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -228,6 +229,8 @@ def iac_current(request, pk):
     if err:
         return err
     try:
+        if getattr(settings, "IAC_WARMUP_ENABLED", False):
+            tasks.run_warmup_task.delay(str(project.id))
         return Response(iac.get_current(project))
     except iac.IacError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -310,11 +313,29 @@ def deploy_status(request, pk):
     if err:
         return err
     try:
-        data = deploy.poll(project)
+        since = request.query_params.get('since')
+        try:
+            since_seq = int(since) if since not in (None, '') else None
+        except (TypeError, ValueError):
+            since_seq = None
+        data = deploy.poll(project, since=since_seq)
         # Tells the failure screen whether to offer "Rebuild from scratch" — only
         # on a failed, never-been-live deploy (see deploy.can_recreate).
         data['can_recreate'] = deploy.can_recreate(project)
         return Response(data)
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_health(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(deploy.health(project))
     except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
