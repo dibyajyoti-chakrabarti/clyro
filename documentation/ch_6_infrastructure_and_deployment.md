@@ -69,7 +69,11 @@ The fix (`infrastructure/workloads/celery_worker.tf`):
   `sqs:ReceiveMessage`/`DeleteMessage`/`GetQueueUrl`/`GetQueueAttributes`/
   `ChangeMessageVisibility` plus the same Bedrock/AgentCore/Cognito/SSM/CloudFormation
   permissions the Lambda's role already has (the worker runs the exact same
-  task/view code, just off a queue instead of an HTTP request).
+  task/view code, just off a queue instead of an HTTP request). Both roles also
+  need `sqs:ListQueues` on `Resource: "*"` — found live: Kombu's SQS transport
+  calls `list_queues(QueueNamePrefix=...)` on every connection (both publish and
+  consume sides), and `ListQueues` has no resource-level ARN scoping in AWS's
+  IAM model, unlike every other SQS action here.
 - Network: the ECS task shares the Lambda's security group (`lambda_sg_id`) rather
   than a new one — it's already trusted by the RDS security group's ingress rule, so
   no `foundation`-layer change was needed for that part.

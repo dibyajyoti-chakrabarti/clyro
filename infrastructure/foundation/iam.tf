@@ -99,6 +99,15 @@ resource "aws_iam_role_policy" "backend_lambda_runtime" {
           "sqs:GetQueueAttributes",
         ]
         Resource = "arn:aws:sqs:${var.aws_region}:${var.account_id}:${local.iam_prefix}-celery"
+      },
+      {
+        # Found live: Kombu's SQS transport calls list_queues(QueueNamePrefix=...)
+        # on every connection, including the publish side — ListQueues has no
+        # resource-level scoping in AWS's IAM model, so it needs Resource: "*"
+        # even though every other SQS action above is scoped to the one queue.
+        Effect   = "Allow"
+        Action   = ["sqs:ListQueues"]
+        Resource = "*"
       }
     ]
   })

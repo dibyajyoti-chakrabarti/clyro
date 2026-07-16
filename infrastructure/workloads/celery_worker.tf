@@ -125,6 +125,16 @@ resource "aws_iam_role_policy" "celery_task_runtime" {
           "sqs:ChangeMessageVisibility",
         ]
         Resource = aws_sqs_queue.celery_broker.arn
+      },
+      {
+        # Found live: Kombu's SQS transport calls list_queues(QueueNamePrefix=...)
+        # to resolve/cache queue URLs on every connection — ListQueues has no
+        # resource-level scoping in AWS's IAM model (same class as
+        # ecr:GetAuthorizationToken), so it needs Resource: "*" even though
+        # every other SQS action above is scoped to the one queue.
+        Effect   = "Allow"
+        Action   = ["sqs:ListQueues"]
+        Resource = "*"
       }
     ]
   })
