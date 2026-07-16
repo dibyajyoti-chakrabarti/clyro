@@ -1,12 +1,12 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 
-// Full Step 1 -> Step 4 -> teardown pass against REAL AWS infrastructure. This
+// Full Step 1 -> Step 7 -> teardown pass against REAL AWS infrastructure. This
 // creates real billable resources (ECS, RDS, ALB, etc.) under the connected
 // AWS account and deletes them again at the end. It is deliberately opt-in and
 // skipped unless every precondition below is explicitly supplied — there is no
-// safe way to synthesize a GitHub App installation, a connected AWS account,
-// or a Cognito login from inside this test, so all three must already exist.
+// safe way to synthesize a GitHub App installation or a Cognito login from
+// inside this test, so both must already exist.
 //
 // Required env vars:
 //   E2E_TEST_EMAIL / E2E_TEST_PASSWORD — a real Cognito user for this app
@@ -14,14 +14,23 @@ import { test, expect } from '@playwright/test';
 //                                        GitHub App for that user (Django+React)
 //   E2E_TEST_BRANCH                   — branch to scan/deploy (default 'main')
 //
-// The AWS account must already be connected (a prior CFN quick-create of
-// backend/cfn-templates/bootstrap.yaml) — connecting AWS itself opens a new
-// tab into the real AWS console and cannot be driven headlessly.
+// Optional:
+//   E2E_TEST_AWS_ROLE_ARN — a Role ARN from a bootstrap.yaml quick-create
+//     already run against a *disposable/sandbox* AWS account (never Clyro's
+//     own production account — this test creates and tears down real,
+//     billable resources under whatever account this ARN belongs to). Step 2
+//     (Connect your AWS account) is per-project, not reusable — every run
+//     needs its own connection. If set, Step 2 is filled in and verified
+//     automatically. If unset, the test opens the CloudFormation console and
+//     waits (up to 10 minutes) for a human watching the browser to complete
+//     the quick-create and paste the resulting Role ARN in themselves —
+//     connecting AWS opens a real AWS console tab and cannot be driven
+//     headlessly no matter what.
 //
 // Run with: E2E_TEST_EMAIL=... E2E_TEST_PASSWORD=... E2E_TEST_REPO=... \
-//   npx playwright test e2e/provisioning.spec.js --timeout=2400000
+//   npx playwright test e2e/provisioning.spec.js --timeout=2400000 --headed
 
-const { E2E_TEST_EMAIL, E2E_TEST_PASSWORD, E2E_TEST_REPO } = process.env;
+const { E2E_TEST_EMAIL, E2E_TEST_PASSWORD, E2E_TEST_REPO, E2E_TEST_AWS_ROLE_ARN } = process.env;
 const E2E_TEST_BRANCH = process.env.E2E_TEST_BRANCH || 'main';
 
 const shouldRun = Boolean(E2E_TEST_EMAIL && E2E_TEST_PASSWORD && E2E_TEST_REPO);
@@ -30,10 +39,11 @@ test.describe('Full provisioning + teardown (real AWS)', () => {
   test.skip(!shouldRun, 'Set E2E_TEST_EMAIL, E2E_TEST_PASSWORD and E2E_TEST_REPO to run this against real AWS.');
 
   // Provisioning + teardown against real CloudFormation routinely takes
-  // 10-20 minutes each way — far past the suite's default 30s.
-  test.setTimeout(40 * 60 * 1000);
+  // 10-20 minutes each way — far past the suite's default 30s. A manual
+  // Step 2 AWS-connect (no pre-supplied ARN) can add up to 10 more.
+  test.setTimeout(50 * 60 * 1000);
 
-  test('drives Step 1 scan through Step 4 deploy and teardown with 0 unexpected issues', async ({ page }) => {
+  test('drives Step 1 scan through Step 7 live and teardown with 0 unexpected issues', async ({ page }) => {
     // ── Login ──────────────────────────────────────────────────────────────
     await page.goto('/login');
     await page.locator('input[type="email"]').fill(E2E_TEST_EMAIL);
@@ -70,7 +80,28 @@ test.describe('Full provisioning + teardown (real AWS)', () => {
     }
     await page.locator('button', { hasText: 'Continue' }).click();
 
-    // ── Step 2 / Step 3: accept generated defaults ─────────────────────────
+    // ── Step 2: connect your AWS account ───────────────────────────────────
+    // Moved here (ahead of intent/canvas/generate) by the 7-step wizard split
+    // — no longer the "connect-aws" sub-phase folded into the old Step 4.
+    // Per-project, so a fresh project always needs a fresh connection; the
+    // CFN quick-create itself can't be driven headlessly regardless.
+    const roleConnectedText = page.getByText('IAM role connected');
+    if (E2E_TEST_AWS_ROLE_ARN) {
+      await page.locator('button', { hasText: 'Open AWS CloudFormation console' }).waitFor({ timeout: 15_000 });
+      await page.locator('input[placeholder*="arn:aws:iam"]').fill(E2E_TEST_AWS_ROLE_ARN);
+      await page.locator('button', { hasText: 'Verify' }).click();
+      await expect(roleConnectedText).toBeVisible({ timeout: 30_000 });
+    } else {
+      console.log(
+        'No E2E_TEST_AWS_ROLE_ARN supplied — opening the CloudFormation console and waiting up to 10 ' +
+        'minutes for a human watching this browser to complete the quick-create and paste the Role ARN in.',
+      );
+      await page.locator('button', { hasText: 'Open AWS CloudFormation console' }).click();
+      await expect(roleConnectedText).toBeVisible({ timeout: 10 * 60 * 1000 });
+    }
+    await page.locator('button', { hasText: 'Continue' }).click();
+
+    // ── Step 3 / Step 4: accept generated defaults ─────────────────────────
     // (Intent collection and canvas both have sensible generated defaults for
     // a Django+React repo — this test exercises the deploy path, not manual
     // customization, so it clicks through with whatever was auto-generated.)
@@ -78,18 +109,26 @@ test.describe('Full provisioning + teardown (real AWS)', () => {
     await expect(page.locator('button', { hasText: 'Continue' })).toBeEnabled({ timeout: 60_000 });
     await page.locator('button', { hasText: 'Continue' }).click();
 
-    // ── Step 4: generate IaC, review, connect AWS (already connected) ──────
+    // ── Step 5: generate + validate the CloudFormation template ────────────
     await page.locator('button', { hasText: 'Generate template' }).click();
     await expect(page.locator('button', { hasText: 'Continue' })).toBeEnabled({ timeout: 120_000 });
-    await page.locator('button', { hasText: 'Continue' }).click(); // -> review
-    await page.locator('button', { hasText: /Provision|Deploy/i }).click(); // -> connect-aws (already connected) -> provisioning
+    await page.locator('button', { hasText: 'Continue' }).click(); // -> Step 6 review
 
-    // ── Provisioning: poll to CREATE_COMPLETE ──────────────────────────────
-    await expect(page.getByText(/deployment.*ready|live|success/i)).toBeVisible({ timeout: 20 * 60 * 1000 });
+    // ── Step 6: review + provision. AWS is already connected (Step 2), so ──
+    // this click goes straight to live provisioning — no connect-aws detour.
+    await page.locator('button', { hasText: /Provision|Deploy/i }).click();
 
-    // ── Teardown: delete everything this test created ──────────────────────
-    await page.locator('button', { hasText: /Delete infrastructure/i }).click();
-    await page.locator('button', { hasText: /Yes, delete infrastructure/i }).click();
-    await expect(page.getByText(/deleted/i)).toBeVisible({ timeout: 15 * 60 * 1000 });
+    // Everything past this point creates/destroys real, billable AWS
+    // resources — teardown must run even if a later assertion fails, or a
+    // failed run strands the stack instead of just failing the test.
+    try {
+      // ── Provisioning: poll to CREATE_COMPLETE ────────────────────────────
+      await expect(page.getByText(/deployment.*ready|live|success/i)).toBeVisible({ timeout: 20 * 60 * 1000 });
+    } finally {
+      // ── Teardown: delete everything this test created ────────────────────
+      await page.locator('button', { hasText: /Delete infrastructure/i }).click();
+      await page.locator('button', { hasText: /Yes, delete infrastructure/i }).click();
+      await expect(page.getByText(/deleted/i)).toBeVisible({ timeout: 15 * 60 * 1000 });
+    }
   });
 });

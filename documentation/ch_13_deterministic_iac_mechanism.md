@@ -15,6 +15,21 @@ This chapter was written as a fix plan; Part A (the deterministic generator itse
 
 The rest of this chapter is preserved as-authored below for context on the reasoning and remaining Part B/C scope.
 
+## Status update (2026-07-16) — full re-audit
+
+Re-checked line by line against the current codebase; everything in the two updates
+above still holds. Two things worth noting:
+
+- File-path staleness only: the "Part C" update above references `StepFour.jsx` —
+  this predates the 7-step wizard split (commit `800a7a6`). The same code now lives at
+  `frontend/src/pages/app/ProjectWizard/step5/StepFive.jsx` (IaC generation is Step 5,
+  not Step 4, under the new numbering) — behavior described is otherwise still accurate.
+- "Out of scope (explicitly)" below lists "Full Playwright E2E re-verify against real
+  AWS (user deferred)" — this is what `frontend/e2e/provisioning.spec.js` plus this
+  session's production Playwright pass finally close out (see ch. 19 for that report).
+  See ch. 6 for the async-pipeline (SQS/Celery) and reconciliation work layered on top
+  of the deterministic generator described here.
+
 ## Context
 
 Live E2E test (Playwright, real AWS) + code exploration confirmed the user's four complaints and their root causes:

@@ -1,5 +1,7 @@
 """Deterministic CFN fragment generator for the build step that actually gets
-customer code into the infrastructure IacArchitect generates.
+customer code into the infrastructure ``cfn_generator`` deterministically
+authors (IacArchitect is only involved in ``refine()``, not the template
+this fragment splices into).
 
 Not LLM-authored, on purpose: mirrors the `enforce_*()` correctors in `iac.py`
 (`enforce_elasticache_deletion_policy`, `enforce_rds_deletion_policy`,

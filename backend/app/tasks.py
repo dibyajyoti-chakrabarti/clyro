@@ -188,12 +188,15 @@ def run_recreate_task(job_id: str, project_id: str):
 
 
 @shared_task
-def run_warmup_task(project_id: str):
-    # Warm the IaC runtime so Step-4 Generate doesn't pay cold-start. Fired on
-    # canvas finalize; best-effort — agentcore.warm_runtime swallows all errors,
+def run_warmup_task(project_id: str, runtime_env_var: str = "IAC_RUNTIME_ARN"):
+    # Warm a given AgentCore runtime so the next step's first real call doesn't
+    # pay its ~17s cold start. Originally IaC-only (fired on canvas finalize,
+    # right before Step-4/5 Generate); now also fired for RepoRecon (Step 1
+    # entry) and Reasoning (right after Step 2/3's intent save, before the
+    # canvas step). Best-effort — agentcore.warm_runtime swallows all errors,
     # and no AgentJob is tracked (there's nothing for the user to watch).
     from app import agentcore
-    agentcore.warm_runtime("IAC_RUNTIME_ARN", f"warmup-{project_id}")
+    agentcore.warm_runtime(runtime_env_var, f"warmup-{project_id}")
 
 
 @shared_task(soft_time_limit=2100, time_limit=2400)
@@ -211,3 +214,14 @@ def run_build_task(job_id: str, project_id: str):
         return build.build_with_feedback(project)
 
     _run(job_id, _do)
+
+
+@shared_task
+def run_reconcile_sweep_task():
+    # Scheduled via CELERY_BEAT_SCHEDULE (config/settings.py) on the Celery
+    # worker — proactively catches dead AWSAccountConnections and stuck
+    # 'deleting' Deployments instead of only surfacing them reactively on the
+    # user's next action. Not job-tracked (no AgentJob) — nothing user-facing
+    # to poll; see app.provisioning.reconcile for the incident that motivated this.
+    from app.provisioning import reconcile
+    return reconcile.sweep()

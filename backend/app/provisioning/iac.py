@@ -1,11 +1,12 @@
 """Step 4 IaC service layer — generate / refine / validate the CloudFormation
 template.
 
-The template is *authored* by the deployed IacArchitect runtime (generate +
-refine modes) from the deterministic build spec; it is *validated* here with
-cfn-lint in-process (no LLM) so the editor always gets one consistent diagnostic
-shape and the validate gate is deterministic. The working template is the system
-of record on ``Deployment.cloudformation_template``.
+The template is *authored* deterministically by ``cfn_generator`` from the
+build spec (``generate()``); the deployed IacArchitect runtime is scoped to
+``refine()`` (natural-language edits) and a rare fallback path. It is
+*validated* here with cfn-lint in-process (no LLM) so the editor always gets
+one consistent diagnostic shape and the validate gate is deterministic. The
+working template is the system of record on ``Deployment.cloudformation_template``.
 """
 
 from __future__ import annotations
@@ -194,6 +195,7 @@ def _intent_for_spec(intent: IntentRecord | None) -> dict[str, Any]:
         "environment": intent.environment,
         "domain_has": intent.domain_has,
         "domain_name": intent.domain_name,
+        "route53_hosted_zone_id": intent.route53_hosted_zone_id,
         "aws_account_type": intent.aws_account_type,
     }
 

@@ -37,5 +37,21 @@ export function getQuestions() {
         { value: 'large', label: 'High scale — expecting significant load' },
       ],
     },
+    {
+      id: 'domain_has',
+      question: 'Do you have a custom domain for this app?',
+      type: 'choice',
+      options: [
+        { value: 'yes', label: 'Yes — I want to use my own domain' },
+        { value: 'no', label: 'No — use the default AWS-provided URL' },
+        { value: 'internal', label: 'Internal only — no public domain needed' },
+      ],
+    },
+    {
+      id: 'domain_name',
+      question: "What's your domain? (e.g. app.example.com)",
+      type: 'free',
+      condition: (answers) => answers.domain_has === 'yes',
+    },
   ]
 }

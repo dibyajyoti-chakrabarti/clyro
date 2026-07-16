@@ -1,5 +1,6 @@
 """Compose the deterministic Step 4 *build spec* — the distilled, typed contract
-the IacArchitect agent authors CloudFormation from.
+``cfn_generator`` deterministically authors CloudFormation from (the IacArchitect
+agent only consumes this spec for ``refine()``, not the initial ``generate()``).
 
 This is the Step 3 → Step 4 bridge, analogous to ``canvas_core.canvas_builder``
 (which maps detection + intent → canvas). Here we map the finalized canvas
@@ -260,6 +261,12 @@ def build_spec(
     sizing = dict(FREE_TIER_SIZING if free_tier else SIZING_BY_SCALE.get(scale, SIZING_BY_SCALE["small"]))
 
     has_domain = (intent.get("domain_has") == "yes") and bool(intent.get("domain_name"))
+    domain_name = intent.get("domain_name") if has_domain else None
+    # The registrable domain (last two labels) is the Route53 hosted zone name
+    # convention (e.g. "app.example.com" -> "example.com"). Known limitation:
+    # this heuristic is wrong for multi-part public suffixes (co.uk, etc.) —
+    # acceptable for now since an explicit route53_hosted_zone_id always wins.
+    hosted_zone_name = ".".join(domain_name.split(".")[-2:]) if domain_name else None
 
     by_id = {n.get("id"): n for n in nodes}
     public_ids = _public_service_ids(nodes, connections)
@@ -415,8 +422,10 @@ def build_spec(
         },
         "domain": {
             "has_domain": has_domain,
-            "domain_name": intent.get("domain_name") if has_domain else None,
+            "domain_name": domain_name,
             "acm": has_domain,
+            "hosted_zone_id": intent.get("route53_hosted_zone_id") if has_domain else None,
+            "hosted_zone_name": hosted_zone_name,
         },
         "placement": {
             "public_subnets": (["ALB", "CloudFront(origin)"]

@@ -1,7 +1,7 @@
 from core.models import EnvVarKey, Project, ScanResult
 from app import agentcore
 from app.github_utils import get_installation_access_token
-from . import compliance
+from . import compliance, deterministic_detector
 
 
 def _run_scan_agent(token: str, project: Project) -> dict:
@@ -20,6 +20,17 @@ def _run_scan_agent(token: str, project: Project) -> dict:
     )
 
 
+def _scan_repo(token: str, project: Project) -> dict:
+    """Deterministic manifest-based detection first (cheap, no AgentCore cold
+    start); the LLM agent only runs when that can't confidently classify the
+    repo. Mirrors the guardrail pattern already used at Step 3/Step 4-5."""
+    det = deterministic_detector.detect(token, project.repo_full_name, project.repo_branch)
+    if det and det.get("confidence") == "high":
+        det.pop("confidence", None)
+        return det
+    return _run_scan_agent(token, project)
+
+
 def run_scan_for_project(project: Project) -> ScanResult:
     scan = ScanResult.objects.create(
         project=project,
@@ -28,7 +39,7 @@ def run_scan_for_project(project: Project) -> ScanResult:
 
     try:
         token = get_installation_access_token(project.github_installation.installation_id)
-        result = _run_scan_agent(token, project)
+        result = _scan_repo(token, project)
 
         agent_status = result.get("status", "complete")
 

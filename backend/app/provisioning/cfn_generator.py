@@ -548,6 +548,53 @@ def _add_queue(resources: dict[str, Any], spec: dict[str, Any]) -> str | None:
     return "TaskQueue"
 
 
+def _add_domain_resources(resources: dict[str, Any], spec: dict[str, Any]) -> str | None:
+    """ACM cert (DNS validation) + a Route53 alias record for the ALB. Returns
+    the cert's logical id, or None when the spec has no domain.
+
+    The cert's DomainValidationOptions references a DomainHostedZoneId
+    Parameter resolved at deploy time (deploy.start(), the first point AWS
+    credentials are guaranteed to exist — generate()/refine()/validate() make
+    no live AWS calls by design). When no zone can be resolved, the parameter
+    defaults to "" and the cert sits PENDING_VALIDATION until the user adds
+    the CNAME AWS's console shows — a disclosed operational trade-off, not a
+    provisioning blocker. The Route53 RecordSet uses HostedZoneName instead,
+    which CloudFormation resolves against the account at deploy time without
+    needing the zone id upfront."""
+    domain = spec.get("domain") or {}
+    if not domain.get("has_domain"):
+        return None
+    domain_name = domain.get("domain_name")
+    hosted_zone_name = domain.get("hosted_zone_name")
+    if not domain_name or not hosted_zone_name:
+        return None
+
+    resources["DomainCertificate"] = {
+        "Type": "AWS::CertificateManager::Certificate",
+        "Properties": {
+            "DomainName": domain_name,
+            "ValidationMethod": "DNS",
+            "DomainValidationOptions": [{
+                "DomainName": domain_name,
+                "HostedZoneId": _ref("DomainHostedZoneId"),
+            }],
+        },
+    }
+    resources["DomainRecordSet"] = {
+        "Type": "AWS::Route53::RecordSet",
+        "Properties": {
+            "HostedZoneName": f"{hosted_zone_name}.",
+            "Name": f"{domain_name}.",
+            "Type": "A",
+            "AliasTarget": {
+                "DNSName": _getatt("ApplicationLoadBalancer", "DNSName"),
+                "HostedZoneId": _getatt("ApplicationLoadBalancer", "CanonicalHostedZoneID"),
+            },
+        },
+    }
+    return "DomainCertificate"
+
+
 def _add_alb(resources: dict[str, Any], spec: dict[str, Any], sg_by_node: dict[str, str]) -> dict[str, str]:
     public_services = {e.get("to"): e for e in spec.get("network_edges") or [] if e.get("kind") == "alb"}
     target_groups: dict[str, str] = {}
@@ -581,16 +628,48 @@ def _add_alb(resources: dict[str, Any], spec: dict[str, Any], sg_by_node: dict[s
                 "Matcher": {"HttpCode": "200-399"},
             },
         }
-    listener_port = int(next(iter(public_services.values())).get("listener_port") or 80)
-    resources["AlbListener"] = {
-        "Type": "AWS::ElasticLoadBalancingV2::Listener",
-        "Properties": {
-            "LoadBalancerArn": _ref("ApplicationLoadBalancer"),
-            "Port": listener_port,
-            "Protocol": "HTTP",
-            "DefaultActions": [{"Type": "forward", "TargetGroupArn": _ref(default_tg)}],
-        },
-    }
+
+    sample_edge = next(iter(public_services.values()))
+    listener_port = int(sample_edge.get("listener_port") or 80)
+    redirect_http = bool(sample_edge.get("redirect_http")) and listener_port != 80
+    cert_id = _add_domain_resources(resources, spec) if redirect_http else None
+
+    if cert_id:
+        resources["AlbListener"] = {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "LoadBalancerArn": _ref("ApplicationLoadBalancer"),
+                "Port": listener_port,
+                "Protocol": "HTTPS",
+                "Certificates": [{"CertificateArn": _ref(cert_id)}],
+                "DefaultActions": [{"Type": "forward", "TargetGroupArn": _ref(default_tg)}],
+            },
+        }
+        resources["AlbHttpRedirectListener"] = {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "LoadBalancerArn": _ref("ApplicationLoadBalancer"),
+                "Port": 80,
+                "Protocol": "HTTP",
+                "DefaultActions": [{
+                    "Type": "redirect",
+                    "RedirectConfig": {
+                        "Protocol": "HTTPS", "Port": str(listener_port),
+                        "StatusCode": "HTTP_301",
+                    },
+                }],
+            },
+        }
+    else:
+        resources["AlbListener"] = {
+            "Type": "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties": {
+                "LoadBalancerArn": _ref("ApplicationLoadBalancer"),
+                "Port": listener_port,
+                "Protocol": "HTTP",
+                "DefaultActions": [{"Type": "forward", "TargetGroupArn": _ref(default_tg)}],
+            },
+        }
     return target_groups
 
 
@@ -765,13 +844,33 @@ def generate_template(spec: dict[str, Any]) -> str:
         outputs["TaskQueueURL"] = {"Description": "Task queue URL", "Value": _ref("TaskQueue")}
     if "DbInstance" in resources:
         outputs["DatabaseEndpoint"] = {"Description": "Database endpoint", "Value": _getatt("DbInstance", "Endpoint.Address")}
+    if "DomainCertificate" in resources:
+        outputs["ApplicationURL"] = {
+            "Description": "Application URL",
+            "Value": _sub(f"https://{(spec.get('domain') or {}).get('domain_name')}"),
+        }
+
+    parameters: dict[str, Any] = {}
+    if "DomainCertificate" in resources:
+        parameters["DomainHostedZoneId"] = {
+            "Type": "String",
+            "Default": "",
+            "Description": (
+                "Route53 hosted zone id for the ACM DNS validation record — "
+                "resolved live by Clyro at provisioning time. Left blank if no "
+                "matching hosted zone was found; the certificate then needs "
+                "manual DNS validation."
+            ),
+        }
 
     doc = {
         "AWSTemplateFormatVersion": "2010-09-09",
         "Description": f"Clyro deterministic infrastructure for {project}",
-        "Resources": resources,
-        "Outputs": outputs,
     }
+    if parameters:
+        doc["Parameters"] = parameters
+    doc["Resources"] = resources
+    doc["Outputs"] = outputs
     yaml_str = yaml.dump(doc, Dumper=_Dumper, sort_keys=False, width=120)
 
     from . import codebuild_spec

@@ -405,6 +405,17 @@ def iac_generate(request, pk):
     project, err = _get_project_or_404(request, pk)
     if err:
         return err
+    # A React StrictMode double-effect (or an impatient double-click) firing
+    # this twice in quick succession lets the second call's DB read race the
+    # first call's in-flight update — found live as a stale free-tier network
+    # config baked into the generated template. Reuse the in-flight job
+    # instead of enqueueing a duplicate.
+    existing = AgentJob.objects.filter(
+        project=project, kind=AgentJob.Kind.IAC_GENERATE,
+        status__in=[AgentJob.Status.PENDING, AgentJob.Status.RUNNING],
+    ).order_by('-created_at').first()
+    if existing:
+        return Response({'job_id': str(existing.id)}, status=status.HTTP_202_ACCEPTED)
     job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.IAC_GENERATE)
     tasks.run_iac_generate_task.delay(str(job.id), str(project.id), request.data.get('model'))
     return Response({'job_id': str(job.id)}, status=status.HTTP_202_ACCEPTED)

@@ -82,6 +82,23 @@ resource "aws_iam_role_policy" "backend_lambda_runtime" {
           "sts:AssumeRole",
         ]
         Resource = "*"
+      },
+      {
+        # Publish side of the Celery/SQS broker (infrastructure/workloads/
+        # celery_worker.tf creates the queue itself) — the API Lambda enqueues
+        # every long-running agent invocation (scan, canvas chat, IaC
+        # generate/refine, provisioning) via `.delay()`; the ECS Celery worker
+        # (celery_worker.tf's own task role) consumes them. ARN is
+        # constructed rather than cross-referenced from workloads' state,
+        # since foundation is applied independently and the queue name is
+        # fixed (${local.iam_prefix}-celery).
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage",
+          "sqs:GetQueueUrl",
+          "sqs:GetQueueAttributes",
+        ]
+        Resource = "arn:aws:sqs:${var.aws_region}:${var.account_id}:${local.iam_prefix}-celery"
       }
     ]
   })
