@@ -17,12 +17,6 @@ export const ACCOUNT_TYPE_OPTIONS = [
 export function getQuestions() {
   return [
     {
-      id: 'description',
-      question: 'Describe your app in one sentence.',
-      type: 'free',
-      options: [],
-    },
-    {
       id: 'environment',
       question: 'What environment is this deployment for?',
       type: 'choice',
@@ -42,23 +36,6 @@ export function getQuestions() {
         { value: 'medium', label: 'Public product — expecting real traffic' },
         { value: 'large', label: 'High scale — expecting significant load' },
       ],
-    },
-    {
-      id: 'domain_has',
-      question: 'Do you have a domain name for this app?',
-      type: 'choice',
-      options: [
-        { value: 'yes', label: 'Yes — I have a domain to point to this' },
-        { value: 'no', label: 'Not yet — give me the AWS-generated URL for now' },
-        { value: 'internal', label: 'No public domain needed — internal use only' },
-      ],
-    },
-    {
-      id: 'domain_name',
-      question: "What’s the domain? (e.g. app.myproduct.com)",
-      type: 'free',
-      options: [],
-      condition: (answers) => answers.domain_has === 'yes',
     },
   ]
 }

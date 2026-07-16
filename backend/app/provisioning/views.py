@@ -30,6 +30,37 @@ _PLAN_TYPE_TO_ACCOUNT_TYPE = {
 }
 
 
+def _write_staged_secrets(project, credentials, region):
+    """Write every EnvVarKey the user already staged (Step 1) to Secrets Manager
+    now that AWS is connected, instead of waiting for Step 6.
+
+    Found live: Step 5's `iac.generate()` builds the CloudFormation template
+    from `EnvVarKey.secrets_manager_arn` — a var with only `staged_value` (no
+    arn yet) is silently omitted from the generated template's Secrets/Environment
+    arrays (`build_spec.py`). Deferring the real write to Step 6 meant the
+    template was already frozen without the secret by the time it was written,
+    so the customer's own container crashed with a bare KeyError at migration —
+    writing here, right after AWS connects, ensures the arn exists before Step 5
+    ever runs."""
+    staged = EnvVarKey.objects.filter(
+        project=project, is_active=True, staged_value__isnull=False,
+    ).exclude(staged_value='').exclude(classification=EnvVarKey.Classification.GENERATED)
+    if not staged:
+        return
+    project_slug = ''.join(c if c.isalnum() or c == '-' else '-' for c in project.name).lower()
+    for var in staged:
+        secret_name = f'clyro/{project_slug}/{var.key_name}'
+        try:
+            arn = write_secret(credentials, region, secret_name, var.staged_value)
+        except ClientError:
+            log.exception('Failed to write staged secret %s for project %s', var.key_name, project.pk)
+            continue
+        var.secrets_manager_arn = arn
+        var.secrets_manager_key = var.key_name
+        var.staged_value = None
+        var.save(update_fields=['secrets_manager_arn', 'secrets_manager_key', 'staged_value', 'updated_at'])
+
+
 @api_view(['POST'])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)
@@ -116,6 +147,10 @@ def aws_connection_verify(request, pk):
     # the connect flow — get_account_plan_type already swallows and logs.
     plan_type = get_account_plan_type(credentials, region)
     verified_account_type = _PLAN_TYPE_TO_ACCOUNT_TYPE.get(plan_type) if plan_type else None
+
+    # Best-effort — a write failure here must never fail the connect flow;
+    # Step 6's SecretsWrite is still the fallback for anything left unwritten.
+    _write_staged_secrets(project, credentials, region)
 
     connection.iam_role_arn = role_arn
     connection.aws_account_id = aws_account_id

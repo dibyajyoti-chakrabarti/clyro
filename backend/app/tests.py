@@ -2,10 +2,11 @@ from unittest.mock import patch
 
 from cfnlint import api as cfnlint_api
 from cfnlint.config import ManualArgs
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
-from app.provisioning import cfn_events, cfn_generator, deploy
+from app.provisioning import cfn_events, cfn_generator, deploy, iac
 from app.scanner import compliance
+from core.models import EnvVarKey, Project, User
 
 
 def _spec(account_type="free_tier"):
@@ -296,3 +297,55 @@ class DeterministicTemplateFixTests(SimpleTestCase):
         self.assertFalse(changed)
         self.assertEqual(d.cloudformation_template, self._TEMPLATE)
         self.assertFalse(d.saved)
+
+
+class RequiredSecretsCheckTests(TestCase):
+    """Found live: a user_secret with no staged_value and no secrets_manager_arn
+    is silently dropped from the generated spec — the customer's own container
+    crashes mid-migration with a bare KeyError instead of Clyro catching it at
+    the Validate gate."""
+
+    def setUp(self):
+        self.user = User.objects.create(
+            cognito_sub="test-sub", email="test@example.com", name="Test User",
+        )
+        self.project = Project.objects.create(user=self.user, name="taskboard")
+
+    def test_missing_user_secret_is_a_blocker(self):
+        EnvVarKey.objects.create(
+            project=self.project, key_name="SECRET_KEY", classification="user_secret",
+        )
+        findings = iac.check_required_secrets_present(self.project)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["severity"], "blocker")
+        self.assertIn("SECRET_KEY", findings[0]["message"])
+
+    def test_staged_value_satisfies_the_check(self):
+        EnvVarKey.objects.create(
+            project=self.project, key_name="SECRET_KEY", classification="user_secret",
+            staged_value="already-staged-in-step-1",
+        )
+        self.assertEqual(iac.check_required_secrets_present(self.project), [])
+
+    def test_secrets_manager_arn_satisfies_the_check(self):
+        EnvVarKey.objects.create(
+            project=self.project, key_name="SECRET_KEY", classification="user_secret",
+            secrets_manager_arn="arn:aws:secretsmanager:us-east-1:123:secret:foo",
+        )
+        self.assertEqual(iac.check_required_secrets_present(self.project), [])
+
+    def test_generated_and_optional_vars_are_never_flagged(self):
+        EnvVarKey.objects.create(
+            project=self.project, key_name="DJANGO_SETTINGS_MODULE", classification="generated",
+        )
+        EnvVarKey.objects.create(
+            project=self.project, key_name="DEBUG", classification="optional",
+        )
+        self.assertEqual(iac.check_required_secrets_present(self.project), [])
+
+    def test_inactive_secret_is_not_flagged(self):
+        EnvVarKey.objects.create(
+            project=self.project, key_name="OLD_KEY", classification="user_secret",
+            is_active=False,
+        )
+        self.assertEqual(iac.check_required_secrets_present(self.project), [])

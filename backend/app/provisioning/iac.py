@@ -19,6 +19,7 @@ from typing import Any
 from cfnlint import api as cfnlint_api
 from cfnlint.config import ManualArgs
 from cfnlint.decode import cfn_yaml
+from django.db.models import Q
 
 from canvas_core import canvas_ops
 from core.models import (
@@ -539,6 +540,30 @@ def check_secret_interpolation(template: str, spec: dict) -> list[dict[str, str]
                        "(no JSON-key suffix).",
         })
     return findings
+
+
+def check_required_secrets_present(project: Project) -> list[dict[str, str]]:
+    """Found live: a `user_secret`-classified EnvVarKey with no value anywhere
+    (never staged in Step 1, never written to Secrets Manager) is silently
+    dropped by `build_spec.py` when the spec is built — it never reaches the
+    template, and the only symptom is the customer's own container crashing
+    with a bare `KeyError` mid-migration. Catch it here instead, before
+    provisioning ever starts."""
+    missing = EnvVarKey.objects.filter(
+        project=project, is_active=True, classification=EnvVarKey.Classification.USER_SECRET,
+    ).filter(
+        Q(secrets_manager_arn__isnull=True) | Q(secrets_manager_arn=""),
+    ).filter(
+        Q(staged_value__isnull=True) | Q(staged_value=""),
+    )
+    return [
+        {
+            "severity": "blocker",
+            "message": f"'{var.key_name}' has no value — go back to the secrets step "
+                       "and provide one before provisioning.",
+        }
+        for var in missing
+    ]
 
 
 def enforce_free_tier_limits(template: str, spec: dict) -> str:
@@ -2434,7 +2459,7 @@ def validate(project: Project, template: str) -> dict[str, Any]:
     region = _region_for(deployment)
     validation = lint_template(template, region)
     spec = _spec_for(deployment)
-    findings = _collect_findings(template, spec)
+    findings = _collect_findings(template, spec) + check_required_secrets_present(project)
     has_blocker = any(f["severity"] == "blocker" for f in findings)
 
     deployment.cloudformation_template = template
