@@ -24,13 +24,6 @@ from typing import Any
 
 from app import github_utils as _default_github_utils
 
-_SETTINGS_CANDIDATES = [
-    "settings.py", "settings/base.py", "settings/production.py",
-    "config/settings.py", "core/settings.py",
-    "backend/settings.py", "backend/settings/base.py", "backend/settings/production.py",
-    "backend/config/settings.py", "backend/core/settings.py",
-]
-
 _GENERATED_ENV_KEYS = {
     "DATABASE_URL", "CELERY_BROKER_URL", "CELERY_RESULT_BACKEND",
     "AWS_STORAGE_BUCKET_NAME", "DEFAULT_FILE_STORAGE",
@@ -72,13 +65,21 @@ def _find_backend_path(tree: set[str]) -> tuple[str, str] | None:
 
 
 def _find_settings_paths(tree: set[str], backend_prefix: str) -> list[str]:
+    """Any settings.py-shaped file under the backend directory. Found live:
+    a fixed list of conventional paths (settings.py, config/settings.py, ...)
+    misses a custom-named Django project package (e.g. a project called
+    "taskboard" keeps its settings at taskboard/settings/base.py) — search
+    the tree directly instead of guessing the project's own name."""
     found = []
-    for candidate in _SETTINGS_CANDIDATES:
-        for prefix in (backend_prefix, ""):
-            path = f"{prefix}{candidate}" if not candidate.startswith(backend_prefix) else candidate
-            if path in tree and path not in found:
-                found.append(path)
-    return found
+    for path in tree:
+        if backend_prefix and not path.startswith(backend_prefix):
+            continue
+        rest = path[len(backend_prefix):] if backend_prefix else path
+        if not rest.endswith(".py"):
+            continue
+        if rest.endswith("settings.py") or "/settings/" in rest:
+            found.append(path)
+    return sorted(found)
 
 
 def _classify_env_key(key: str, context: str) -> str:

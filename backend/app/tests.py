@@ -587,6 +587,31 @@ class RepoReconDeterministicDetectorTests(SimpleTestCase):
         result = deterministic_detector.detect("tok", "acme/app", "main", github_utils=gh)
         self.assertEqual(result["confidence"], "low")
 
+    def test_finds_settings_under_a_custom_named_project_package(self):
+        # Found live against a real repo: a Django project named "taskboard"
+        # keeps its settings at backend/taskboard/settings/base.py — a fixed
+        # list of conventional paths (settings.py, config/settings.py, ...)
+        # never finds this, silently dropping every env var it would have found.
+        gh = _FakeRepoGithubUtils(
+            tree=[
+                "backend/requirements.txt", "backend/manage.py",
+                "backend/taskboard/settings/base.py", "frontend/package.json",
+            ],
+            files={
+                "backend/requirements.txt": "django==5.0\npsycopg2-binary==2.9\n",
+                "backend/taskboard/settings/base.py": (
+                    'DATABASES = {"default": dj_database_url.config(default=os.environ["DATABASE_URL"])}\n'
+                    'ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")\n'
+                ),
+                "frontend/package.json": _REACT_PACKAGE_JSON,
+            },
+        )
+        result = deterministic_detector.detect("tok", "acme/app", "main", github_utils=gh)
+        self.assertEqual(result["confidence"], "high")
+        keys = {v["key"] for v in result["env_vars"]}
+        self.assertIn("DATABASE_URL", keys)
+        self.assertIn("ALLOWED_HOSTS", keys)
+
     def test_sqs_broker_detected_when_no_redis_present(self):
         requirements = "django==5.0\npsycopg2-binary==2.9\ncelery[sqs]==5.5.2\nboto3==1.34\n"
         gh = _FakeRepoGithubUtils(
