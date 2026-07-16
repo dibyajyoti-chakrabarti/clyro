@@ -100,7 +100,12 @@ programmatically via browser automation.
 **Result: full success.** Real SQS queue, ALB, CloudFront distribution, RDS database,
 and S3 frontend/app-storage buckets were provisioned end-to-end (`run_provision_task`
 completed in 784s), reached "Your infrastructure is live," and were torn down again via
-the UI's delete flow.
+the UI's delete flow — confirmed via CloudFormation directly (`describe-stacks` returned
+"Stack ... does not exist" once complete) and via an independent post-teardown sweep of
+the test account: zero `clyro-*`/`app-dev-*` CloudFormation stacks, ECS clusters, RDS
+instances, or S3 buckets remained. The ElastiCache Redis replication group was, as
+expected, the slowest resource to tear down (several minutes after everything else had
+already gone to `DELETE_COMPLETE`).
 
 ### Bugs found live during this pass (beyond what's listed above)
 
