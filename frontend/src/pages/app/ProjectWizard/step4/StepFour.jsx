@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Database, Globe, Layers, Package, Server, Settings2, Zap } from 'lucide-react'
+import { Database, Globe, Layers, Package, Server, Settings2, Zap, ZoomIn, ZoomOut } from 'lucide-react'
 import CanvasSurface from './canvas/CanvasSurface'
 import CanvasNode from './canvas/CanvasNode'
 import NodePopup from './canvas/NodePopup'
@@ -131,8 +131,6 @@ function StepFourPanel({
           movePan={movePan}
           endPan={endPan}
           setSelectedNode={setSelectedNode}
-          step4ShowBanner={step4ShowBanner}
-          onDismissStep4Banner={onDismissStep4Banner}
           surfaceBounds={surfaceBounds}
           canvasNodes={canvasNodes}
           canvasConnections={canvasConnections}
@@ -150,26 +148,46 @@ function StepFourPanel({
           handleAskAbout={handleAskAbout}
         />
 
+        {step4ShowBanner ? (
+          <div className='pointer-events-none absolute inset-x-0 top-0 z-20 border-b border-[#1F7A4D] bg-[#0F2E22] px-4 py-3'>
+            <div className='pointer-events-auto flex items-center justify-between'>
+              <p className='text-sm font-medium text-[#86EFAC]'>
+                Architecture finalized
+              </p>
+              <button
+                type='button'
+                className='text-xs text-[#86EFAC]/60 hover:text-[#86EFAC] transition-colors duration-150'
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onDismissStep4Banner()
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div className='pointer-events-none absolute bottom-8 left-8 z-30'>
           <div className='pointer-events-auto overflow-hidden rounded-[22px] border border-border bg-surface/90 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-md'>
             <button
               type='button'
-              className='grid h-10 w-10 place-items-center text-lg font-light text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
+              className='grid h-10 w-10 place-items-center text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
               onClick={zoomIn}
               aria-label='Zoom in'
             >
-              +
+              <ZoomIn className='h-4 w-4' />
             </button>
             <div className='select-none border-y border-border py-0.5 text-center text-[10px] text-text-muted'>
               {Math.round(zoom * 100)}%
             </div>
             <button
               type='button'
-              className='grid h-10 w-10 place-items-center text-lg font-light text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
+              className='grid h-10 w-10 place-items-center text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
               onClick={zoomOut}
               aria-label='Zoom out'
             >
-              −
+              <ZoomOut className='h-4 w-4' />
             </button>
           </div>
         </div>

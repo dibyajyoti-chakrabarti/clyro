@@ -5,8 +5,6 @@ export default function CanvasSurface({
   endPan,
   setSelectedNode,
   setChatInput,
-  step4ShowBanner,
-  onDismissStep4Banner,
   surfaceBounds,
   canvasNodes,
   canvasConnections,
@@ -59,26 +57,6 @@ export default function CanvasSurface({
         onMouseLeave={endPan}
         onClick={() => setSelectedNode(null)}
       >
-        {step4ShowBanner ? (
-          <div className="sticky top-0 z-20 border-b border-[rgba(255,179,0,0.15)] bg-[rgba(255,179,0,0.07)] px-4 py-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-[#FFB300]">
-                Architecture finalized
-              </p>
-              <button
-                type="button"
-                className="text-xs text-[rgba(255,179,0,0.6)] hover:text-[#FFB300] transition-colors duration-150"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDismissStep4Banner();
-                }}
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         {/* Spacer div — sets scroll dimensions to match zoom level */}
         <div style={{ width: scaledW, height: scaledH, position: "relative" }}>
           {/* Scaled content */}

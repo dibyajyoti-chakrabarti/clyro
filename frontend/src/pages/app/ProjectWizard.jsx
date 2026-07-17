@@ -294,12 +294,18 @@ export default function ProjectWizard() {
                 moves Back/Continue into its own success bar once the IAM role connects,
                 so the shared footer steps aside at that point to avoid a duplicate row. */}
             {step !== 1 && step !== 3 && step !== 5 && step !== 6 && !(step === 2 && projectData?.connection?.connected) && (
-              <div className='mt-auto flex w-full flex-col items-stretch justify-between gap-3 pt-8 sm:flex-row sm:items-center'>
+              <div
+                className={`mt-auto flex w-full flex-col items-stretch justify-between gap-3 pt-8 sm:flex-row sm:items-center ${
+                  step === 4 ? 'px-8 pb-8' : ''
+                }`}
+              >
                 {step > 1 ? (
                   <Button
                     variant='secondary'
                     onClick={handleBack}
-                    className='h-14 w-full justify-center gap-2 rounded-[18px] px-6 text-sm font-semibold sm:w-auto sm:min-w-[180px]'
+                    className={`h-14 w-full justify-center gap-2 rounded-[18px] px-6 text-sm font-semibold sm:w-auto ${
+                      step === 4 ? 'sm:w-[190px]' : 'sm:min-w-[180px]'
+                    }`}
                   >
                     <ArrowLeft className='h-4 w-4' />
                     Back
@@ -312,7 +318,7 @@ export default function ProjectWizard() {
                     variant='primary'
                     onClick={handleContinue}
                     disabled={!canAdvance(step) && !(step === 4 && !step4Finalized)}
-                    className='h-14 w-full justify-center gap-2 rounded-[18px] px-6 text-sm font-semibold transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(255,196,0,0.18)] sm:w-auto sm:min-w-[180px]'
+                    className='h-14 w-full justify-center gap-2 rounded-[18px] px-6 text-sm font-semibold transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(255,196,0,0.18)] sm:w-[190px]'
                   >
                     {/* Use continueLabel: after the first click finalizes, this becomes
                         "Continue to step 5" instead of a stuck "Finalize" that gave no
