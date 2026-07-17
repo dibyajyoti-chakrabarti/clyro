@@ -1,6 +1,10 @@
 # Infra Reliability Audit
 
-## 1. `Project.status` has no periodic reconciliation against real AWS state
+## 1. ~~`Project.status` has no periodic reconciliation against real AWS state~~ — fixed
+
+**Fixed as of commit `2cc6ac9`.** `backend/app/provisioning/reconcile.py` now implements a full sweep (`_check_connection`, `_resolve_stuck_deletion`, `sweep()`) wired into `CELERY_BEAT_SCHEDULE` (`backend/config/settings.py:96-101`, every 15 minutes) via `app.tasks.run_reconcile_sweep_task`, with test coverage (`ReconcileConnectionSweepTests`, `ReconcileStuckDeletionTests` in `backend/app/tests.py`). Marks dead `AWSAccountConnection`s (`health_status=UNREACHABLE`) and resolves stuck `Deployment.DELETING` rows exactly as described below. Re-verified live 2026-07-17. Original finding kept below for context.
+
+### (superseded) original finding text
 
 No Celery beat schedule exists anywhere in this codebase (`grep` for beat/periodic-task registration across `app/tasks.py` and `config/` finds nothing). `Project.status` is a one-way write — set on scan/build/deploy success or failure, `pause`/`resume`, and teardown — and is only ever re-checked against real AWS state when a user actively opens Step 5 (`deploy.health()`) or Step 4's provisioning screen (`deploy.poll()`). A project whose CloudFormation stack was deleted outside Clyro (manually in the AWS console, or by an account-level cleanup) keeps showing "Live" on the dashboard indefinitely until someone happens to open that project. Step 5 was hardened this cycle to honestly report "infrastructure not found" instead of hanging when that happens, which papers over the symptom but doesn't fix the stale dashboard state. A real fix needs new infrastructure (a Celery beat schedule + a lightweight `describe_stacks` sweep across live deployments) — sized as a dedicated piece of work, not a tweak.
 

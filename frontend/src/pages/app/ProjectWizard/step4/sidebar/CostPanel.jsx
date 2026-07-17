@@ -17,8 +17,11 @@ const ENVIRONMENT_LABELS = {
   development: 'Development',
 }
 
-export default function CostPanel({ canvasCost, totalCost, environment, onClose }) {
+const DEFAULT_ASSUMPTIONS = ['Region: us-east-1', 'Runtime: 730 hrs/month', 'Data transfer excluded']
+
+export default function CostPanel({ canvasCost, totalCost, assumptions, environment, onClose }) {
   const environmentLabel = ENVIRONMENT_LABELS[environment] || 'Production'
+  const displayedAssumptions = assumptions && assumptions.length > 0 ? assumptions : DEFAULT_ASSUMPTIONS
   return (
     <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[rgba(255,193,7,0.10)] bg-[rgba(10,10,10,0.42)] shadow-[0_24px_80px_rgba(0,0,0,0.28),0_0_60px_rgba(255,193,7,0.05)] backdrop-blur-[20px]'>
       <div className='shrink-0 px-4 pt-4 pb-3'>
@@ -84,9 +87,9 @@ export default function CostPanel({ canvasCost, totalCost, environment, onClose 
         <div className='mt-4 rounded-[16px] border border-[rgba(255,193,7,0.08)] bg-white/[0.02] px-4 py-4 backdrop-blur-[12px]'>
           <p className='text-[13px] font-medium text-text-primary'>Pricing Assumptions</p>
           <ul className='mt-2 space-y-1.5 text-xs leading-5 text-text-muted'>
-            <li>Region: us-east-1</li>
-            <li>Runtime: 730 hrs/month</li>
-            <li>Data transfer excluded</li>
+            {displayedAssumptions.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
           </ul>
         </div>
 

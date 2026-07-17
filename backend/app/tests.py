@@ -912,3 +912,166 @@ class ReconcileStuckDeletionTests(TestCase):
         self.assertEqual(counts["deployments_resolved"], 1)
         entry = ProvisioningLogEntry.objects.get(deployment=deployment)
         self.assertIn("reconnect your AWS account", entry.plain_message)
+
+
+class DeployLifecycleTests(TestCase):
+    """deploy.py had near-zero test coverage despite being the highest-consequence
+    backend file (submits/deletes real customer AWS stacks) — covers _assume's
+    error branching and the teardown/poll/health lifecycle transitions."""
+
+    def setUp(self):
+        self.user = User.objects.create(cognito_sub="sub-d", email="d@example.com", name="D")
+        self.project = Project.objects.create(user=self.user, name="taskboard")
+        self.connection = AWSAccountConnection.objects.create(
+            project=self.project, aws_account_id="123456789012", iam_role_arn="arn:aws:iam::123:role/clyro",
+            bootstrap_stack_id="clyro-bootstrap", connected_at=timezone.now(),
+        )
+        self.intent = IntentRecord.objects.create(project=self.project)
+        self.canvas = CanvasVersion.objects.create(
+            project=self.project, intent_record=self.intent, version_number=1,
+            canvas_yaml="version: 1\nnodes: []\nconnections: []\n", canvas_snapshot={},
+        )
+
+    def _deployment(self, **kwargs):
+        defaults = dict(
+            project=self.project, canvas_version=self.canvas, intent_record=self.intent,
+            aws_connection=self.connection, environment=Deployment.Environment.PRODUCTION,
+            status=Deployment.Status.COMPLETE, cloudformation_stack_name="clyro-taskboard-production",
+            cloudformation_stack_id="arn:aws:cloudformation:us-east-1:123:stack/clyro-taskboard-production/abc",
+        )
+        defaults.update(kwargs)
+        return Deployment.objects.create(**defaults)
+
+    # ── _assume ──────────────────────────────────────────────────────────────
+
+    @patch('app.provisioning.deploy.aws_client.assume_role')
+    def test_assume_access_denied_raises_reconnect_error(self, mock_assume):
+        mock_assume.side_effect = _access_denied()
+        deployment = self._deployment()
+        with self.assertRaisesMessage(deploy.DeployError, "reconnect your AWS account"):
+            deploy._assume(deployment)
+
+    @patch('app.provisioning.deploy.aws_client.assume_role')
+    def test_assume_other_client_error_raises_generic_error(self, mock_assume):
+        mock_assume.side_effect = ClientError(
+            {"Error": {"Code": "Throttling", "Message": "slow down"}}, "AssumeRole",
+        )
+        deployment = self._deployment()
+        with self.assertRaisesMessage(deploy.DeployError, "slow down"):
+            deploy._assume(deployment)
+
+    @patch('app.provisioning.deploy.aws_client.assume_role')
+    def test_assume_success_returns_creds_and_region(self, mock_assume):
+        mock_assume.return_value = {"AccessKeyId": "a", "SecretAccessKey": "b", "SessionToken": "c"}
+        deployment = self._deployment()
+        creds, region = deploy._assume(deployment)
+        self.assertEqual(creds["AccessKeyId"], "a")
+        self.assertEqual(region, self.connection.aws_region or "us-east-1")
+
+    def test_assume_with_no_connection_raises(self):
+        deployment = self._deployment(aws_connection=None)
+        with self.assertRaisesMessage(deploy.DeployError, "Connect your AWS account"):
+            deploy._assume(deployment)
+
+    # ── teardown ─────────────────────────────────────────────────────────────
+
+    @patch('app.provisioning.deploy.aws_client.delete_stack')
+    @patch('app.provisioning.deploy.aws_client.list_stack_resources')
+    @patch('app.provisioning.deploy.aws_client.assume_role')
+    def test_teardown_deletes_stack_and_sets_deleting(self, mock_assume, mock_list_resources, mock_delete):
+        mock_assume.return_value = {"AccessKeyId": "a", "SecretAccessKey": "b", "SessionToken": "c"}
+        mock_list_resources.return_value = []
+        deployment = self._deployment()
+        result = deploy.teardown(self.project)
+        deployment.refresh_from_db()
+        mock_delete.assert_called_once()
+        self.assertEqual(deployment.status, Deployment.Status.DELETING)
+        self.assertEqual(result["status"], Deployment.Status.DELETING)
+
+    @patch('app.provisioning.deploy.aws_client.delete_stack')
+    @patch('app.provisioning.deploy.aws_client.assume_role')
+    def test_teardown_with_dead_connection_never_calls_delete_stack(self, mock_assume, mock_delete):
+        mock_assume.side_effect = _access_denied()
+        self._deployment()
+        with self.assertRaises(deploy.DeployError):
+            deploy.teardown(self.project)
+        mock_delete.assert_not_called()
+
+    def test_teardown_already_deleting_is_a_no_op(self):
+        deployment = self._deployment(status=Deployment.Status.DELETING)
+        result = deploy.teardown(self.project)
+        self.assertEqual(result["status"], Deployment.Status.DELETING)
+
+    def test_teardown_with_no_active_deployment_raises(self):
+        with self.assertRaisesMessage(deploy.DeployError, "No provisioned infrastructure"):
+            deploy.teardown(self.project)
+
+    # ── poll ─────────────────────────────────────────────────────────────────
+
+    @patch('app.provisioning.deploy.aws_client.describe_stack_events')
+    @patch('app.provisioning.deploy.aws_client.describe_stack')
+    @patch('app.provisioning.deploy.aws_client.assume_role')
+    def test_poll_deleting_to_deleted_when_stack_gone(self, mock_assume, mock_describe, mock_events):
+        mock_assume.return_value = {"AccessKeyId": "a", "SecretAccessKey": "b", "SessionToken": "c"}
+        mock_describe.side_effect = ClientError(
+            {"Error": {"Code": "ValidationError", "Message": "Stack does not exist"}}, "DescribeStacks",
+        )
+        deployment = self._deployment(status=Deployment.Status.DELETING)
+        result = deploy.poll(self.project)
+        deployment.refresh_from_db()
+        self.project.refresh_from_db()
+        self.assertEqual(deployment.status, Deployment.Status.DELETED)
+        self.assertEqual(self.project.status, Project.Status.DELETED)
+        self.assertEqual(result["status"], Deployment.Status.DELETED)
+
+    @patch('app.provisioning.deploy.aws_client.describe_stack_events')
+    @patch('app.provisioning.deploy.aws_client.describe_stack')
+    @patch('app.provisioning.deploy.aws_client.assume_role')
+    def test_poll_non_terminal_status_leaves_deployment_unchanged(self, mock_assume, mock_describe, mock_events):
+        mock_assume.return_value = {"AccessKeyId": "a", "SecretAccessKey": "b", "SessionToken": "c"}
+        mock_describe.return_value = {"status": "CREATE_IN_PROGRESS", "outputs": []}
+        mock_events.return_value = []
+        deployment = self._deployment(status=Deployment.Status.SUBMITTING)
+        deployment.cloudformation_stack_name = "clyro-taskboard-production"
+        deployment.save(update_fields=["cloudformation_stack_name"])
+        result = deploy.poll(self.project)
+        deployment.refresh_from_db()
+        self.assertEqual(deployment.status, Deployment.Status.IN_PROGRESS)
+        self.assertEqual(result["status"], Deployment.Status.IN_PROGRESS)
+
+    def test_poll_with_no_active_deployment_raises(self):
+        with self.assertRaisesMessage(deploy.DeployError, "No active deployment"):
+            deploy.poll(self.project)
+
+    # ── health ───────────────────────────────────────────────────────────────
+
+    @patch('app.provisioning.deploy.aws_client.list_stack_resources')
+    @patch('app.provisioning.deploy.aws_client.assume_role')
+    def test_health_stack_not_found_returns_not_found_status(self, mock_assume, mock_list_resources):
+        mock_assume.return_value = {"AccessKeyId": "a", "SecretAccessKey": "b", "SessionToken": "c"}
+        mock_list_resources.side_effect = ClientError(
+            {"Error": {"Code": "ValidationError", "Message": "Stack does not exist"}}, "ListStackResources",
+        )
+        deployment = self._deployment()
+        result = deploy.health(self.project)
+        self.assertEqual(result["stack_status"], "not_found")
+        self.assertEqual(result["health_items"], [])
+
+    def test_health_with_no_active_deployment_raises(self):
+        with self.assertRaisesMessage(deploy.DeployError, "No provisioned infrastructure"):
+            deploy.health(self.project)
+
+    # ── _has_been_live ───────────────────────────────────────────────────────
+
+    def test_has_been_live_true_for_live_project(self):
+        self.project.status = Project.Status.LIVE
+        self.project.save(update_fields=["status"])
+        self.assertTrue(deploy._has_been_live(self.project))
+
+    def test_has_been_live_true_for_completed_deployment(self):
+        self._deployment(status=Deployment.Status.COMPLETE)
+        self.assertTrue(deploy._has_been_live(self.project))
+
+    def test_has_been_live_false_for_never_live_project(self):
+        self._deployment(status=Deployment.Status.FAILED)
+        self.assertFalse(deploy._has_been_live(self.project))

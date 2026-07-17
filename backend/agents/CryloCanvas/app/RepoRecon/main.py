@@ -156,6 +156,9 @@ Triggers: no settings file found anywhere, DB engine unclear, suspected boto3.
 ### Workers
 - "celery" in requirements.txt → Celery confirmed
 - "django-celery-beat" in requirements.txt → scheduled tasks confirmed
+- CELERY_BROKER_URL's literal scheme in settings (e.g. `env('CELERY_BROKER_URL', default='redis://...')` or a hardcoded string) →
+  "redis://" prefix → broker: "redis"; "sqs://" prefix → broker: "sqs"; no CELERY_BROKER_URL found or scheme not
+  recognized → broker: null (the deterministic build step falls back to inferring it from provisioned resources)
 
 ### Cache
 - "redis" or "django-redis" in requirements.txt → Redis confirmed
@@ -209,7 +212,8 @@ The JSON must match this exact structure:
       "worker": {
         "detected": true | false,
         "type": "celery" | null,
-        "scheduled": true | false
+        "scheduled": true | false,
+        "broker": "redis" | "sqs" | null
       }
     },
     "infrastructure": {
