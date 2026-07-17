@@ -94,6 +94,15 @@ function StepFivePanel({ projectId, projectData, setProjectData, onBackToCanvas,
     }
   }
 
+  // No more "Generate infrastructure" confirmation screen — generation starts
+  // automatically as soon as hydration confirms there's no template yet.
+  useEffect(() => {
+    if (!hydrating && !iacTemplate && !iacGenerating && !iacError) {
+      runGenerate()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrating])
+
   const handleRefine = async () => {
     const instruction = refineInput.trim()
     if (!instruction || iacRefining) return

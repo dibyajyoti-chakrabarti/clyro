@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, Copy, FileCode2, Play, RefreshCw, Send, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, Copy, FileCode2, RefreshCw, Send, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Button from '../../../../components/ui/Button'
 import CfnEditor from '../../../../components/wizard/CfnEditor'
@@ -241,11 +241,27 @@ export default function IacEditor({
       </div>
 
       {/* ── Body ── */}
-      {generating && !template ? (
+      {!template && error ? (
+        /* Error state with retry */
+        <div className='flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center'>
+          <AlertTriangle className='h-6 w-6 text-red-400' />
+          <p className='max-w-md text-sm text-red-300'>{error}</p>
+          <div className='w-full max-w-xs'>
+            <Button variant='primary' onClick={onRetryGenerate} className='w-full justify-center'>
+              <RefreshCw className='h-4 w-4' />
+              Retry generation
+            </Button>
+          </div>
+        </div>
+
+      ) : !template ? (
         /* Curated stage loader — the only generation-in-progress UI. No raw model
            reasoning/chain-of-thought is ever surfaced here (or in the editor, which
            stays hidden behind this loader for the whole job): the backend keeps
-           streamed 'thinking' text for its own debugging only. */
+           streamed 'thinking' text for its own debugging only. Generation is kicked
+           off automatically as soon as Step 5 mounts, so this is what greets the
+           user immediately — there's no separate "Generate template" confirmation
+           screen. */
         <div className='flex flex-1 flex-col items-center justify-center gap-5 text-center'>
           <span className='h-8 w-8 rounded-full border-2 border-accent border-t-transparent animate-spin' />
           <div className='space-y-1'>
@@ -271,44 +287,6 @@ export default function IacEditor({
               Taking longer than usual — the agent may be handling a complex architecture.
             </p>
           )}
-        </div>
-
-      ) : !template && error ? (
-        /* Error state with retry */
-        <div className='flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center'>
-          <AlertTriangle className='h-6 w-6 text-red-400' />
-          <p className='max-w-md text-sm text-red-300'>{error}</p>
-          <div className='w-full max-w-xs'>
-            <Button variant='primary' onClick={onRetryGenerate} className='w-full justify-center'>
-              <RefreshCw className='h-4 w-4' />
-              Retry generation
-            </Button>
-          </div>
-        </div>
-
-      ) : !template ? (
-        /* Pre-generate */
-        <div className='flex flex-1 flex-col items-center justify-center gap-6 p-8 text-center'>
-          <div className='flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10'>
-            <FileCode2 className='h-8 w-8 text-accent' />
-          </div>
-          <div className='space-y-2'>
-            <p className='text-base font-semibold text-text-primary'>Generate infrastructure</p>
-            <p className='max-w-sm text-sm text-text-muted'>
-              Clyro will write a deterministic CloudFormation template from your finalized architecture.
-            </p>
-          </div>
-          <div className='w-full max-w-xs'>
-            <Button
-              variant='primary'
-              onClick={onRetryGenerate}
-              disabled={generating}
-              className='w-full justify-center'
-            >
-              <Play className='h-4 w-4' />
-              Generate template
-            </Button>
-          </div>
         </div>
 
       ) : (
