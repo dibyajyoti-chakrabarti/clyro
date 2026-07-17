@@ -25,6 +25,8 @@ chapter you need.
 | 15 | [Hardening and Latency Plan](ch_15_hardening_and_latency_plan.md) | Planning document for E2E improvements |
 | 16 | [E2E Latency Report](ch_16_e2e_latency_report.md) | Latency metrics and analysis of the wizard flow |
 | 17 | [E2E Hardening Report](ch_17_e2e_hardening_report.md) | Hardening test results post-optimization |
+| 18 | [IAM Least-Privilege Review](ch_18_iam_least_privilege_review.md) | Recurring audit of generated customer roles and ClyroProvisioningRole |
+| 19 | [Audit Remediation & Prod Verification Report](ch_19_audit_remediation_and_prod_verification.md) | Full audit close-out, production deploy, and live E2E verification against clyro.cloud |
 
 ## Repo layout at a glance
 

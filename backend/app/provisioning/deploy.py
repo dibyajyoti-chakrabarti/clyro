@@ -144,6 +144,19 @@ def start(project: Project) -> dict[str, Any]:
 
     deployment.status = Deployment.Status.SUBMITTING
     deployment.save(update_fields=["status", "updated_at"])
+
+    # Domain support: generate()/refine()/validate() make no live AWS calls by
+    # design (the account may not even be connected yet at template-generation
+    # time), so the Route53 hosted zone lookup happens here instead, right
+    # after credentials are confirmed — the earliest point it can be resolved.
+    stack_parameters = None
+    domain = spec.get("domain") or {}
+    if domain.get("has_domain") and domain.get("hosted_zone_name"):
+        zone_id = domain.get("hosted_zone_id") or aws_client.find_hosted_zone_id(
+            creds, region, domain["hosted_zone_name"],
+        )
+        stack_parameters = {"DomainHostedZoneId": zone_id or ""}
+
     # Found live: the delete_stack() above is fire-and-forget (CFN deletes
     # asynchronously) — create_stack moments later can race it and fail with
     # "already exists"/"_IN_PROGRESS" even though the delete is genuinely still
@@ -155,7 +168,9 @@ def start(project: Project) -> dict[str, Any]:
     last_exc = None
     for attempt in range(4):
         try:
-            stack_id = aws_client.create_stack(creds, region, stack_name, deployment.cloudformation_template)
+            stack_id = aws_client.create_stack(
+                creds, region, stack_name, deployment.cloudformation_template, stack_parameters,
+            )
             last_exc = None
             break
         except ClientError as exc:

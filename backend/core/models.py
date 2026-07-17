@@ -194,6 +194,10 @@ class IntentRecord(models.Model):
     worker_compute_choice = models.TextField(choices=ComputeChoice.choices, null=True, blank=True)
     domain_has = models.TextField(choices=DomainHas.choices, null=True, blank=True)
     domain_name = models.TextField(null=True, blank=True)
+    # Optional manual override — when blank, deploy.start() resolves the zone
+    # live via route53:ListHostedZones at provisioning time instead (the AWS
+    # account isn't necessarily connected yet when domain_name is answered).
+    route53_hosted_zone_id = models.TextField(null=True, blank=True)
     aws_account_type = models.TextField(choices=AwsAccountType.choices, null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -275,6 +279,18 @@ class AWSAccountConnection(models.Model):
     claimed_account_type = models.CharField(
         max_length=16, choices=IntentRecord.AwsAccountType.choices, null=True, blank=True,
     )
+
+    class HealthStatus(models.TextChoices):
+        HEALTHY = 'healthy'
+        UNREACHABLE = 'unreachable'  # AssumeRole AccessDenied — likely bootstrap stack torn down
+        UNKNOWN = 'unknown'  # never reconciled yet
+
+    # Proactively swept on a schedule (app.provisioning.reconcile.sweep) rather
+    # than only discovered reactively the next time the user hits _assume() —
+    # see reconcile.py for the incident that motivated this.
+    health_status = models.TextField(choices=HealthStatus.choices, default=HealthStatus.UNKNOWN)
+    last_reconciled_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

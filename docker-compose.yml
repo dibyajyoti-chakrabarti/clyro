@@ -75,6 +75,31 @@ services:
       - /app/venv
       - ${HOME}/.aws:/root/.aws:ro
 
+  celery_beat:
+    build: ./backend
+    container_name: clyro_celery_beat
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://clyro:clyro@db:5432/clyro_db
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    env_file:
+      - ./backend/.env.local
+    # Drives CELERY_BEAT_SCHEDULE (config/settings.py) — currently just the
+    # AWS-state reconciliation sweep (app.provisioning.reconcile). In prod
+    # this runs as a second process on the same Celery worker service
+    # (infrastructure/modules/celery_worker/), not a separate always-on task.
+    command: celery -A config beat --loglevel=info
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/venv
+      - ${HOME}/.aws:/root/.aws:ro
+
   frontend:
     build: ./frontend
     container_name: clyro_frontend

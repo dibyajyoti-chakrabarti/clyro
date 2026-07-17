@@ -2,12 +2,13 @@ import { useEffect, useRef } from 'react'
 import Editor, { loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import { configureMonacoYaml } from 'monaco-yaml'
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-// Importing 'monaco-yaml/yaml.worker' directly with Vite's ?worker suffix breaks
-// the worker's foreign-module RPC registration (findDocumentSymbols/getFoldingRanges
-// come back "Missing requestHandler or method") — this is monaco-yaml's own
-// documented Vite pitfall. The fix is the indirection below: import it from a local
-// wrapper file instead of the package path.
+// Importing monaco-editor/monaco-yaml's worker entry points directly from their
+// package path with Vite's ?worker suffix breaks the worker's foreign-module RPC
+// registration (findDocumentSymbols/getFoldingRanges come back "Missing
+// requestHandler or method") — a documented Vite pitfall for both packages. The
+// fix is the indirection below: import each from a local wrapper file instead of
+// the package path directly.
+import EditorWorker from '../../monaco/editor.worker.js?worker'
 import YamlWorker from '../../monaco/yaml.worker.js?worker'
 
 // Wire the Monaco web workers for Vite. monaco-yaml runs the schema/diagnostics

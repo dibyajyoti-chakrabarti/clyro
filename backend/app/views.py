@@ -1,3 +1,4 @@
+from django.conf import settings
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -207,6 +208,12 @@ def wizard_state(request, pk):
     except Project.DoesNotExist:
         return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Step 1 entry — warm RepoRecon now so the eventual Scan click skips the
+    # ~17s AgentCore cold start. Only fires once per project (CREATED is the
+    # very first status, before repo connect/scan) rather than on every poll.
+    if project.status == Project.Status.CREATED and getattr(settings, "IAC_WARMUP_ENABLED", False):
+        tasks.run_warmup_task.delay(str(project.id), "REPORECON_RUNTIME_ARN")
+
     scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
     intent = project.intent_records.order_by('-created_at').first()
 
@@ -225,6 +232,7 @@ def wizard_state(request, pk):
         'connection': {
             'connected': bool(connection),
             'region': connection.aws_region if connection else None,
+            'health_status': connection.health_status if connection else None,
         },
     })
 
@@ -257,6 +265,11 @@ def save_intent(request, pk):
     project.status = Project.Status.INTENT_COLLECTED
     project.save(update_fields=['status', 'updated_at'])
 
+    # Warm the Reasoning runtime now so the canvas step's first chat call is
+    # already hot by the time the user gets there.
+    if getattr(settings, "IAC_WARMUP_ENABLED", False):
+        tasks.run_warmup_task.delay(str(project.id), "REASONING_RUNTIME_ARN")
+
     return Response(IntentRecordSerializer(intent).data, status=status.HTTP_201_CREATED)
 
 
@@ -274,14 +287,34 @@ def github_installations(request):
     if not installation_id:
         return Response({'error': 'installation_id is required'}, status=status.HTTP_400_BAD_REQUEST)
 
+    installation_id = int(installation_id)
+
+    # installation_id is a GitHub-assigned identifier, not a secret bound to
+    # the requesting user — without this check, any authenticated user who
+    # learns another org's installation_id (e.g. from a shared URL) could
+    # silently reassign that installation's ownership to themselves and gain
+    # access to every repo it covers via Clyro's own GitHub App credentials.
+    existing = GitHubInstallation.objects.filter(installation_id=installation_id).first()
+    if existing and existing.user_id != request.user.id:
+        return Response(
+            {
+                'error': (
+                    'This GitHub installation is already connected to a different '
+                    'account. If you own this GitHub organization, reinstall the '
+                    'Clyro GitHub App from that organization to reconnect it here.'
+                )
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     try:
-        info = github_utils.get_installation_info(int(installation_id))
+        info = github_utils.get_installation_info(installation_id)
     except Exception as exc:
         return Response({'error': f'GitHub API error: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
 
     account = info.get('account', {})
     installation, _ = GitHubInstallation.objects.update_or_create(
-        installation_id=int(installation_id),
+        installation_id=installation_id,
         defaults={
             'user': request.user,
             'account_login': account.get('login', ''),

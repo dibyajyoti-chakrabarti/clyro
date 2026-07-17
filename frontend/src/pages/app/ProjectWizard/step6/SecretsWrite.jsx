@@ -16,26 +16,53 @@ export default function SecretsWrite({ projectId, onDone }) {
   const [extraVars, setExtraVars] = useState([])
   const [savingEnvVars, setSavingEnvVars] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  const [autoWriting, setAutoWriting] = useState(false)
+
+  const doSave = async (values, extras) => {
+    setSaveError(null)
+    try {
+      // Only typed values are sent; already-saved/staged fields left blank
+      // keep their existing Secrets Manager entry (the backend skips empty values).
+      await api.saveEnvVars(projectId, { values, extra_vars: extras })
+      onDone?.()
+    } catch (err) {
+      setSaveError(err.data?.error || 'Failed to save secrets — please try again.')
+      throw err
+    }
+  }
 
   useEffect(() => {
     if (!projectId) return
     setEnvVarsLoading(true)
     api.getEnvVars(projectId)
-      .then((data) => {
+      .then(async (data) => {
         const userSecrets = data.user_secret || []
         setUserSecretVars(userSecrets)
         setGeneratedVars(data.generated || [])
         // Pre-fill from Step 1's staged values so the user isn't forced to
         // retype a secret they already entered before AWS was connected.
-        setSecretValues((prev) => {
-          const next = { ...prev }
-          for (const field of userSecrets) {
-            if (field.staged_value && !(field.key_name in next)) {
-              next[field.key_name] = field.staged_value
-            }
+        const prefilled = {}
+        for (const field of userSecrets) {
+          if (field.staged_value) prefilled[field.key_name] = field.staged_value
+        }
+        setSecretValues((prev) => ({ ...prefilled, ...prev }))
+
+        // Everything the user needs to supply was already staged in Step 1 —
+        // don't make them look at a secrets form again (looked exactly like
+        // being asked to retype from scratch, found live). Write straight
+        // through to Secrets Manager and continue.
+        const alreadyFilled = userSecrets.length === 0 || userSecrets.every(
+          (field) => field.secrets_manager_arn || field.staged_value
+        )
+        if (alreadyFilled) {
+          setAutoWriting(true)
+          setEnvVarsLoading(false)
+          try {
+            await doSave(prefilled, [])
+          } catch {
+            setAutoWriting(false)
           }
-          return next
-        })
+        }
       })
       .catch(() => {})
       .finally(() => setEnvVarsLoading(false))
@@ -52,17 +79,22 @@ export default function SecretsWrite({ projectId, onDone }) {
 
   const handleSaveEnvVars = async () => {
     setSavingEnvVars(true)
-    setSaveError(null)
     try {
-      // Only typed values are sent; already-saved/staged fields left blank
-      // keep their existing Secrets Manager entry (the backend skips empty values).
-      await api.saveEnvVars(projectId, { values: secretValues, extra_vars: extraVars })
-      onDone?.()
-    } catch (err) {
-      setSaveError(err.data?.error || 'Failed to save secrets — please try again.')
+      await doSave(secretValues, extraVars)
+    } catch {
+      // error already set by doSave
     } finally {
       setSavingEnvVars(false)
     }
+  }
+
+  if (autoWriting) {
+    return (
+      <div className='flex items-center justify-center py-12 gap-2 text-sm text-text-muted'>
+        <span className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
+        Writing secrets to AWS Secrets Manager…
+      </div>
+    )
   }
 
   return (

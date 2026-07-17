@@ -108,20 +108,49 @@ def _cfn_client(credentials: dict, region: str):
     )
 
 
-def create_stack(credentials: dict, region: str, stack_name: str, template_body: str) -> str:
+def create_stack(
+    credentials: dict, region: str, stack_name: str, template_body: str,
+    parameters: dict[str, str] | None = None,
+) -> str:
     """Submit a CloudFormation stack to the user's account. Returns the stack id.
     CAPABILITY_NAMED_IAM is required because the template creates named IAM roles
     (ECS task/execution roles, etc.). create_stack returns immediately — CFN
     provisions asynchronously; progress is read via describe_stack_events."""
     cfn = _cfn_client(credentials, region)
+    kwargs = {}
+    if parameters:
+        kwargs['Parameters'] = [{'ParameterKey': k, 'ParameterValue': v} for k, v in parameters.items()]
     response = cfn.create_stack(
         StackName=stack_name,
         TemplateBody=template_body,
         Capabilities=['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
         Tags=[{'Key': 'ManagedBy', 'Value': 'Clyro'}],
         OnFailure='ROLLBACK',
+        **kwargs,
     )
     return response['StackId']
+
+
+def find_hosted_zone_id(credentials: dict, region: str, zone_name: str) -> str | None:
+    """Paginate route53:ListHostedZones and return the zone id (without the
+    '/hostedzone/' prefix) whose name matches ``zone_name``, or None. Route53
+    is a global service — ``region`` is accepted only for signature
+    consistency with the rest of this module. Uses ListHostedZones (already
+    granted in bootstrap.yaml) rather than ListHostedZonesByName (not
+    granted, and unnecessary — client-side filtering is cheap at this scale)."""
+    route53 = boto3.client(
+        'route53',
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+    target = f"{zone_name}." if not zone_name.endswith('.') else zone_name
+    paginator = route53.get_paginator('list_hosted_zones')
+    for page in paginator.paginate():
+        for zone in page.get('HostedZones', []):
+            if zone.get('Name') == target:
+                return zone['Id'].removeprefix('/hostedzone/')
+    return None
 
 
 def find_stack(credentials: dict, region: str, stack_name: str) -> str | None:

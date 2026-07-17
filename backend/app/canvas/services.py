@@ -15,7 +15,7 @@ from typing import Any
 from django.utils import timezone
 
 from canvas_core import canvas_builder, canvas_ops, cost_engine, layout_solver
-from core.models import CanvasVersion, IntentRecord, Project, ScanResult
+from core.models import AWSAccountConnection, CanvasVersion, IntentRecord, Project, ScanResult
 
 from app import agentcore
 
@@ -52,6 +52,19 @@ def intent_dict(project: Project) -> dict[str, Any]:
     return _intent_to_dict(intent)
 
 
+def _account_type_for(project: Project) -> str | None:
+    """AWSAccountConnection.verified_account_type (queried live from AWS via
+    freetier:GetAccountPlanState at connect time) over the user's own
+    claimed_account_type self-report — mirrors the precedence already used by
+    deploy._deterministic_template_fix."""
+    connection = (
+        AWSAccountConnection.objects.filter(project=project).order_by("-created_at").first()
+    )
+    if not connection:
+        return None
+    return connection.verified_account_type or connection.claimed_account_type
+
+
 def ensure_initial_canvas(project: Project) -> CanvasVersion | None:
     """Build ``CanvasVersion`` v1 from the real Step 1 (``ScanResult.detected_resources``)
     + Step 2 (``IntentRecord``) records the first time Step 3 is entered. Idempotent:
@@ -75,7 +88,7 @@ def ensure_initial_canvas(project: Project) -> CanvasVersion | None:
 
     canvas = canvas_builder.build_canvas_from_detection(scan.detected_resources, intent)
     positions = layout_solver.compute_positions(canvas)
-    cost = cost_engine.estimate_cost(canvas, intent)
+    cost = cost_engine.estimate_cost(canvas, intent, account_type=_account_type_for(project))
 
     version = CanvasVersion.objects.create(
         project=project,
@@ -109,7 +122,7 @@ def apply_operation_and_persist(
 
     existing = (version.canvas_snapshot or {}).get("positions", {})
     positions = layout_solver.compute_positions(new_canvas, existing=existing)
-    cost = cost_engine.estimate_cost(new_canvas, intent)
+    cost = cost_engine.estimate_cost(new_canvas, intent, account_type=_account_type_for(project))
 
     new_version = CanvasVersion.objects.create(
         project=project,
@@ -139,7 +152,7 @@ def revert_to(project: Project, version_number: int) -> dict[str, Any] | None:
     canvas = canvas_ops.parse_canvas(target.canvas_yaml)
     intent = intent_dict(project)
     positions = (target.canvas_snapshot or {}).get("positions", {})
-    cost = cost_engine.estimate_cost(canvas, intent)
+    cost = cost_engine.estimate_cost(canvas, intent, account_type=_account_type_for(project))
     new_version = CanvasVersion.objects.create(
         project=project,
         intent_record=target.intent_record,
