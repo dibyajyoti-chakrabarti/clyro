@@ -1,17 +1,37 @@
 /* ── Section ── */
+@property --gd-stop1 {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 30%;
+}
+@property --gd-stop2 {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 55%;
+}
+@property --gd-stop3 {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 80%;
+}
+
 .whyClyroSection {
-  background: linear-gradient(135deg, #040404 0%, #0D0A00 30%, #1A1200 55%, #0A0800 80%, #040404 100%);
-  background-size: 300% 300%;
+  background: linear-gradient(135deg, #0F0A03 0%, #0D0A00 var(--gd-stop1), #1A1200 var(--gd-stop2), #0A0800 var(--gd-stop3), #0F0A03 100%);
+  background-size: 100% 100%;
   animation: goldDrift 12s ease infinite;
   padding: 100px 48px;
   width: 100%;
   box-sizing: border-box;
 }
 
+/* 0% and 100% stops stay #0F0A03 for the entire cycle so the seam with the
+   last HowItWorks card is exact at every frame, not just t=0. Only the middle
+   stops drift, over a wider range than before to keep the motion visible now
+   that background-position panning is gone (100% 100% leaves no room to pan). */
 @keyframes goldDrift {
-  0%   { background-position: 0% 50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0%   { --gd-stop1: 20%; --gd-stop2: 45%; --gd-stop3: 70%; }
+  50%  { --gd-stop1: 40%; --gd-stop2: 65%; --gd-stop3: 90%; }
+  100% { --gd-stop1: 20%; --gd-stop2: 45%; --gd-stop3: 70%; }
 }
 
 /* ── Grid ── */

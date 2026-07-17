@@ -1,6 +1,8 @@
-import { ArrowRight, Box, Check, Clock, Link2, Lock, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Box, Check, Clock, Link2, Lock, ShieldCheck } from 'lucide-react'
 import { WizardPanel } from '../../../../components/wizard/WizardPanel'
 import Button from '../../../../components/ui/Button'
+import { ACCOUNT_TYPE_OPTIONS } from '../constants/questions'
+import ChoiceOption from '../step3/ChoiceOption'
 
 const GOLD = '#D4A017'
 const GOLD_10 = 'rgba(212, 160, 23, 0.1)'
@@ -26,6 +28,8 @@ const featureRows = [
 ]
 
 function AwsConnectCard({
+  accountType,
+  onAccountTypeChange,
   cfnConsoleUrl,
   urlLoading,
   stackOpened,
@@ -34,9 +38,9 @@ function AwsConnectCard({
   verifying,
   verifyError,
   roleConnected,
+  accountTypeMismatch,
   onOpenStack,
   onVerify,
-  onContinue,
 }) {
   return (
     <WizardPanel>
@@ -122,6 +126,22 @@ function AwsConnectCard({
             </div>
           ))}
         </div>
+
+        {!roleConnected ? (
+          <div className='mx-auto mt-6 max-w-md text-left'>
+            <p className='mb-2 text-sm font-semibold text-white/90'>What type of AWS account is this?</p>
+            <div className='space-y-2'>
+              {ACCOUNT_TYPE_OPTIONS.map((option) => (
+                <ChoiceOption
+                  key={option.value}
+                  option={option}
+                  selected={accountType === option.value}
+                  onClick={() => onAccountTypeChange(option.value)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {/* Bottom CTA bar */}
         <div style={{
@@ -315,13 +335,21 @@ function AwsConnectCard({
               <Check size={16} strokeWidth={3} />
               IAM role connected
             </p>
-            <Button variant='secondary' onClick={onContinue}>
-              Continue
-              <ArrowRight className='h-4 w-4' />
-            </Button>
           </div>
         ) : null}
 
+        {/* Best-effort: the backend compares the account's actual verified plan
+            type (queried live from AWS) against what the user picked above and
+            can flag account_type_mismatch on the verify response. Renders only
+            if/when the backend sends it. */}
+        {roleConnected && accountTypeMismatch ? (
+          <p className='mx-auto mt-4 flex max-w-md items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-left text-sm text-amber-300'>
+            <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
+            This AWS account looks like a {accountType === 'free_tier' ? 'paid' : 'free-tier'} account,
+            not what you selected above. Infrastructure will be generated for what we detected — you
+            can continue, or re-verify with the correct account.
+          </p>
+        ) : null}
       </div>
     </WizardPanel>
   )

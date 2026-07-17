@@ -68,6 +68,7 @@ export default function HowItWorks() {
         flexDirection: "column",
         padding: 0,
         margin: 0,
+        overflow: "hidden",
       }}
     >
       {/* Rounded wrapper */}

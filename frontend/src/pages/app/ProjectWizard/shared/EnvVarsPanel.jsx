@@ -17,6 +17,7 @@ function EnvVarsPanel({
   onAddVariable,
   onExtraVariableChange,
   onContinue,
+  mode = 'write',
 }) {
   if (envVarsLoading) {
     return (
@@ -119,7 +120,9 @@ function EnvVarsPanel({
 
         <p className='mt-4 flex items-start gap-1.5 text-xs text-text-muted'>
           <ShieldCheck className='mt-0.5 h-3.5 w-3.5 shrink-0 text-success' />
-          Secret values are written directly to AWS Secrets Manager in your account. Crylo never stores them.
+          {mode === 'stage'
+            ? 'Values are held for you here — they\'re written to AWS Secrets Manager in your account once you connect it in the next step. Crylo never stores them in the clear.'
+            : 'Secret values are written directly to AWS Secrets Manager in your account. Crylo never stores them.'}
         </p>
 
         {saveError ? (

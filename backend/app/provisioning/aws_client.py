@@ -1,6 +1,10 @@
+import logging
+
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
+
+log = logging.getLogger(__name__)
 
 
 def _get_clyro_session():
@@ -42,6 +46,27 @@ def get_account_id(credentials: dict, region: str = 'us-east-1') -> str:
     )
     identity = sts.get_caller_identity()
     return identity['Account']
+
+
+def get_account_plan_type(credentials: dict, region: str = 'us-east-1') -> str | None:
+    """Proactively ask AWS itself (freetier:GetAccountPlanState) whether the
+    connected account is FREE or PAID, using the just-assumed role's credentials.
+    Returns the raw ``accountPlanType`` string, or None if the call fails for any
+    reason (missing permission, API not available in this partition/region, etc.)
+    — this is a best-effort enrichment, never a reason to fail the connect flow."""
+    try:
+        client = boto3.client(
+            'freetier',
+            region_name=region,
+            aws_access_key_id=credentials['AccessKeyId'],
+            aws_secret_access_key=credentials['SecretAccessKey'],
+            aws_session_token=credentials['SessionToken'],
+        )
+        response = client.get_account_plan_state()
+        return response.get('accountPlanType')
+    except (ClientError, BotoCoreError) as exc:
+        log.info("get_account_plan_type: could not determine account plan type: %s", exc)
+        return None
 
 
 def write_secret(credentials: dict, region: str, secret_name: str, secret_value: str) -> str:

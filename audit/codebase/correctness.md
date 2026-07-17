@@ -1,0 +1,39 @@
+# Codebase Correctness Audit
+
+Findings from a live E2E pass (`documentation/ch_17_e2e_hardening_report.md`, 2026-07-09) re-verified against current code this session (2026-07-15) — only the ones whose root cause is still present are listed.
+
+## 1. No single source of truth for the Celery broker choice — canvas narration can contradict the generated template
+
+`canvas_core/canvas_builder.py:122` still hardcodes `"aws_service": "sqs"` for any detected queue node, independent of what the app's Celery config actually uses as its broker. `app/provisioning/build_spec.py:106`'s `_broker_for()` separately (and correctly) resolves the real broker from the finalized canvas for the generated template. Because these are two independent code paths reading no shared signal, the CryloCanvas chat agent can narrate an architecture explanation ("SQS is serving as the Celery broker") that contradicts what `build_spec.py` actually wires into the template — confirmed live in ch_17 for an app whose real broker was Redis. Root cause and fix direction (per ch_17): RepoRecon should detect and record the broker choice from the app's own dependencies/config so canvas narration, agent chat, and the generated template all read one source of truth, instead of each independently guessing or hardcoding.
+
+## 2. Detected S3 storage never becomes its own canvas node
+
+`canvas_core/canvas_builder.py` has no `storage` node type — confirmed no `"storage"` node handling exists in the builder. Step 1's summary can list "S3 storage" as detected, but the finalized canvas only ever has `service / static / database / cache / worker / queue` nodes, so the IaC/canvas layer has nothing to wire the app's own object storage to. Observed live consequence (ch_17): `AWS_S3_BUCKET_NAME` ends up pointing at the frontend's CloudFront origin bucket instead of a dedicated app bucket — not a lint/conformance error, but silently wrong for any app that actually uses S3 for its own storage (not just serving the frontend).
+
+## 3. Step 3 → Step 4 transition — confirmed resolved, 2026-07-15 live E2E pass
+
+ch_17 (2026-07-09) reported `POST /canvas/finalize/` succeeding but the wizard not advancing to Step 4 in-session (only a reload picked it up). Re-verified live this session: current code's explicit two-click flow ("Finalize" then a separate "Continue to step 4" click, `ProjectWizard.jsx:124-156`) advances immediately in-session with no reload needed. No longer an open item — confirmed fixed, not just theorized.
+
+Note: the wizard has since been reordered from 5 to 7 steps (2026-07-15) — this same finalize→advance flow now lives in what was Step 3/4 and is today's Step 4 (canvas) → Step 5 (IaC generate/validate) transition; the underlying mechanism referenced above is unchanged.
+
+## 4. Monaco/monaco-yaml worker never actually constructs — cosmetic-only, root cause narrowed but not fixed (2026-07-15)
+
+Live in the Step 5 IaC editor (`frontend/src/components/wizard/CfnEditor.jsx`):
+```
+Could not create web worker(s). Falling back to loading web worker code in main thread, which might cause UI freezes.
+Cannot use 'in' operator to search for 'then' in undefined
+Error: Missing requestHandler or method: getCodeAction
+Error: Missing requestHandler or method: findDocumentSymbols
+Error: Missing requestHandler or method: getFoldingRanges
+```
+Network-trace evidence (2026-07-15): `monaco-editor/esm/vs/editor/editor.worker.js?worker_file&type=module` (the generic `editorWorkerService` worker) is requested and returns 200; `src/monaco/yaml.worker.js?worker_file&type=module` (the yaml worker's actual runtime bootstrap URL) is **never requested at all** — only the outer `?worker` factory-function wrapper module loads, which is Vite's static import evaluation, not an invocation. Since `new YamlWorker()` never reaches the network layer, this isn't a 404/MIME/CORS issue. Most consistent explanation: the *first* worker construction (`editorWorkerService`) fails at the Worker-runtime level despite its script serving fine (hence "Could not create web worker(s)"), and monaco-editor's fallback-to-main-thread mode then appears to apply globally for the rest of the session — so `yaml`'s `getWorker()` case is likely never even invoked afterward, and the main-thread fallback only implements `editorWorkerService`'s own built-in RPC methods, not monaco-yaml's custom ones. *Why* the first `new Worker(...)` fails to actually start despite a 200 script response is still unknown — next step is isolating monaco-editor entirely by constructing a bare `new Worker(url, {type: 'module'})` in the same environment.
+
+Confirmed cosmetic-only via a full live E2E pass (2026-07-15, fresh 7-step wizard reorg, real deploy through provisioning): the "Valid"/error-count status bar (backend cfn-lint driven, not Monaco's own diagnostics) is unaffected; only code actions, document-symbol outline, and folding are lost in the YAML editor.
+
+## 5. Canvas cost panel has no free-tier-aware pricing (2026-07-15)
+
+`canvas_core/cost_engine.py` has zero free-tier logic — confirmed live this session (Step 4 canvas showed a `$26/mo` paid-tier-style estimate for a project whose AWS account was verified `free_tier` at Step 2, immediately before Step 4 ran). Cost estimates shown during canvas review don't reflect the now-proactively-verified account type (`AWSAccountConnection.verified_account_type`, added 2026-07-15) even though that value is available well before Step 4 runs. Not fixed — flagged as a genuine upgrade opportunity now that a *verified* (not just self-reported) account type exists to feed it.
+
+## 6. One-time stale free-tier network config during IaC generation — likely a dev-mode artifact, not confirmed as a real bug (2026-07-15)
+
+During one live E2E pass, the first `iac_generate` call for a free-tier-verified project produced a template with `AssignPublicIp: DISABLED` and private subnets on the sole ECS service — wrong for a no-NAT-gateway (free-tier) deployment, and correctly caught as a blocker by `iac.check_ecs_network_reachability` at Validate time. Clicking "Regenerate" immediately after produced the correct `AssignPublicIp: ENABLED` output, and manually recomputing `build_spec()`/`_spec_for()` for the same `Deployment` row at that point returned the correct `task_placement: public`. Root cause not conclusively identified — `cfn_generator.py`'s network-config logic (lines ~664-665, 721) is a single deterministic computation with no code path that would explain the discrepancy from a cold read of the same inputs, so this looks like a transient (possibly a React dev-mode double-effect race between AWS-connect completing and the very first generate() call) rather than a reproducible generator bug. Worth a second look if it recurs — in particular, whether `generate()` can somehow run with a stale `IntentRecord`/`AWSAccountConnection` read before the account-verification write fully commits.

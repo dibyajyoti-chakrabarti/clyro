@@ -74,7 +74,11 @@ def _iac_progress_callback(job_id: str, initial_phase: str = "drafting"):
     compliance; text after a validate is the model fixing errors, after compliance
     it's finalizing — and throttled-write {phase, partial_template} to the job's
     progress (~1.5s; a phase change flushes immediately). The row-scoped .update()
-    touches only `progress`, so it never clobbers the _run status/result save."""
+    touches only `progress`, so it never clobbers the _run status/result save.
+
+    `thinking` is retained here for backend debugging only (raw model reasoning) —
+    the frontend must never read or render it directly; the UI drives entirely off
+    the curated `phase` enum instead."""
     from core.models import AgentJob
     import time as _time
 

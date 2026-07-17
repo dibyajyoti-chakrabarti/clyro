@@ -125,6 +125,7 @@ function ComplianceChecklistCard({ complianceFindings }) {
   if (!complianceFindings || complianceFindings.length === 0) return null
 
   const failedCount = complianceFindings.filter((f) => !f.passed).length
+  const hasBlockers = complianceFindings.some((f) => !f.passed && f.severity === 'blocker')
 
   const toggle = (id) => {
     setExpandedIds((prev) => {
@@ -155,6 +156,12 @@ function ComplianceChecklistCard({ complianceFindings }) {
           <ComplianceRow key={f.id} finding={f} expanded={expandedIds.has(f.id)} onToggle={() => toggle(f.id)} />
         ))}
       </div>
+
+      {hasBlockers && (
+        <p className='mt-3 text-[12.5px] leading-snug text-red-300/80'>
+          Resolve the blockers above to continue — they will fail the build.
+        </p>
+      )}
     </div>
   )
 }
@@ -263,6 +270,7 @@ export default function ScanResults({
   onContinue,
   complianceFindings,
   compliancePrompt,
+  canContinue = true,
 }) {
   const stackSummary = useMemo(() => {
     const inferred = [...detectedServices, ...detectedInfra].slice(0, 7)
@@ -418,6 +426,26 @@ export default function ScanResults({
 
         {/* ── AI Generated Fix Prompt ── */}
         <AIPromptCard compliancePrompt={compliancePrompt} />
+
+        {/* ── Section 5: CTA Readout ── */}
+        <div
+          className='flex flex-col items-center gap-1 pb-1 text-center'
+          style={{ animation: 'cardIn 360ms ease-out 450ms both' }}
+        >
+          <p className='text-[15px] font-semibold text-white/70'>Ready to continue?</p>
+          <p className='max-w-[500px] text-[13px] text-white/35'>
+            Tell us the secrets your app needs, then connect your AWS account.
+          </p>
+          <button
+            type='button'
+            onClick={onContinue}
+            disabled={!canContinue}
+            className='mt-4 inline-flex items-center gap-2 rounded-[16px] border border-[#F2D57B]/60 bg-[linear-gradient(180deg,#FFD54A,#F6B700)] px-6 py-3 text-[15px] font-semibold text-black shadow-[0_0_24px_rgba(232,184,75,0.22)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105 hover:shadow-[0_0_30px_rgba(232,184,75,0.3)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0'
+          >
+            Continue
+            <ChevronRight className='h-4 w-4' />
+          </button>
+        </div>
 
         {/* spacing before the wizard shell's Continue button */}
         <div className='h-3' />

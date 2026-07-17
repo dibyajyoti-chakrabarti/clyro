@@ -6,7 +6,7 @@ const CHAT_WELCOME = {
   text: 'Your architecture has been generated from your repository scan. You can ask me to explain any component, compare services, or suggest changes.',
 }
 
-export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3InputPrefill }) {
+export default function useCanvasAgent({ projectId, setStep4InputPrefill, step4InputPrefill }) {
   const [canvas, setCanvas] = useState(null)
   const [nodePositions, setNodePositions] = useState({})
   const [selectedNode, setSelectedNode] = useState(null)
@@ -18,16 +18,16 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
   const chatInputRef = useRef(null)
 
   useEffect(() => {
-    if (!step3InputPrefill) {
+    if (!step4InputPrefill) {
       return
     }
 
-    setChatInput(step3InputPrefill)
+    setChatInput(step4InputPrefill)
     if (chatInputRef.current) {
       chatInputRef.current.focus()
     }
-    setStep3InputPrefill('')
-  }, [step3InputPrefill, setStep3InputPrefill])
+    setStep4InputPrefill('')
+  }, [step4InputPrefill, setStep4InputPrefill])
 
   useEffect(() => {
     if (chatEndRef.current) {

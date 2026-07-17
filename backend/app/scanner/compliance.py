@@ -2,13 +2,21 @@
 
 These are static, rule-based checks over the repo's file tree/contents — not
 part of the RepoRecon agent (which does the actual framework/service
-detection and lives outside this repo, see runner.py). Every check here
-exists because we hit it live while re-verifying the build pipeline against a
-real repo: each one silently 500s or deadlocks provisioning long after the
-user has moved past Step 1, so surfacing them at scan time (before the user
-has invested in Steps 2-4) is the point.
+detection and lives outside this repo, see runner.py). RepoRecon only ever
+detects a Django backend and/or a React frontend, so these checks are scoped
+to the realistic range of Django+React project shapes (monorepo vs
+single-service, workspace-committed lockfiles, multi-stage Docker builds,
+DB-less backends, Django's `models/` package form, etc.) — not other
+frameworks, which never reach this module. Every check here exists because we
+hit it live while re-verifying the build pipeline against a real repo: each
+one silently 500s or deadlocks provisioning long after the user has moved
+past Step 1, so surfacing them at scan time (before the user has invested in
+Steps 2-4) is the point.
 
-Each finding is ``{id, title, passed, severity, detail, fix_hint}``.
+Each finding is ``{id, title, passed, severity, detail, fix_hint}``. A check
+that doesn't apply to this repo at all (e.g. an ALLOWED_HOSTS check when
+there's no Django backend) is omitted from the findings entirely rather than
+reported as a fake pass — consistently, for every check.
 ``severity`` is ``blocker`` (build will fail), ``warning`` (deploy will 500 or
 hang), or ``info`` (works today, but fragile). ``fix_hint`` is reused verbatim
 by build_agent_prompt() below to compose the AI-agent remediation prompt.
@@ -45,9 +53,10 @@ def run_compliance_checks(
     services = (detected_resources or {}).get('services', {}) or {}
     backend = services.get('backend') or {}
     frontend = services.get('frontend') or {}
+    infra = (detected_resources or {}).get('infrastructure', {}) or {}
     env_keys = {(v.get('key') or '').upper() for v in (env_vars or [])}
 
-    findings: list[dict[str, Any]] = []
+    findings: list[dict[str, Any] | None] = []
 
     try:
         tree = set(github_utils.get_repo_tree(token, repo_full_name, branch))
@@ -74,8 +83,16 @@ def run_compliance_checks(
         be_path = _norm(backend.get('path', ''))
         is_django = (backend.get('framework') or '').lower() == 'django'
 
-        findings.append(_check_database_url_env(env_keys))
-        findings.append(_check_allowed_hosts_env(env_keys, is_django))
+        # Only meaningful when a database was actually detected — a legitimately
+        # DB-less backend has nothing to read a connection string for.
+        if (infra.get('database') or {}).get('detected'):
+            findings.append(_check_database_url_env(env_keys))
+
+        # Django-specific checks are omitted entirely (not faked as a pass) when
+        # the backend isn't Django, so every check has exactly one `id` and one
+        # meaning, whether present or absent from the findings list.
+        if is_django:
+            findings.append(_check_allowed_hosts_env(env_keys))
 
         if backend.get('dockerfile_found'):
             findings.append(_check_dockerfile_base_image(
@@ -88,12 +105,18 @@ def run_compliance_checks(
                 token, repo_full_name, branch, be_path, tree, github_utils,
             ))
 
-    return findings
+    return [f for f in findings if f is not None]
 
 
 def _check_frontend_lockfile(fe_path: str, tree: set[str]) -> dict[str, Any]:
     lockfiles = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml']
-    found = next((lf for lf in lockfiles if _join(fe_path, lf) in tree), None)
+    # An npm/yarn/pnpm workspace monorepo commits a single lockfile at the repo
+    # root even though the frontend's own package.json lives in a subfolder —
+    # check both locations before flagging a blocker.
+    found = next(
+        (lf for lf in lockfiles if _join(fe_path, lf) in tree or lf in tree),
+        None,
+    )
     passed = found is not None
     return {
         'id': 'frontend_lockfile',
@@ -166,16 +189,7 @@ def _check_database_url_env(env_keys: set[str]) -> dict[str, Any]:
     }
 
 
-def _check_allowed_hosts_env(env_keys: set[str], is_django: bool) -> dict[str, Any]:
-    if not is_django:
-        return {
-            'id': 'host_header_check',
-            'title': 'Host-header validation is permissive or exempted for health checks',
-            'passed': True,
-            'severity': 'info',
-            'detail': 'Not a Django app — skipped (framework-specific check).',
-            'fix_hint': None,
-        }
+def _check_allowed_hosts_env(env_keys: set[str]) -> dict[str, Any]:
     passed = 'ALLOWED_HOSTS' in env_keys
     return {
         'id': 'allowed_hosts_env',
@@ -197,27 +211,46 @@ def _check_allowed_hosts_env(env_keys: set[str], is_django: bool) -> dict[str, A
     }
 
 
-_DOCKER_HUB_BARE_IMAGE = re.compile(r'^FROM\s+([a-zA-Z0-9][a-zA-Z0-9._-]*(?::[a-zA-Z0-9._-]+)?)\s*$', re.MULTILINE)
+_DOCKERFILE_FROM = re.compile(
+    r'^FROM\s+(?:--platform=\S+\s+)?'
+    r'([a-zA-Z0-9$\{][a-zA-Z0-9._\-/$\{\}]*(?::[a-zA-Z0-9._-]+)?)'
+    r'(?:\s+[Aa][Ss]\s+(\S+))?\s*$',
+    re.MULTILINE,
+)
 
 
-def _check_dockerfile_base_image(token, repo_full_name, branch, be_path, tree, github_utils) -> dict[str, Any]:
+def _is_registry_host(segment: str) -> bool:
+    """Docker's own heuristic: the first path segment is a registry hostname
+    (not a Docker Hub user/org namespace) if it looks like a host — contains a
+    '.' or ':', or is 'localhost'. Covers ECR (incl. private per-account URLs),
+    GCR, GHCR, Quay, self-hosted registries, etc. without a fixed allowlist."""
+    return '.' in segment or ':' in segment or segment == 'localhost'
+
+
+def _check_dockerfile_base_image(token, repo_full_name, branch, be_path, tree, github_utils) -> dict[str, Any] | None:
     dockerfile_path = _join(be_path, 'Dockerfile')
     if dockerfile_path not in tree:
-        return {
-            'id': 'dockerfile_registry',
-            'title': 'Dockerfile avoids anonymous Docker Hub pulls',
-            'passed': True,
-            'severity': 'info',
-            'detail': 'No Dockerfile found to check.',
-            'fix_hint': None,
-        }
+        # backend.dockerfile_found gates the call site, so this only fires on a
+        # stale/disagreeing detection — omit rather than fake a pass.
+        return None
     content = github_utils.get_file_content(token, repo_full_name, dockerfile_path, branch) or ''
-    bare_images = [
-        m.group(1) for m in _DOCKER_HUB_BARE_IMAGE.finditer(content)
-        if '/' not in m.group(1) or m.group(1).split('/')[0] not in (
-            'public.ecr.aws', 'gcr.io', 'ghcr.io', 'quay.io', 'mcr.microsoft.com',
-        )
-    ]
+
+    matches = list(_DOCKERFILE_FROM.finditer(content))
+    # A later `FROM <name>` can reference an earlier build stage (multi-stage
+    # builds), not a registry pull at all — collect declared stage names first.
+    stage_names = {m.group(2).lower() for m in matches if m.group(2)}
+
+    bare_images = []
+    for m in matches:
+        image = m.group(1)
+        if image.lower() in stage_names or image.lower() == 'scratch':
+            continue
+        if image.startswith('$'):
+            continue  # build-arg-parameterized base image — can't resolve statically
+        if '/' in image and _is_registry_host(image.split('/')[0]):
+            continue
+        bare_images.append(image)
+
     passed = not bare_images
     return {
         'id': 'dockerfile_registry',
@@ -238,10 +271,19 @@ def _check_dockerfile_base_image(token, repo_full_name, branch, be_path, tree, g
 
 
 def _check_django_migrations(be_path: str, tree: set[str]) -> dict[str, Any]:
+    prefix = f'{be_path}/' if be_path else ''
+    # Django apps can define models either as a single models.py or as a
+    # models/ package (models/__init__.py + models/foo.py, common in larger
+    # apps) — both forms need to be recognized, or the package form is
+    # invisible to this check (never flagged either way).
     models_dirs = {
         p.rsplit('/models.py', 1)[0]
         for p in tree
-        if p.startswith(f'{be_path}/' if be_path else '') and p.endswith('/models.py')
+        if p.startswith(prefix) and p.endswith('/models.py')
+    } | {
+        p.rsplit('/models/__init__.py', 1)[0]
+        for p in tree
+        if p.startswith(prefix) and p.endswith('/models/__init__.py')
     }
     missing = []
     for app_dir in models_dirs:
@@ -270,12 +312,27 @@ def _check_django_migrations(be_path: str, tree: set[str]) -> dict[str, Any]:
     }
 
 
+_HEALTH_ROUTE = re.compile(
+    r'(?:path|re_path|url)\s*\(\s*r?["\'][^"\']*health',
+    re.IGNORECASE,
+)
+_HEALTH_PACKAGE_INCLUDE = re.compile(
+    r'include\s*\(\s*["\'][\w.]*health[_-]?check',
+    re.IGNORECASE,
+)
+
+
 def _check_health_endpoint(token, repo_full_name, branch, be_path, tree, github_utils) -> dict[str, Any]:
     url_files = [p for p in tree if p.split('/')[-1] in ('urls.py',) and p.startswith(f'{be_path}/' if be_path else '')]
     found = False
     for path in url_files:
         content = github_utils.get_file_content(token, repo_full_name, path, branch) or ''
-        if re.search(r'["\']health', content, re.IGNORECASE):
+        # Require an actual route registration (path/re_path/url call, or an
+        # include() of a health-check package) rather than a bare substring
+        # search — the old check false-passed on a mere comment or field name
+        # containing "health" and this still catches django-health-check-style
+        # includes whose route name itself doesn't literally say "health".
+        if _HEALTH_ROUTE.search(content) or _HEALTH_PACKAGE_INCLUDE.search(content):
             found = True
             break
     return {

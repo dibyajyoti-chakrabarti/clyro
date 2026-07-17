@@ -1,3 +1,19 @@
+// AWS account type is no longer asked as an intent question — Step 2 (Connect
+// your AWS account) captures it directly, right before verifying the role, since
+// it's needed to compare against the account's actual verified plan type.
+export const ACCOUNT_TYPE_OPTIONS = [
+  {
+    value: 'paid',
+    label: 'Paid account — I\'m fine paying for the right resources',
+    recommended: true,
+  },
+  {
+    value: 'free_tier',
+    label: 'Free tier — I want to stay within free limits',
+    note: 'NAT Gateway and some services will be excluded to avoid charges',
+  },
+]
+
 export function getQuestions() {
   return [
     {
@@ -5,23 +21,6 @@ export function getQuestions() {
       question: 'Describe your app in one sentence.',
       type: 'free',
       options: [],
-    },
-    {
-      id: 'aws_account_type',
-      question: 'What type of AWS account are you deploying to?',
-      type: 'choice',
-      options: [
-        {
-          value: 'paid',
-          label: 'Paid account — I\'m fine paying for the right resources',
-          recommended: true,
-        },
-        {
-          value: 'free_tier',
-          label: 'Free tier — I want to stay within free limits',
-          note: 'NAT Gateway and some services will be excluded to avoid charges',
-        },
-      ],
     },
     {
       id: 'environment',

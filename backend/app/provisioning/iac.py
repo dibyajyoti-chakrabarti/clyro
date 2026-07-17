@@ -234,13 +234,27 @@ def ensure_deployment(project: Project) -> Deployment:
             completed_at=timezone.now(),
         )
 
+    # AWS connection is no longer a precondition for IaC generation — connecting
+    # is now a Step-4 phase that happens *after* the template is generated/reviewed,
+    # right before provisioning (see attach_aws_connection). generate()/refine()/
+    # validate() make no live AWS calls, so a None connection is fine here; deploy.py
+    # is the one place that still hard-requires a real connection.
     connection = (
         AWSAccountConnection.objects.filter(project=project, connected_at__isnull=False)
         .order_by("-connected_at")
         .first()
     )
-    if connection is None:
-        raise IacError("Connect your AWS account before generating infrastructure.")
+
+    # aws_account_type now comes from AWS connect (Step 2), which runs before
+    # intent collection (Step 3) — the intent question that used to capture it
+    # was removed, so intent.aws_account_type is null on the normal path.
+    # Backfill it from the connection's real-AWS-verified value (falling back to
+    # the user's self-reported claim) so build_spec/canvas still see a value.
+    if intent.aws_account_type is None and connection is not None:
+        account_type = connection.verified_account_type or connection.claimed_account_type
+        if account_type:
+            intent.aws_account_type = account_type
+            intent.save(update_fields=["aws_account_type", "updated_at"])
 
     deployment = (
         Deployment.objects.filter(project=project, canvas_version=canvas_version)
@@ -262,6 +276,32 @@ def ensure_deployment(project: Project) -> Deployment:
             environment=environment,
             status=Deployment.Status.PENDING,
         )
+    return deployment
+
+
+def attach_aws_connection(project: Project, connection: AWSAccountConnection) -> Deployment | None:
+    """Called once a real AWSAccountConnection verifies (Step 4's 'connect AWS'
+    phase, after the template already exists). Attaches it to the in-flight
+    Deployment row — created with aws_connection=None by ensure_deployment — so
+    deploy.py's account assumption and the next lint/validate pass see the real
+    account/region instead of the us-east-1 default."""
+    deployment = (
+        Deployment.objects.filter(project=project)
+        .exclude(status=Deployment.Status.COMPLETE)
+        .order_by("-created_at")
+        .first()
+    )
+    if deployment is None:
+        # Expected under the 7-step wizard's ordering: AWS can connect (and even
+        # verify) before Step 4 has generated a Deployment/template at all — e.g.
+        # the account-connect flow starting from a step earlier than IaC
+        # generation. Not an anomaly; the connection itself is still saved and
+        # will be picked up by ensure_deployment() the next time a Deployment is
+        # created for this project.
+        log.info("attach_aws_connection: no Deployment yet for project %s", project.id)
+        return None
+    deployment.aws_connection = connection
+    deployment.save(update_fields=["aws_connection", "updated_at"])
     return deployment
 
 
@@ -298,11 +338,21 @@ def _frameworks_for(project: Project) -> dict[str, str]:
     return out
 
 
+def _region_for(deployment: Deployment) -> str:
+    """The connected account's region once one exists; ``us-east-1`` until then.
+    Generation/lint no longer require a connected AWSAccountConnection (that's
+    now a Step-4-later 'connect AWS' phase, before provisioning) — this is the
+    one choke point that keeps every region read safe against aws_connection
+    being None."""
+    conn = deployment.aws_connection
+    return (conn.aws_region if conn else None) or "us-east-1"
+
+
 def _spec_for(deployment: Deployment) -> dict[str, Any]:
     canvas = canvas_ops.parse_canvas(deployment.canvas_version.canvas_yaml)
     intent = _intent_for_spec(deployment.intent_record)
     env_vars = _env_vars_for_spec(deployment.project)
-    region = deployment.aws_connection.aws_region or "us-east-1"
+    region = _region_for(deployment)
     frameworks = _frameworks_for(deployment.project)
     return build_spec(canvas, intent, env_vars, region=region, frameworks=frameworks)
 
@@ -2180,9 +2230,15 @@ def generate(project: Project, model: str | None = None, on_event=None) -> dict[
     """Author a fresh template from the build spec, persist it, and return it with
     backend cfn-lint diagnostics.
 
-    Initial generation is deterministic. The IacArchitect runtime remains in use
-    for refine/chat, but no model is needed to transcribe the build spec into a
-    first CloudFormation template."""
+    Generation is deterministic-first: the IacArchitect runtime isn't needed to
+    transcribe the build spec into a first CloudFormation template. But a
+    deterministic-generator defect can still leave cfn-lint errors or blocker
+    findings after enforcers run — when that happens, this falls back to the same
+    bounded, agent-backed corrective loop refine() uses (_lint_fix_loop /
+    _security_fix_loop), rather than silently handing the user a broken template.
+    If the template still isn't clean once that loop is exhausted, this raises
+    instead of returning a falsely-successful result — never returns a "ready"
+    template that still has errors."""
     deployment = ensure_deployment(project)
     spec = _spec_for(deployment)
     if on_event is not None:
@@ -2191,7 +2247,7 @@ def generate(project: Project, model: str | None = None, on_event=None) -> dict[
     message = "Generated a deterministic CloudFormation template from your finalized architecture."
     template = _apply_enforcers(template, spec)
 
-    region = deployment.aws_connection.aws_region or "us-east-1"
+    region = _region_for(deployment)
     validation = lint_template(template, region)
     if validation["errors"]:
         log.error("deterministic generator emitted cfn-lint errors: %s", validation)
@@ -2203,9 +2259,48 @@ def generate(project: Project, model: str | None = None, on_event=None) -> dict[
     validation = lint_template(template, region)
     findings = _collect_findings(template, spec)
 
+    # Deterministic path didn't converge — fall back to the same bounded,
+    # monotonic corrective loop refine() uses. Rare: cfn_generator + enforcers
+    # are expected to already be clean; a recurring trip here is a bug worth
+    # fixing directly in the generator, not a case for a second auto-fix layer.
+    if validation["errors"]:
+        template, validation, fix_msg = _lint_fix_loop(
+            template, validation, spec=spec, project=project, model=model, region=region)
+        if fix_msg:
+            message = f"{message} Auto-fixed lint errors: {fix_msg}"
+        template = _apply_enforcers(template, spec)
+        template = enforce_codebuild_projects(template, spec)
+        validation = lint_template(template, region)
+        findings = _collect_findings(template, spec)
+
+    if any(f["severity"] == "blocker" for f in findings):
+        template, findings, fix_msg = _security_fix_loop(
+            template, findings, spec=spec, project=project, model=model, region=region)
+        if fix_msg:
+            message = f"{message} Auto-fixed deployment blockers: {fix_msg}"
+        template = _apply_enforcers(template, spec)
+        template = enforce_codebuild_projects(template, spec)
+        validation = lint_template(template, region)
+        findings = _collect_findings(template, spec)
+
+    if validation["errors"] or any(f["severity"] == "blocker" for f in findings):
+        # Persist for inspection (manual Validate can still recover it), but never
+        # report success — status stays GENERATING_IAC, never IAC_READY.
+        deployment.cloudformation_template = template
+        deployment.status = Deployment.Status.GENERATING_IAC
+        deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
+        raise IacError(
+            f"Generation could not reach a clean template automatically "
+            f"({validation['errors']} lint error(s) remaining). Please retry, or edit manually and Validate."
+        )
+
     deployment.cloudformation_template = template
     deployment.status = Deployment.Status.GENERATING_IAC
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
+
+    if project.status != Project.Status.IAC_GENERATED:
+        project.status = Project.Status.IAC_GENERATED
+        project.save(update_fields=["status", "updated_at"])
 
     return {"template": template, "message": message, "validation": validation,
             "status": deployment.status, "security_findings": findings}
@@ -2241,7 +2336,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
     if (resp or {}).get("error"):
         raise IacError((resp or {})["error"])
 
-    region = deployment.aws_connection.aws_region or "us-east-1"
+    region = _region_for(deployment)
 
     # Question → the agent answered without changing the template; leave it as-is.
     if (resp or {}).get("outcome") == "answer":
@@ -2336,7 +2431,7 @@ def validate(project: Project, template: str) -> dict[str, Any]:
     """Persist the (possibly manually edited) template and lint it. On a clean
     template the deployment moves to IAC_READY (validated, ready to provision)."""
     deployment = ensure_deployment(project)
-    region = deployment.aws_connection.aws_region or "us-east-1"
+    region = _region_for(deployment)
     validation = lint_template(template, region)
     spec = _spec_for(deployment)
     findings = _collect_findings(template, spec)
@@ -2359,6 +2454,10 @@ def validate(project: Project, template: str) -> dict[str, Any]:
         )
         deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
+        if deployment.status == Deployment.Status.IAC_READY and project.status != Project.Status.IAC_VALIDATED:
+            project.status = Project.Status.IAC_VALIDATED
+            project.save(update_fields=["status", "updated_at"])
+
     return {"validation": validation, "status": deployment.status, "security_findings": findings}
 
 
@@ -2376,7 +2475,7 @@ def get_current(project: Project) -> dict[str, Any]:
     if deployment is None:
         raise IacError("Generate a CloudFormation template before reviewing it.")
     template = deployment.cloudformation_template or ""
-    validation = lint_template(template, deployment.aws_connection.aws_region or "us-east-1") if template else None
+    validation = lint_template(template, _region_for(deployment)) if template else None
     findings = []
     if template:
         findings = _collect_findings(template, _spec_for(deployment))

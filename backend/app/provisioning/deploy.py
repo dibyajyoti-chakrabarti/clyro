@@ -20,7 +20,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from core.models import Deployment, DeploymentStackOutput, Project, ProvisioningLogEntry
+from core.models import Deployment, DeploymentStackOutput, IntentRecord, Project, ProvisioningLogEntry
 
 from . import aws_client, cfn_events, runtime_probe
 
@@ -61,11 +61,24 @@ def _active_deployment(project: Project) -> Deployment | None:
 
 def _assume(deployment: Deployment) -> tuple[dict, str]:
     conn = deployment.aws_connection
+    if conn is None:
+        raise DeployError("Connect your AWS account before provisioning.")
+    # AWS does not expose a way to check whether a role in ANOTHER account
+    # still exists without already having access to that account — IAM:GetRole
+    # is account-scoped to the caller's own credentials, and AssumeRole itself
+    # deliberately returns the same AccessDenied for "role deleted" and "role
+    # exists but trust/permissions are wrong" (a security property, not a gap).
+    # So the only honest signal we have is AssumeRole's own AccessDenied —
+    # surface it as "reconnect", since a stale connection (bootstrap stack torn
+    # down out-of-band) is by far the common real-world cause.
     try:
         creds = aws_client.assume_role(
             conn.iam_role_arn, conn.bootstrap_stack_id, session_name=f"Clyro-{deployment.project_id}"
         )
     except ClientError as exc:
+        code = exc.response["Error"]["Code"]
+        if code in ("AccessDenied", "AccessDeniedException"):
+            raise DeployError("Your AWS connection is no longer valid — reconnect your AWS account.")
         raise DeployError(f"Could not access your AWS account: {exc.response['Error']['Message']}")
     return creds, (conn.aws_region or "us-east-1")
 
@@ -1052,20 +1065,52 @@ _FREE_TIER_BACKUP_RE = re.compile(
 )
 _BACKUP_RETENTION_LINE_RE = re.compile(r"(^\s*BackupRetentionPeriod:\s*)\d+\s*$", re.M)
 
+# Found live: an AWS account can itself be free-tier-restricted regardless of
+# what the user picked in Step 2 ("Paid account") — cfn_generator.py already
+# forces both of these to free-tier-safe values when the user explicitly
+# selects free-tier, but a paid-selected spec on a free-tier-restricted
+# account hits both AWS rejections in turn, one bounded retry at a time,
+# since CloudFormation only reports the first validation failure per attempt.
+# Fixing both in one pass (whichever error surfaced first) spends the single
+# retry this loop allows on curing the whole class of problem, not just the
+# symptom that happened to be reported first.
+_FREE_TIER_INSTANCE_CLASS_RE = re.compile(
+    r"instance size isn.t available with free plan accounts",
+    re.I,
+)
+_DB_INSTANCE_CLASS_LINE_RE = re.compile(r"(^\s*DBInstanceClass:\s*).+$", re.M)
+_FREE_TIER_SAFE_DB_CLASS = "db.t3.micro"
+
 
 def _deterministic_template_fix(deployment: Deployment, root_cause: str | None) -> bool:
-    """Apply a known safe transform for a known AWS failure. Returns True only
-    when the template changed and was persisted. Unknown failures are deliberately
-    not sent through an LLM retry loop; the real AWS reason is surfaced."""
+    """Apply known safe transforms for known free-tier-account AWS rejections.
+    Returns True only when the template changed and was persisted. Unknown
+    failures are deliberately not sent through an LLM retry loop; the real AWS
+    reason is surfaced.
+
+    Prefers the proactively-verified account type (AWSAccountConnection.
+    verified_account_type, queried straight from AWS via freetier:
+    GetAccountPlanState at connect time) over regex-sniffing the AWS error
+    message — the regexes stay as a fallback for connections verified before
+    this field existed (verified_account_type is null) or when the plan-type
+    call itself failed."""
     if not deployment or not root_cause:
         return False
+    connection = getattr(deployment, "aws_connection", None)
+    verified_type = getattr(connection, "verified_account_type", None) if connection else None
+    if verified_type is not None:
+        is_free_tier_account = verified_type == IntentRecord.AwsAccountType.FREE_TIER
+        if not is_free_tier_account:
+            return False
+    elif not (_FREE_TIER_BACKUP_RE.search(root_cause) or _FREE_TIER_INSTANCE_CLASS_RE.search(root_cause)):
+        return False
     template = deployment.cloudformation_template or ""
-    if _FREE_TIER_BACKUP_RE.search(root_cause):
-        fixed = _BACKUP_RETENTION_LINE_RE.sub(r"\g<1>1", template)
-        if fixed != template:
-            deployment.cloudformation_template = fixed
-            deployment.save(update_fields=["cloudformation_template", "updated_at"])
-            return True
+    fixed = _BACKUP_RETENTION_LINE_RE.sub(r"\g<1>1", template)
+    fixed = _DB_INSTANCE_CLASS_LINE_RE.sub(rf"\g<1>{_FREE_TIER_SAFE_DB_CLASS}", fixed)
+    if fixed != template:
+        deployment.cloudformation_template = fixed
+        deployment.save(update_fields=["cloudformation_template", "updated_at"])
+        return True
     return False
 
 

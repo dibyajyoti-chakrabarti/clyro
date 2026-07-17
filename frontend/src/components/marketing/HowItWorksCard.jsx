@@ -243,7 +243,7 @@ export default function HowItWorksCard({
         height: isMobile ? "auto" : "100%",
         minHeight: isMobile ? undefined : "480px",
         paddingTop: isMobile ? "48px" : 0,
-        borderRadius: "20px 20px 0 0",
+        borderRadius: "50% 50% 0 0 / 60px 60px 0 0",
         overflow: "hidden",
         position: "relative",
         backgroundColor: bgColor,
