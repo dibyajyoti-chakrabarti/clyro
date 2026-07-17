@@ -1,16 +1,18 @@
 import { AlertTriangle, ArrowRight, Box, Check, Clock, Link2, Lock, ShieldCheck } from 'lucide-react'
 import { WizardPanel } from '../../../../components/wizard/WizardPanel'
-import Button from '../../../../components/ui/Button'
-import { ACCOUNT_TYPE_OPTIONS } from '../constants/questions'
-import ChoiceOption from '../step3/ChoiceOption'
+import connectAwsImg from '../../../../assets/steps/connectAws.webp'
 
 const GOLD = '#D4A017'
+const GOLD_08 = 'rgba(212, 160, 23, 0.08)'
 const GOLD_10 = 'rgba(212, 160, 23, 0.1)'
+const GOLD_15 = 'rgba(212, 160, 23, 0.15)'
 const GOLD_25 = 'rgba(212, 160, 23, 0.25)'
 const GOLD_30 = 'rgba(212, 160, 23, 0.3)'
 const GOLD_50 = 'rgba(212, 160, 23, 0.5)'
+const GOLD_60 = 'rgba(212, 160, 23, 0.6)'
 const WHITE_03 = 'rgba(255, 255, 255, 0.03)'
 const WHITE_05 = 'rgba(255, 255, 255, 0.05)'
+const WHITE_06 = 'rgba(255, 255, 255, 0.06)'
 const WHITE_08 = 'rgba(255, 255, 255, 0.08)'
 const WHITE_55 = 'rgba(255, 255, 255, 0.55)'
 const WHITE_60 = 'rgba(255, 255, 255, 0.6)'
@@ -20,11 +22,20 @@ const WHITE_40 = 'rgba(255, 255, 255, 0.4)'
 const WHITE_09 = 'rgba(255, 255, 255, 0.09)'
 const WHITE_15 = 'rgba(255, 255, 255, 0.15)'
 
-const featureRows = [
-  { Icon: ShieldCheck, label: 'No access keys or secret keys required' },
-  { Icon: Clock,       label: 'Role can be deleted to immediately revoke access' },
-  { Icon: Box,         label: 'Same pattern used by Terraform Cloud and Pulumi' },
-  { Icon: Lock,        label: 'Secure, temporary, and least-privilege access' },
+// Card shell shared by the two Section 2 cards and the bottom CTA — dark
+// charcoal, barely-there border, no shadow/glow (premium/minimal per design brief).
+const cardStyle = {
+  background: '#121212',
+  border: `1px solid ${WHITE_08}`,
+  borderRadius: 20,
+  padding: 32,
+}
+
+const trustPoints = [
+  { Icon: ShieldCheck, heading: 'No access keys or secret keys required', description: 'Avoid long-term credentials and reduce security risks.' },
+  { Icon: Clock, heading: 'Role can be deleted to immediately revoke access', description: 'You\'re always in control of your access.' },
+  { Icon: Box, heading: 'Same pattern used by Terraform Cloud and Pulumi', description: 'Industry-standard, secure, and trusted by leading tools.' },
+  { Icon: Lock, heading: 'Secure, temporary, and least-privilege access', description: 'Access is scoped down to only what\'s needed.' },
 ]
 
 function AwsConnectCard({
@@ -44,119 +55,171 @@ function AwsConnectCard({
 }) {
   return (
     <WizardPanel>
-      <div style={{ width: '100%' }}>
+      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 28, marginTop: -24 }}>
 
-        {/* Step badge */}
-        <div style={{
-          display: 'inline-flex',
-          padding: '5px 12px',
-          borderRadius: 6,
-          background: GOLD_10,
-          border: `1px solid ${GOLD_30}`,
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          color: GOLD,
-        }}>
-          Step 4 of 5
+        {/* Section 1: Hero */}
+        <div className='flex flex-col-reverse items-center gap-8 lg:flex-row lg:items-center lg:justify-between'>
+          <h1
+            className='w-full text-[44px] sm:text-[56px] lg:w-[48%] lg:flex-none lg:text-[72px]'
+            style={{ fontWeight: 800, lineHeight: 1.05, margin: 0 }}
+          >
+            <span style={{ color: '#ffffff' }}>Connect your</span>
+            <br />
+            <span
+              style={{
+                background: 'linear-gradient(135deg, #FFFFFF 0%, #F3E2B8 32%, #E3B341 66%, #A97C1E 100%)',
+                WebkitBackgroundClip: 'text',
+                backgroundClip: 'text',
+                color: 'transparent',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              AWS account
+            </span>
+          </h1>
+          <div className='flex w-full items-center justify-center lg:w-auto lg:flex-1 lg:justify-end'>
+            <img
+              src={connectAwsImg}
+              alt=''
+              style={{ maxHeight: 320, width: 'auto', maxWidth: '100%', objectFit: 'contain', flexShrink: 0 }}
+            />
+          </div>
         </div>
 
-        {/* Headline */}
-        <h1 style={{ fontSize: 38, fontWeight: 800, lineHeight: 1.1, marginTop: 16, marginBottom: 0 }}>
-          <span style={{ color: '#ffffff' }}>Connect your </span>
-          <span style={{ color: GOLD }}>AWS</span>
-          <span style={{ color: '#ffffff' }}> account</span>
-        </h1>
-
-        {/* Subtext */}
-        <p style={{
-          fontSize: 15,
-          fontWeight: 400,
-          lineHeight: 1.55,
-          color: WHITE_60,
-          marginTop: 10,
-          maxWidth: 560,
-        }}>
-          Clyro never stores your credentials. It uses a temporary IAM role that you can revoke at any time.
-        </p>
-
-        {/* Feature rows */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 28 }}>
-          {featureRows.map(({ Icon, label }) => (
-            <div key={label} style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '16px 20px',
-              background: WHITE_03,
-              border: `1px solid ${WHITE_08}`,
-              borderRadius: 10,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 8,
-                  background: GOLD_10,
-                  border: `1px solid ${GOLD_25}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  color: GOLD,
-                }}>
-                  <Icon size={16} />
+        {/* Section 2: main content — two equal cards */}
+        <div className='grid grid-cols-1 gap-6 lg:grid-cols-2'>
+          {/* Left: why temporary IAM role */}
+          <div style={cardStyle}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>Why we use a temporary IAM role</h2>
+            <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column' }}>
+              {trustPoints.map(({ Icon, heading, description }, index) => (
+                <div key={heading}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '16px 0' }}>
+                    <div style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 8,
+                      background: GOLD_10,
+                      border: `1px solid ${GOLD_25}`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      color: GOLD,
+                    }}>
+                      <Icon size={16} />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 14, fontWeight: 600, color: WHITE_90, margin: 0 }}>{heading}</p>
+                      <p style={{ fontSize: 13, color: WHITE_55, margin: '4px 0 0' }}>{description}</p>
+                    </div>
+                  </div>
+                  {index < trustPoints.length - 1 ? <div style={{ height: 1, background: WHITE_06 }} /> : null}
                 </div>
-                <span style={{ fontSize: 14, fontWeight: 500, color: WHITE_90 }}>{label}</span>
-              </div>
-              <div style={{
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                border: `1px solid ${GOLD_50}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: GOLD,
-                flexShrink: 0,
-              }}>
-                <Check size={14} />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {!roleConnected ? (
-          <div className='mx-auto mt-6 max-w-md text-left'>
-            <p className='mb-2 text-sm font-semibold text-white/90'>What type of AWS account is this?</p>
-            <div className='space-y-2'>
-              {ACCOUNT_TYPE_OPTIONS.map((option) => (
-                <ChoiceOption
-                  key={option.value}
-                  option={option}
-                  selected={accountType === option.value}
-                  onClick={() => onAccountTypeChange(option.value)}
-                />
               ))}
             </div>
           </div>
-        ) : null}
 
-        {/* Bottom CTA bar */}
-        <div style={{
-          marginTop: 28,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '20px 28px',
-          background: WHITE_03,
-          border: `1px solid ${GOLD_25}`,
-          borderRadius: 12,
-          flexWrap: 'wrap',
-          gap: 20,
-        }}>
-          {/* Left: icon + text */}
+          {/* Right: AWS account selection */}
+          <div style={cardStyle}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: 0 }}>What type of AWS account is this?</h2>
+            <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Paid account */}
+              <button
+                type='button'
+                onClick={() => onAccountTypeChange('paid')}
+                style={{
+                  textAlign: 'left',
+                  borderRadius: 16,
+                  padding: 20,
+                  cursor: 'pointer',
+                  transition: 'border-color 150ms, background 150ms',
+                  border: accountType === 'paid' ? `1.5px solid ${GOLD_60}` : `1px solid ${WHITE_08}`,
+                  background: accountType === 'paid' ? GOLD_08 : WHITE_03,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <ShieldCheck size={16} color={accountType === 'paid' ? GOLD : WHITE_60} />
+                    <span style={{ fontSize: 15, fontWeight: 600, color: WHITE_90 }}>Paid account</span>
+                    <span style={{
+                      borderRadius: 999,
+                      border: `1px solid ${GOLD_30}`,
+                      background: GOLD_10,
+                      padding: '2px 8px',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: GOLD,
+                    }}>
+                      Recommended
+                    </span>
+                  </div>
+                  <span style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    border: `1.5px solid ${accountType === 'paid' ? GOLD : WHITE_15}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginTop: 2,
+                  }}>
+                    {accountType === 'paid' ? <span style={{ width: 9, height: 9, borderRadius: '50%', background: GOLD }} /> : null}
+                  </span>
+                </div>
+                <p style={{ fontSize: 13, color: WHITE_55, margin: '6px 0 0 26px' }}>I'm fine paying for the right resources.</p>
+                <p style={{ fontSize: 13, color: WHITE_70, margin: '12px 0 0 26px' }}>You'll be billed for AWS resources you use.</p>
+                <p style={{ fontSize: 12, color: WHITE_55, margin: '4px 0 0 26px' }}>Clyro helps you build securely and cost-effectively.</p>
+              </button>
+
+              {/* Free tier */}
+              <button
+                type='button'
+                onClick={() => onAccountTypeChange('free_tier')}
+                style={{
+                  textAlign: 'left',
+                  borderRadius: 16,
+                  padding: 20,
+                  cursor: 'pointer',
+                  transition: 'border-color 150ms, background 150ms',
+                  border: accountType === 'free_tier' ? `1.5px solid ${GOLD_60}` : `1px solid ${WHITE_08}`,
+                  background: accountType === 'free_tier' ? GOLD_08 : WHITE_03,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: accountType === 'free_tier' ? WHITE_90 : WHITE_60 }}>Free Tier</span>
+                  <span style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    border: `1.5px solid ${accountType === 'free_tier' ? GOLD : WHITE_15}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {accountType === 'free_tier' ? <span style={{ width: 9, height: 9, borderRadius: '50%', background: GOLD }} /> : null}
+                  </span>
+                </div>
+                <p style={{ fontSize: 13, color: WHITE_55, margin: '6px 0 0' }}>I want to stay within free limits.</p>
+                <p style={{ fontSize: 12, color: WHITE_40, margin: '8px 0 0' }}>NAT Gateway and some services will be excluded to avoid charges.</p>
+              </button>
+            </div>
+
+            {/* Trust message */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 20 }}>
+              <ShieldCheck size={14} color={WHITE_55} style={{ marginTop: 2, flexShrink: 0 }} />
+              <p style={{ fontSize: 12, color: WHITE_55, margin: 0, lineHeight: 1.5 }}>
+                Clyro never stores your credentials. It uses a temporary IAM role that you can{' '}
+                <span style={{ color: GOLD }}>revoke at any time</span>.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 3: bottom CTA */}
+        <div style={{ ...cardStyle, padding: '24px 28px' }} className='flex flex-col items-stretch gap-5 lg:flex-row lg:items-center lg:justify-between'>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{
               width: 44,
@@ -172,23 +235,20 @@ function AwsConnectCard({
               <Link2 size={20} />
             </div>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: GOLD }}>
-                You're one step away
-              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: GOLD }}>You're one step away</div>
               <div style={{ fontSize: 13, fontWeight: 400, color: WHITE_55, marginTop: 4, maxWidth: 380 }}>
                 Securely connect your AWS account using a temporary IAM role — no long-term credentials needed.
               </div>
             </div>
           </div>
 
-          {/* Right: button + helper */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }} className='items-stretch lg:items-end'>
             <button
               onClick={onOpenStack}
               disabled={urlLoading || !cfnConsoleUrl || roleConnected}
               style={{
                 padding: '13px 24px',
-                borderRadius: 8,
+                borderRadius: 10,
                 background: urlLoading || !cfnConsoleUrl || roleConnected ? 'rgba(212, 160, 23, 0.4)' : GOLD,
                 color: '#1a1200',
                 fontSize: 14,
@@ -196,10 +256,14 @@ function AwsConnectCard({
                 border: 'none',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: 8,
                 cursor: urlLoading || !cfnConsoleUrl || roleConnected ? 'not-allowed' : 'pointer',
                 whiteSpace: 'nowrap',
+                transition: 'filter 150ms, transform 150ms',
               }}
+              onMouseEnter={(e) => { if (!e.currentTarget.disabled) e.currentTarget.style.filter = 'brightness(1.08)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.filter = 'none' }}
             >
               {urlLoading ? (
                 <>
@@ -220,7 +284,7 @@ function AwsConnectCard({
                 </>
               )}
             </button>
-            <div style={{ fontSize: 11, color: WHITE_40, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ fontSize: 11, color: WHITE_40, display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
               <Lock size={11} />
               You'll be redirected to AWS to continue securely.
             </div>
@@ -230,9 +294,8 @@ function AwsConnectCard({
         {/* ARN input section — shown after stack is opened */}
         {stackOpened && !roleConnected ? (
           <div style={{
-            marginTop: 24,
-            border: '1px solid rgba(212, 160, 23, 0.15)',
-            borderRadius: 12,
+            border: `1px solid ${GOLD_15}`,
+            borderRadius: 20,
             padding: '24px 28px',
             background: 'rgba(255, 255, 255, 0.015)',
           }}>
@@ -330,7 +393,7 @@ function AwsConnectCard({
 
         {/* Role connected confirmation */}
         {roleConnected ? (
-          <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 16 }}>
             <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#4ade80', margin: 0 }}>
               <Check size={16} strokeWidth={3} />
               IAM role connected
@@ -343,7 +406,7 @@ function AwsConnectCard({
             can flag account_type_mismatch on the verify response. Renders only
             if/when the backend sends it. */}
         {roleConnected && accountTypeMismatch ? (
-          <p className='mx-auto mt-4 flex max-w-md items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-left text-sm text-amber-300'>
+          <p className='mx-auto flex max-w-md items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-left text-sm text-amber-300'>
             <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
             This AWS account looks like a {accountType === 'free_tier' ? 'paid' : 'free-tier'} account,
             not what you selected above. Infrastructure will be generated for what we detected — you

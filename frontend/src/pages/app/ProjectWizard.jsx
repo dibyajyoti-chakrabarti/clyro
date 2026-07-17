@@ -37,6 +37,10 @@ export default function ProjectWizard() {
   })
   const [step1CanContinue, setStep1CanContinue] = useState(false)
   const [step2CanContinue, setStep2CanContinue] = useState(false)
+  // Step 2 only shows Back/Continue once the CloudFormation stack has been
+  // opened and the ARN textbox is visible — the hero/cards/CTA view before
+  // that has no wizard-nav step to take yet (the CTA button is the only action).
+  const [step2StackOpened, setStep2StackOpened] = useState(false)
   const [step3CanContinue, setStep3CanContinue] = useState(false)
   const [step4Finalized, setStep4Finalized] = useState(false)
   const [step4ShowBanner, setStep4ShowBanner] = useState(false)
@@ -239,6 +243,7 @@ export default function ProjectWizard() {
                     projectData={projectData}
                     setProjectData={setProjectData}
                     setStep2CanContinue={setStep2CanContinue}
+                    setStep2StackOpened={setStep2StackOpened}
                   />
                 ) : null}
 
@@ -288,8 +293,10 @@ export default function ProjectWizard() {
             </div>
 
             {/* Steps 1, 3, 5, 6 manage their own navigation (Step 1 advances itself once
-                secrets are staged, via onComplete); step 4 uses Finalize inline */}
-            {step !== 1 && step !== 3 && step !== 5 && step !== 6 && (
+                secrets are staged, via onComplete); step 4 uses Finalize inline. Step 2
+                only shows nav once the CFN stack is opened and the ARN textbox appears —
+                before that, the CTA button is the page's only action. */}
+            {step !== 1 && step !== 3 && step !== 5 && step !== 6 && !(step === 2 && !step2StackOpened) && (
               <div className='mt-auto flex w-full items-end justify-between pt-8'>
                 {step > 1 ? (
                   <Button

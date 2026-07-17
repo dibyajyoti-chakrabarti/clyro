@@ -3,7 +3,7 @@ import AwsSetup from './AwsSetup'
 // Step 2: connect your AWS account. Thin wrapper — AwsSetup owns all the
 // connect/verify state; this just threads the wizard's projectData/callback
 // plumbing the way step1/StepOne.jsx does for useScanFlow.
-export default function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanContinue }) {
+export default function StepTwoPanel({ projectId, projectData, setProjectData, setStep2CanContinue, setStep2StackOpened }) {
   return (
     <AwsSetup
       projectId={projectId}
@@ -16,6 +16,7 @@ export default function StepTwoPanel({ projectId, projectData, setProjectData, s
           connection: { ...prev.connection, connected, account_type: accountType },
         }))
       }}
+      onStackOpenedChange={setStep2StackOpened}
     />
   )
 }
