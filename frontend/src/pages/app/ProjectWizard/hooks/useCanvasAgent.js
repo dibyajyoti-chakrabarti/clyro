@@ -8,6 +8,7 @@ const CHAT_WELCOME = {
 
 export default function useCanvasAgent({ projectId, setStep4InputPrefill, step4InputPrefill }) {
   const [canvas, setCanvas] = useState(null)
+  const [assumptions, setAssumptions] = useState([])
   const [nodePositions, setNodePositions] = useState({})
   const [selectedNode, setSelectedNode] = useState(null)
   const [chatInput, setChatInput] = useState('')
@@ -50,6 +51,7 @@ export default function useCanvasAgent({ projectId, setStep4InputPrefill, step4I
       .then((res) => {
         if (!active) return
         setCanvas(res.canvas)
+        setAssumptions(res.assumptions || [])
         setNodePositions(spreadPositions(res.positions || {}))
       })
       .catch(() => {})
@@ -74,6 +76,7 @@ export default function useCanvasAgent({ projectId, setStep4InputPrefill, step4I
   const applyResult = (res) => {
     if (res.outcome === 'applied' && res.version) {
       setCanvas(res.version.canvas)
+      setAssumptions(res.version.assumptions || [])
       setNodePositions(res.version.positions || {})
       setPendingOp(null)
       appendAgent(res.message || 'Done — I updated the canvas.')
@@ -173,6 +176,7 @@ export default function useCanvasAgent({ projectId, setStep4InputPrefill, step4I
     canvasConnections,
     canvasCost,
     totalCost,
+    assumptions,
     selectedNode,
     setSelectedNode,
     selected,

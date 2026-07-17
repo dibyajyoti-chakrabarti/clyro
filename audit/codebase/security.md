@@ -2,9 +2,9 @@
 
 Findings ranked most → least important. Compiled 2026-07-15 during the TODO.md cleanup / Step 1 generalization session; re-verify claims against current code before acting, the way `documentation/ch_13_deterministic_iac_mechanism.md`'s own status table was found to have drifted.
 
-## 1. No `CSRF_TRUSTED_ORIGINS`, `SECURE_*`, or `SESSION_COOKIE_*` settings in `backend/config/settings.py`
+## 1. ~~No `CSRF_TRUSTED_ORIGINS`, `SECURE_*`, or `SESSION_COOKIE_*` settings~~ — fixed
 
-`corsheaders` and `CsrfViewMiddleware` are both installed and `CORS_ALLOWED_ORIGINS` is env-driven (`settings.py:105`, default `[]`), but there is no `CSRF_TRUSTED_ORIGINS`, `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, or `X_FRAME_OPTIONS` anywhere in `settings.py`. Django's own defaults apply, which are not secure-by-default for a production deployment behind an ALB (e.g. `SESSION_COOKIE_SECURE`/`CSRF_COOKIE_SECURE` default `False`, cookies can be sent over plain HTTP). Worth an explicit settings review — likely a small, low-risk addition once the ALB/CloudFront TLS termination boundary is confirmed.
+**Fixed as of commit `2cc6ac9`.** `backend/config/settings.py:187-202` now sets `CSRF_TRUSTED_ORIGINS`, `SECURE_SSL_REDIRECT`, `SESSION_COOKIE_SECURE`, `SECURE_HSTS_SECONDS`/`SECURE_HSTS_INCLUDE_SUBDOMAINS`/`SECURE_HSTS_PRELOAD`, `X_FRAME_OPTIONS`, and `SECURE_PROXY_SSL_HEADER` (env-driven, gated on `IS_PRODUCTION` where appropriate — `SECURE_PROXY_SSL_HEADER` is needed because ALB terminates TLS before the app). Re-verified live 2026-07-17.
 
 ## 2. RepoRecon's Django+React-only detection is a hard product boundary, not (currently) a security control
 
@@ -14,6 +14,14 @@ Findings ranked most → least important. Compiled 2026-07-15 during the TODO.md
 
 `AWSAccountConnection.iam_role_arn` (cross-account STS AssumeRole, `ExternalId`-gated) and `EnvVarKey.secrets_manager_arn` (pointer only, not the value) mean Clyro never stores a customer's raw AWS credentials or app secrets in its own database — actual secret values live only in the customer's own Secrets Manager. `github-app.pem`, `.env.local`, and `db.sqlite3` are all correctly `.gitignore`d and unstaged. No finding here beyond: keep verifying this invariant holds as new integrations are added, since it's currently enforced by convention, not by a schema constraint.
 
-## 4. `github_installations` POST reassigns a GitHubInstallation's owner with no ownership check (found live, 2026-07-16)
+## 4. ~~`github_installations` POST reassigns a GitHubInstallation's owner with no ownership check~~ — fixed (found live, 2026-07-16; fixed same cycle in `2cc6ac9`)
 
-`backend/app/views.py:268-293`, the `POST` branch of `github_installations`: `GitHubInstallation.objects.update_or_create(installation_id=int(installation_id), defaults={'user': request.user, ...})` is keyed **only** on `installation_id` — whichever authenticated user's session happens to POST this installation_id last becomes its owner, silently reassigning it away from whoever connected it first. Reproduced live mid-session: a `GitHubInstallation` row connected under one Cognito-linked account got its `user_id` flipped to a different account after a second GitHub App install/re-auth flow completed in the same browser, and the first account's Step 1 "use an existing account" option silently disappeared (`GET github_installations` correctly scopes by `request.user`, so the now-unowned account saw zero installations — no error, just an empty list). Since `installation_id` is a GitHub-side identifier shared across whichever GitHub account approves the install, this is a real cross-account takeover primitive, not just a UX glitch: any authenticated Clyro user who knows or guesses another org's `installation_id` could silently steal that repo connection by POSTing to this endpoint. Fix direction: verify the requesting user actually owns/authorized this specific installation (e.g. validate the GitHub OAuth state/callback ties back to `request.user`, or require the installation's GitHub account login to match a GitHub identity already associated with `request.user`) before allowing `update_or_create` to reassign an existing row's `user`.
+**Fixed as of commit `2cc6ac9`.** `backend/app/views.py:290-306`, the `POST` branch of `github_installations` now looks up any existing row for the `installation_id` first and returns `403` if it's already owned by a different user, before `update_or_create` ever runs:
+
+```python
+existing = GitHubInstallation.objects.filter(installation_id=installation_id).first()
+if existing and existing.user_id != request.user.id:
+    return Response({'error': ...}, status=status.HTTP_403_FORBIDDEN)
+```
+
+Original finding (kept for context): `GitHubInstallation.objects.update_or_create(installation_id=int(installation_id), defaults={'user': request.user, ...})` was keyed **only** on `installation_id` — whichever authenticated user's session happened to POST this installation_id last became its owner, silently reassigning it away from whoever connected it first. Reproduced live mid-session (a real `GitHubInstallation` row's `user_id` flipped to a different account after a second GitHub App install/re-auth flow completed in the same browser), then worked around live via the app's normal reauth flow, and fixed properly in code the same cycle. Re-verified live 2026-07-17.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Database, Globe, Layers, Server, Settings2, Zap } from 'lucide-react'
+import { Database, Globe, Layers, Package, Server, Settings2, Zap } from 'lucide-react'
 import CanvasSurface from './canvas/CanvasSurface'
 import CanvasNode from './canvas/CanvasNode'
 import NodePopup from './canvas/NodePopup'
@@ -29,6 +29,7 @@ function StepFourPanel({
     canvasConnections,
     canvasCost,
     totalCost,
+    assumptions,
     selectedNode,
     setSelectedNode,
     selected,
@@ -56,6 +57,7 @@ function StepFourPanel({
     cache: Zap,
     worker: Settings2,
     queue: Layers,
+    storage: Package,
   }
 
   const accentByType = {
@@ -65,6 +67,7 @@ function StepFourPanel({
     cache: 'border-l-red-500',
     worker: 'border-l-orange-500',
     queue: 'border-l-yellow-500',
+    storage: 'border-l-teal-500',
   }
 
   useEffect(() => {
@@ -249,6 +252,7 @@ function StepFourPanel({
           <CostPanel
             canvasCost={canvasCost}
             totalCost={totalCost}
+            assumptions={assumptions}
             environment={projectData?.intent?.environment}
             onClose={() => setActiveDrawer(null)}
           />
