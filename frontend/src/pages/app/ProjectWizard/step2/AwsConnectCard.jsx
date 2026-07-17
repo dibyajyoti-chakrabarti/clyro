@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, Box, Check, Clock, Link2, Lock, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Box, CheckCircle2, Clock, Link2, Lock, ShieldCheck } from 'lucide-react'
 import { WizardPanel } from '../../../../components/wizard/WizardPanel'
 import connectAwsImg from '../../../../assets/steps/connectAws.webp'
 
@@ -52,6 +52,8 @@ function AwsConnectCard({
   accountTypeMismatch,
   onOpenStack,
   onVerify,
+  onBack,
+  onContinue,
 }) {
   return (
     <WizardPanel>
@@ -391,13 +393,94 @@ function AwsConnectCard({
           </div>
         ) : null}
 
-        {/* Role connected confirmation */}
+        {/* Role connected confirmation — a single premium success bar carrying
+            both the confirmation and the Back/Continue nav (the shared wizard
+            footer steps aside for step 2 once connected, see ProjectWizard.jsx). */}
         {roleConnected ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 16 }}>
-            <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: '#4ade80', margin: 0 }}>
-              <Check size={16} strokeWidth={3} />
-              IAM role connected
-            </p>
+          <div
+            className='flex flex-col items-stretch gap-5 sm:flex-row sm:items-center sm:justify-between'
+            style={{
+              background: '#121212',
+              border: `1px solid ${WHITE_08}`,
+              borderRadius: 18,
+              padding: '20px 24px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{
+                width: 44,
+                height: 44,
+                borderRadius: '50%',
+                background: 'rgba(34, 197, 94, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <CheckCircle2 size={20} color='#4ade80' />
+              </div>
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 600, color: '#4ade80', margin: 0 }}>IAM role connected</p>
+                <p style={{ fontSize: 13, color: WHITE_55, margin: '2px 0 0' }}>
+                  You're securely connected using a temporary IAM role.
+                </p>
+              </div>
+            </div>
+
+            <div className='flex flex-col items-stretch gap-4 sm:flex-row sm:items-center'>
+              <button
+                type='button'
+                onClick={onBack}
+                className='w-full sm:w-[176px]'
+                style={{
+                  height: 52,
+                  borderRadius: 18,
+                  padding: '0 24px',
+                  background: WHITE_05,
+                  border: `1px solid ${WHITE_15}`,
+                  color: '#fff',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  cursor: 'pointer',
+                  transition: 'border-color 180ms, background 180ms',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = WHITE_15.replace('0.15', '0.3'); e.currentTarget.style.background = WHITE_08 }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = WHITE_15; e.currentTarget.style.background = WHITE_05 }}
+              >
+                <ArrowLeft size={16} />
+                Back
+              </button>
+              <button
+                type='button'
+                onClick={onContinue}
+                className='w-full sm:w-[176px]'
+                style={{
+                  height: 52,
+                  borderRadius: 18,
+                  padding: '0 24px',
+                  background: GOLD,
+                  border: `1px solid ${GOLD_60}`,
+                  color: '#1a1200',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  cursor: 'pointer',
+                  transition: 'filter 180ms, transform 180ms',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.08)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; e.currentTarget.style.transform = 'none' }}
+              >
+                Continue
+                <ArrowRight size={16} />
+              </button>
+            </div>
           </div>
         ) : null}
 

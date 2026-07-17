@@ -7,7 +7,7 @@ import AwsConnectCard from './AwsConnectCard'
 // longer gates IaC generation, which is fully offline, but the user's account
 // type still needs to be captured here so verification can flag a mismatch
 // between what they picked and what the account actually is.
-export default function AwsSetup({ projectId, initialAccountType, initiallyConnected, onConnected, onStackOpenedChange }) {
+export default function AwsSetup({ projectId, initialAccountType, initiallyConnected, onConnected, onBack, onContinue }) {
   const [accountType, setAccountType] = useState(initialAccountType || 'paid')
   const [cfnConsoleUrl, setCfnConsoleUrl] = useState(null)
   const [urlLoading, setUrlLoading] = useState(false)
@@ -34,11 +34,6 @@ export default function AwsSetup({ projectId, initialAccountType, initiallyConne
     onConnected?.({ connected: roleConnected, accountType })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleConnected])
-
-  useEffect(() => {
-    onStackOpenedChange?.(stackOpened)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stackOpened])
 
   const handleOpenStack = () => {
     if (cfnConsoleUrl) {
@@ -84,6 +79,8 @@ export default function AwsSetup({ projectId, initialAccountType, initiallyConne
         accountTypeMismatch={accountTypeMismatch}
         onOpenStack={handleOpenStack}
         onVerify={handleVerify}
+        onBack={onBack}
+        onContinue={onContinue}
       />
     </div>
   )
