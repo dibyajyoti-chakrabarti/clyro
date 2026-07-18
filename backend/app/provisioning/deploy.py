@@ -517,11 +517,11 @@ def health(project: Project) -> dict[str, Any]:
         resources = aws_client.list_stack_resources(creds, region, stack_name)
         stack_info = aws_client.describe_stack(creds, region, stack_name)
     except ClientError:
-        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": []}
+        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": [], "warnings": []}
 
     services = _ecs_services_from_resources(resources)
     if not services:
-        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": []}
+        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": [], "warnings": []}
 
     lb_arn = next(
         (r["physical_id"] for r in resources
@@ -565,36 +565,43 @@ def health(project: Project) -> dict[str, Any]:
                 })
 
     metrics = {"response_time_ms": None, "request_rate": None, "error_rate": None, "cpu_percent": None}
+    warnings: list[str] = []
     lb_dimension = _lb_dimension_value(lb_arn) if lb_arn else None
-    if lb_dimension:
-        dims = [{"Name": "LoadBalancer", "Value": lb_dimension}]
-        response_time = aws_client.get_cloudwatch_metric(
-            creds, region, "AWS/ApplicationELB", "TargetResponseTime", dims, stat="Average")
-        metrics["response_time_ms"] = round(response_time * 1000, 1) if response_time is not None else None
-        request_count = aws_client.get_cloudwatch_metric(
-            creds, region, "AWS/ApplicationELB", "RequestCount", dims, stat="Sum")
-        metrics["request_rate"] = round(request_count / 5, 2) if request_count is not None else None
-        error_count = aws_client.get_cloudwatch_metric(
-            creds, region, "AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", dims, stat="Sum")
-        if error_count is not None and request_count:
-            metrics["error_rate"] = round(100 * error_count / request_count, 2)
-        elif error_count is not None:
-            metrics["error_rate"] = 0.0
+    try:
+        if lb_dimension:
+            dims = [{"Name": "LoadBalancer", "Value": lb_dimension}]
+            response_time = aws_client.get_cloudwatch_metric(
+                creds, region, "AWS/ApplicationELB", "TargetResponseTime", dims, stat="Average")
+            metrics["response_time_ms"] = round(response_time * 1000, 1) if response_time is not None else None
+            request_count = aws_client.get_cloudwatch_metric(
+                creds, region, "AWS/ApplicationELB", "RequestCount", dims, stat="Sum")
+            metrics["request_rate"] = round(request_count / 5, 2) if request_count is not None else None
+            error_count = aws_client.get_cloudwatch_metric(
+                creds, region, "AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", dims, stat="Sum")
+            if error_count is not None and request_count:
+                metrics["error_rate"] = round(100 * error_count / request_count, 2)
+            elif error_count is not None:
+                metrics["error_rate"] = 0.0
 
-    if serving:
-        cluster, service = serving
-        cpu = aws_client.get_cloudwatch_metric(
-            creds, region, "AWS/ECS", "CPUUtilization", [
-                {"Name": "ClusterName", "Value": cluster},
-                {"Name": "ServiceName", "Value": service},
-            ], stat="Average")
-        metrics["cpu_percent"] = round(cpu, 1) if cpu is not None else None
+        if serving:
+            cluster, service = serving
+            cpu = aws_client.get_cloudwatch_metric(
+                creds, region, "AWS/ECS", "CPUUtilization", [
+                    {"Name": "ClusterName", "Value": cluster},
+                    {"Name": "ServiceName", "Value": service},
+                ], stat="Average")
+            metrics["cpu_percent"] = round(cpu, 1) if cpu is not None else None
+    except aws_client.AwsAccessDenied:
+        warnings.append(
+            "Metrics are unavailable: your AWS role is missing cloudwatch:GetMetricData. "
+            "Update your Clyro bootstrap stack to restore metrics.")
 
     return {
         "stack_status": "ok",
         "health_items": health_items,
         "metrics": metrics,
         "alerts": alerts,
+        "warnings": warnings,
         "stack": {
             "name": stack_info["stack_name"] or stack_name,
             "status": stack_info["status"],

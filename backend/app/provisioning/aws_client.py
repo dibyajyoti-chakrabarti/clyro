@@ -6,6 +6,14 @@ from django.conf import settings
 
 log = logging.getLogger(__name__)
 
+_ACCESS_DENIED_CODES = ('AccessDenied', 'AccessDeniedException', 'UnauthorizedOperation')
+
+
+class AwsAccessDenied(Exception):
+    """The assumed customer role lacks an IAM action (bootstrap stacks created
+    before that grant existed) — callers surface this as a user-facing warning
+    instead of degrading silently."""
+
 
 def _get_clyro_session():
     # In production (DEBUG=False) the compute's attached IAM role provides
@@ -659,8 +667,9 @@ def _cloudwatch_client(credentials: dict, region: str):
 def get_cloudwatch_metric(credentials: dict, region: str, namespace: str, metric_name: str,
                           dimensions: list[dict], stat: str = 'Average', minutes: int = 5) -> float | None:
     """Latest datapoint for one metric over the last ``minutes``, or None if there's
-    no data yet or the role can't read it (bootstrap roles created before the
-    cloudwatch:GetMetricData grant was added — degrade gracefully rather than 500)."""
+    no data yet. Raises AwsAccessDenied when the role can't read metrics at all
+    (bootstrap roles created before the cloudwatch:GetMetricData grant was added)
+    so the caller can tell the user, instead of silently showing no data."""
     from datetime import datetime, timedelta, timezone
 
     cloudwatch = _cloudwatch_client(credentials, region)
@@ -684,7 +693,9 @@ def get_cloudwatch_metric(credentials: dict, region: str, namespace: str, metric
             StartTime=start,
             EndTime=end,
         )
-    except ClientError:
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('cloudwatch:GetMetricData') from exc
         return None
     values = (response.get('MetricDataResults') or [{}])[0].get('Values') or []
     return values[0] if values else None
