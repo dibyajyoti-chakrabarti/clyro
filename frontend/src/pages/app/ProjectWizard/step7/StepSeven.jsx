@@ -35,10 +35,11 @@ function StepSevenPanel({ projectId }) {
           status: item.state === 'healthy' ? 'healthy' : 'degraded',
           detail: `${item.running}/${item.desired} tasks running`,
         })))
-        setAlerts((data.alerts || []).map((message, index) => ({
+        setAlerts((data.alerts || []).map((alert, index) => ({
           id: index,
-          plain_message: message,
-          fired_at: '',
+          plain_message: alert.message,
+          severity: alert.severity,
+          fired_at: alert.fired_at ? new Date(alert.fired_at).toLocaleTimeString() : '',
         })))
         setMetrics(data.metrics || null)
         setStackStatus(data.stack ? {

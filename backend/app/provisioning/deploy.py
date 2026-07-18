@@ -530,7 +530,8 @@ def health(project: Project) -> dict[str, Any]:
     )
 
     health_items: list[dict[str, Any]] = []
-    alerts: list[str] = []
+    alerts: list[dict[str, str]] = []
+    fired_at = timezone.now().isoformat()  # observation time — the poll noticed it now
     serving: tuple[str, str] | None = None  # (cluster, service) with a load balancer attached
 
     for cluster, service in services:
@@ -543,7 +544,11 @@ def health(project: Project) -> dict[str, Any]:
             "running": running, "desired": desired, "state": state,
         })
         if desired > 0 and running < desired:
-            alerts.append(f"{service}: {running}/{desired} tasks running")
+            alerts.append({
+                "message": f"{service}: {running}/{desired} tasks running",
+                "severity": "warning",
+                "fired_at": fired_at,
+            })
 
         for lb in detail.get("loadBalancers") or []:
             target_group_arn = lb.get("targetGroupArn")
@@ -553,7 +558,11 @@ def health(project: Project) -> dict[str, Any]:
             targets = aws_client.describe_target_health(creds, region, target_group_arn)
             unhealthy = [t for t in targets if t["state"] != "healthy"]
             if unhealthy:
-                alerts.append(f"{service}: {len(unhealthy)} unhealthy load balancer target(s)")
+                alerts.append({
+                    "message": f"{service}: {len(unhealthy)} unhealthy load balancer target(s)",
+                    "severity": "critical",
+                    "fired_at": fired_at,
+                })
 
     metrics = {"response_time_ms": None, "request_rate": None, "error_rate": None, "cpu_percent": None}
     lb_dimension = _lb_dimension_value(lb_arn) if lb_arn else None
