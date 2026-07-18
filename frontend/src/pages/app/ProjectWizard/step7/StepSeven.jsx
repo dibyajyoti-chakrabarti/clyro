@@ -13,7 +13,7 @@ function StepSevenPanel({ projectId }) {
   const [alerts, setAlerts] = useState([])
   const [metrics, setMetrics] = useState(null)
   const [notFound, setNotFound] = useState(false)
-  const [stackStatus] = useState(null)
+  const [stackStatus, setStackStatus] = useState(null)
 
   const statusIcon = (status) => {
     if (status === 'healthy') return [CheckCircle2, 'text-green-400', 'Healthy']
@@ -41,6 +41,11 @@ function StepSevenPanel({ projectId }) {
           fired_at: '',
         })))
         setMetrics(data.metrics || null)
+        setStackStatus(data.stack ? {
+          stackName: data.stack.name,
+          status: data.stack.status,
+          lastUpdated: data.stack.last_updated ? new Date(data.stack.last_updated).toLocaleString() : '—',
+        } : null)
       } catch {
         // Transient poll failure — keep the last known state, retry next tick.
       }
