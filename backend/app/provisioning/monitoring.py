@@ -158,18 +158,28 @@ def _archive_project_logs(project: Project) -> int:
 
 
 # Reading caps for the archive fetch path: newest slots first, stop at the
-# event limit or this many objects — honest truncation, never an unbounded scan.
+# event limit or the object cap — honest truncation, never an unbounded scan.
+# A search scans much deeper than a browse (finding a rare term is the point),
+# so it gets its own cap: 288 slots = a full 24 hours of 5-minute objects.
 _ARCHIVE_READ_MAX_OBJECTS = 60
+_ARCHIVE_SEARCH_MAX_OBJECTS = 288
+_ARCHIVE_FETCH_WORKERS = 16
 _ERROR_MARKERS = ("ERROR", "Error", "CRITICAL", "FATAL", "Exception", "Traceback")
 
 
 def read_archived_events(creds: dict, region: str, bucket: str, service: str,
-                         hours: int, level: str = "all", limit: int = 200) -> tuple[list[dict], bool]:
+                         hours: int, level: str = "all", query: str | None = None,
+                         limit: int = 200, max_objects: int | None = None) -> tuple[list[dict], bool]:
     """The most recent ``limit`` events for one service from the S3 archive,
     oldest first, plus a truncated flag saying older slots in the range were
-    left unread. Slot keys sort chronologically, so listing per day-prefix and
-    walking newest-first is enough. Raises AwsAccessDenied when the role lacks
-    the S3 read grants."""
+    left unread. ``query`` filters by case-insensitive substring. Slot keys sort
+    chronologically, so listing per day-prefix and walking newest-first in
+    parallel batches is enough. Raises AwsAccessDenied when the role lacks the
+    S3 read grants."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    if max_objects is None:
+        max_objects = _ARCHIVE_SEARCH_MAX_OBJECTS if query else _ARCHIVE_READ_MAX_OBJECTS
     now = timezone.now()
     start = now - timedelta(hours=hours)
     start_key = archive_slot_key(service, _floor_to_slot(start))
@@ -184,25 +194,33 @@ def read_archived_events(creds: dict, region: str, bucket: str, service: str,
         day += timedelta(days=1)
     keys.sort()
 
+    needle = query.lower() if query else None
     events: list[dict] = []
     read = 0
-    for key in reversed(keys):  # newest slot first
-        if read >= _ARCHIVE_READ_MAX_OBJECTS or len(events) >= limit:
-            break
-        body = aws_client.get_s3_object(creds, region, bucket, key)
-        read += 1
-        if not body:
-            continue
-        slot_events = []
-        for line in body.decode(errors="replace").splitlines():
-            try:
-                event = json.loads(line)
-            except ValueError:
-                continue
-            if level == "error" and not any(m in (event.get("message") or "") for m in _ERROR_MARKERS):
-                continue
-            slot_events.append(event)
-        events = slot_events + events  # prepend older slots to keep chronological order
+    pending = list(reversed(keys))  # newest slot first
+    with ThreadPoolExecutor(max_workers=_ARCHIVE_FETCH_WORKERS) as pool:
+        while pending and read < max_objects and len(events) < limit:
+            batch = pending[:_ARCHIVE_FETCH_WORKERS]
+            pending = pending[_ARCHIVE_FETCH_WORKERS:]
+            bodies = list(pool.map(
+                lambda key: aws_client.get_s3_object(creds, region, bucket, key), batch))
+            read += len(batch)
+            batch_events: list[dict] = []
+            for body in reversed(bodies):  # oldest of the batch first
+                if not body:
+                    continue
+                for line in body.decode(errors="replace").splitlines():
+                    try:
+                        event = json.loads(line)
+                    except ValueError:
+                        continue
+                    message = event.get("message") or ""
+                    if level == "error" and not any(m in message for m in _ERROR_MARKERS):
+                        continue
+                    if needle and needle not in message.lower():
+                        continue
+                    batch_events.append(event)
+            events = batch_events + events  # prepend older batches to keep chronological order
     return events[-limit:], read < len(keys)
 
 

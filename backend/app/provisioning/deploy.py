@@ -623,6 +623,7 @@ _LOG_EVENT_LIMIT = 50
 _LOG_LOOKBACK_MINUTES = 60
 # CloudWatch filter syntax: '?' terms OR together — any common error marker matches.
 _LOG_ERROR_PATTERN = "?ERROR ?Error ?CRITICAL ?FATAL ?Exception ?Traceback"
+_LOG_ERROR_MARKERS = ("ERROR", "Error", "CRITICAL", "FATAL", "Exception", "Traceback")
 # Granularity options for the logs panel: the last hour is read live from
 # CloudWatch; anything longer comes from the stack's S3 log archive (value =
 # lookback hours), written by monitoring.archive_logs.
@@ -631,11 +632,13 @@ _ARCHIVE_EVENT_LIMIT = 200
 
 
 def logs(project: Project, service: str | None = None, level: str = "all",
-         log_range: str = "1h") -> dict[str, Any]:
+         log_range: str = "1h", query: str | None = None) -> dict[str, Any]:
     """Recent application log events for one ECS service in the live stack.
     Log groups are read from the service's task definition (not guessed from
-    naming — the template is LLM-authored, so group names vary). Same
-    ``stack_status: "not_found"`` semantics as ``health()``."""
+    naming — the template is LLM-authored, so group names vary). ``query``
+    filters by substring (a quoted CloudWatch filter pattern on the live path,
+    a Python filter on the archive path). Same ``stack_status: "not_found"``
+    semantics as ``health()``."""
     deployment = _active_deployment(project)
     if deployment is None:
         raise DeployError("No provisioned infrastructure to read logs from.")
@@ -644,7 +647,7 @@ def logs(project: Project, service: str | None = None, level: str = "all",
     stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
 
     not_found = {"stack_status": "not_found", "service": None, "services": [],
-                 "level": level, "range": log_range, "source": None,
+                 "level": level, "range": log_range, "query": query, "source": None,
                  "truncated": False, "events": [], "warnings": []}
     try:
         resources = aws_client.list_stack_resources(creds, region, stack_name)
@@ -679,13 +682,13 @@ def logs(project: Project, service: str | None = None, level: str = "all",
             try:
                 events, truncated = monitoring.read_archived_events(
                     creds, region, bucket, requested, hours,
-                    level=level, limit=_ARCHIVE_EVENT_LIMIT)
+                    level=level, query=query, limit=_ARCHIVE_EVENT_LIMIT)
             except aws_client.AwsAccessDenied as exc:
                 warnings.append(
                     f"Archived logs are unavailable: your AWS role is missing {exc}. "
                     "Update your Clyro bootstrap stack.")
         return {"stack_status": "ok", "service": requested, "services": names,
-                "level": level, "range": log_range, "source": "archive",
+                "level": level, "range": log_range, "query": query, "source": "archive",
                 "truncated": truncated, "events": events, "warnings": warnings}
 
     detail = aws_client.describe_ecs_service(creds, region, cluster, requested)
@@ -696,7 +699,15 @@ def logs(project: Project, service: str | None = None, level: str = "all",
     )
 
     start_ms = int((timezone.now() - timedelta(minutes=_LOG_LOOKBACK_MINUTES)).timestamp() * 1000)
-    pattern = _LOG_ERROR_PATTERN if level == "error" else None
+    # A quoted CloudWatch pattern matches a substring; it can't be combined with
+    # the OR-of-error-markers pattern, so with a query the level filter runs in
+    # Python on the fetched events instead.
+    if query:
+        pattern = f'"{query.replace(chr(34), "")}"'
+    elif level == "error":
+        pattern = _LOG_ERROR_PATTERN
+    else:
+        pattern = None
     events = []
     for group in groups:
         try:
@@ -709,9 +720,12 @@ def logs(project: Project, service: str | None = None, level: str = "all",
                 "Update your Clyro bootstrap stack to enable the logs panel.")
             break
 
+    if query and level == "error":
+        events = [e for e in events
+                  if any(m in (e.get("message") or "") for m in _LOG_ERROR_MARKERS)]
     events.sort(key=lambda e: e["timestamp"] or 0)
     return {"stack_status": "ok", "service": requested, "services": names,
-            "level": level, "range": log_range, "source": "cloudwatch",
+            "level": level, "range": log_range, "query": query, "source": "cloudwatch",
             "truncated": False, "events": events[-_LOG_EVENT_LIMIT:], "warnings": warnings}
 
 
