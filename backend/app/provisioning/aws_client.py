@@ -654,6 +654,41 @@ def tail_log_group(credentials: dict, region: str, log_group: str, limit: int = 
     return [e.get('message', '').rstrip() for e in events]
 
 
+def filter_log_events(credentials: dict, region: str, log_group: str, start_time_ms: int,
+                      filter_pattern: str | None = None, limit: int = 50,
+                      max_pages: int = 3) -> list[dict]:
+    """The last ``limit`` events across ALL streams of a log group since
+    ``start_time_ms`` (epoch ms), oldest first, as ``{timestamp, stream, message}``.
+    Returns [] for a missing group (same reasoning as tail_log_group); raises
+    AwsAccessDenied when the role lacks logs:FilterLogEvents (bootstrap roles
+    created before that grant) so the caller can tell the user."""
+    logs = _logs_client(credentials, region)
+    events: list[dict] = []
+    kwargs: dict = {'logGroupName': log_group, 'startTime': start_time_ms, 'limit': 200}
+    if filter_pattern:
+        kwargs['filterPattern'] = filter_pattern
+    try:
+        for _ in range(max_pages):
+            response = logs.filter_log_events(**kwargs)
+            events.extend(response.get('events') or [])
+            token = response.get('nextToken')
+            if not token:
+                break
+            kwargs['nextToken'] = token
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('logs:FilterLogEvents') from exc
+        return []
+    return [
+        {
+            'timestamp': e.get('timestamp'),
+            'stream': e.get('logStreamName', ''),
+            'message': (e.get('message') or '').rstrip()[:500],
+        }
+        for e in events[-limit:]
+    ]
+
+
 def _cloudwatch_client(credentials: dict, region: str):
     return boto3.client(
         'cloudwatch',
