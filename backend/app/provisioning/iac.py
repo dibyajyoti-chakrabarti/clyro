@@ -357,7 +357,12 @@ def _spec_for(deployment: Deployment) -> dict[str, Any]:
     env_vars = _env_vars_for_spec(deployment.project)
     region = _region_for(deployment)
     frameworks = _frameworks_for(deployment.project)
-    return build_spec(canvas, intent, env_vars, region=region, frameworks=frameworks)
+    spec = build_spec(canvas, intent, env_vars, region=region, frameworks=frameworks)
+    # The generated stack's SNS alert subscription emails the project owner —
+    # injected here (not in build_spec) because it comes from the account, not
+    # the canvas/intent.
+    spec["alert_email"] = deployment.project.user.email or None
+    return spec
 
 
 # ── Validation (deterministic, cfn-lint in-process) ────────────────────────────
