@@ -515,6 +515,7 @@ def health(project: Project) -> dict[str, Any]:
 
     try:
         resources = aws_client.list_stack_resources(creds, region, stack_name)
+        stack_info = aws_client.describe_stack(creds, region, stack_name)
     except ClientError:
         return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": []}
 
@@ -580,7 +581,17 @@ def health(project: Project) -> dict[str, Any]:
             ], stat="Average")
         metrics["cpu_percent"] = round(cpu, 1) if cpu is not None else None
 
-    return {"stack_status": "ok", "health_items": health_items, "metrics": metrics, "alerts": alerts}
+    return {
+        "stack_status": "ok",
+        "health_items": health_items,
+        "metrics": metrics,
+        "alerts": alerts,
+        "stack": {
+            "name": stack_info["stack_name"] or stack_name,
+            "status": stack_info["status"],
+            "last_updated": stack_info["last_updated_time"],
+        },
+    }
 
 
 def scale_services_to_spec(project: Project) -> dict[str, Any]:

@@ -168,8 +168,9 @@ def find_stack(credentials: dict, region: str, stack_name: str) -> str | None:
 
 
 def describe_stack(credentials: dict, region: str, stack_name: str) -> dict:
-    """Return ``{status, reason, outputs}`` for a stack. ``outputs`` is a list of
-    ``{output_key, output_value, description}``."""
+    """Return ``{stack_name, status, reason, last_updated_time, outputs}`` for a
+    stack. ``outputs`` is a list of ``{output_key, output_value, description}``;
+    ``last_updated_time`` is an ISO string (CreationTime for never-updated stacks)."""
     cfn = _cfn_client(credentials, region)
     response = cfn.describe_stacks(StackName=stack_name)
     stack = response['Stacks'][0]
@@ -181,9 +182,12 @@ def describe_stack(credentials: dict, region: str, stack_name: str) -> dict:
         }
         for o in stack.get('Outputs', [])
     ]
+    last_updated = stack.get('LastUpdatedTime') or stack.get('CreationTime')
     return {
+        'stack_name': stack.get('StackName'),
         'status': stack['StackStatus'],
         'reason': stack.get('StackStatusReason'),
+        'last_updated_time': last_updated.isoformat() if last_updated else None,
         'outputs': outputs,
     }
 
