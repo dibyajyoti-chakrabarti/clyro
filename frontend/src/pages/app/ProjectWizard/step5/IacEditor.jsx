@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, Copy, FileCode2, RefreshCw, Send, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Check, CheckCheck, ChevronDown, Copy, Database, FileCode2, RefreshCw, RotateCcw, Settings, Sparkles } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Button from '../../../../components/ui/Button'
 import CfnEditor from '../../../../components/wizard/CfnEditor'
@@ -50,7 +50,7 @@ const MOBILE_BREAKPOINT = 768
 
 // ── ModelSelect ────────────────────────────────────────────────────────────────
 
-function ModelSelect({ value, onChange, placeholder = 'Select model…', large = false }) {
+function ModelSelect({ value, onChange, placeholder = 'Select model…', large = false, variant = 'default' }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({})
   const triggerRef = useRef(null)
@@ -78,14 +78,16 @@ function ModelSelect({ value, onChange, placeholder = 'Select model…', large =
     setOpen((v) => !v)
   }
 
-  const triggerBase = large
-    ? 'flex w-full items-center justify-between gap-2 rounded-xl border border-white/[0.12] bg-white/[0.04] px-4 py-3 text-sm text-text-primary hover:border-accent/40 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:border-accent/50'
-    : 'flex items-center gap-1 rounded-md border border-white/[0.09] bg-surface px-2 py-1 text-xs text-text-primary hover:border-white/[0.15] focus-visible:outline-none'
+  const triggerBase = variant === 'pill'
+    ? 'flex h-10 items-center justify-between gap-1.5 rounded-full border border-white/[0.12] bg-white/[0.04] px-3 text-[13px] text-text-primary hover:border-white/[0.20] hover:bg-white/[0.07] focus-visible:outline-none transition-colors duration-150'
+    : large
+      ? 'flex w-full items-center justify-between gap-2 rounded-xl border border-white/[0.12] bg-white/[0.04] px-4 py-3 text-sm text-text-primary hover:border-accent/40 hover:bg-white/[0.06] focus-visible:outline-none focus-visible:border-accent/50'
+      : 'flex items-center gap-1 rounded-md border border-white/[0.09] bg-surface px-2 py-1 text-xs text-text-primary hover:border-white/[0.15] focus-visible:outline-none'
 
   return (
-    <div ref={triggerRef} className={large ? 'w-full' : 'relative'}>
+    <div ref={triggerRef} className={large && variant !== 'pill' ? 'w-full' : 'relative shrink-0'}>
       <button type='button' onClick={handleOpen} className={triggerBase}>
-        <span className={`${large ? '' : 'max-w-[140px]'} truncate ${!selected ? 'text-text-muted' : ''}`}>
+        <span className={`${large || variant === 'pill' ? '' : 'max-w-[140px]'} truncate ${!selected ? 'text-text-muted' : ''}`}>
           {selected ? selected.label : placeholder}
         </span>
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -98,7 +100,7 @@ function ModelSelect({ value, onChange, placeholder = 'Select model…', large =
                 key={m.key}
                 type='button'
                 onClick={() => { onChange(m.key); setOpen(false) }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-sm text-left whitespace-nowrap hover:bg-white/[0.06] ${m.key === value ? 'text-accent' : 'text-text-primary'}`}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-sm text-left whitespace-nowrap hover:bg-white/[0.06] ${m.key === value ? 'text-amber-400' : 'text-text-primary'}`}
               >
                 {m.key === value ? <Check className='h-3.5 w-3.5 shrink-0' /> : <span className='h-3.5 w-3.5 shrink-0' />}
                 {m.label}
@@ -300,31 +302,45 @@ export default function IacEditor({
           <div className='flex min-w-0 flex-1 flex-col'>
 
             {/* IaC toolbar */}
-            <div className='flex shrink-0 flex-wrap items-center gap-2 border-b border-white/[0.07] px-4 py-2'>
+            <div className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] px-4 py-2'>
+              <div className='flex flex-wrap items-center gap-2'>
+                <button
+                  type='button'
+                  onClick={onRetryGenerate}
+                  disabled={generating || refining}
+                  title='Regenerate template'
+                  className='inline-flex h-10 min-w-[40px] items-center justify-center gap-2 rounded-[10px] border border-[#3a3a3a] bg-[#1e1e1e] px-3 text-sm font-medium text-white transition-all duration-[180ms] ease-in-out hover:border-[#4a4a4a] hover:bg-[#242424] hover:brightness-110 active:bg-[#161616] disabled:pointer-events-none disabled:opacity-40'
+                >
+                  <RotateCcw className={`h-[18px] w-[18px] ${generating ? 'animate-spin' : ''}`} />
+                  {generating ? 'Regenerating…' : 'Regenerate'}
+                </button>
+                {/* Live phase while the agent authors the template (B2 L2). */}
+                {generating && generatePhase && (
+                  <span className='flex items-center gap-1.5 text-xs capitalize text-accent'>
+                    <span className='h-1.5 w-1.5 animate-pulse rounded-full bg-accent' />
+                    {generatePhase}…
+                  </span>
+                )}
+                {/* Inline error from a failed regeneration (template is still shown) */}
+                {error && !generating && (
+                  <span className='flex items-center gap-1 text-xs text-red-400'>
+                    <AlertTriangle className='h-3 w-3' />
+                    {error}
+                  </span>
+                )}
+              </div>
               <button
                 type='button'
-                onClick={onRetryGenerate}
-                disabled={generating || refining}
-                title='Regenerate template'
-                className='flex items-center gap-1.5 rounded-md border border-white/[0.07] px-2 py-1 text-xs text-text-muted transition-colors hover:border-white/[0.15] hover:text-text-primary disabled:pointer-events-none disabled:opacity-40'
+                onClick={handleCopy}
+                title='Copy template'
+                className='inline-flex h-10 min-w-[40px] shrink-0 items-center justify-center gap-2 rounded-[10px] border border-[#3a3a3a] bg-[#1e1e1e] px-3 text-sm font-medium text-white transition-all duration-[180ms] ease-in-out hover:border-[#4a4a4a] hover:bg-[#242424] hover:brightness-110 active:bg-[#161616]'
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${generating ? 'animate-spin' : ''}`} />
-                {generating ? 'Regenerating…' : 'Regenerate'}
+                {copied ? (
+                  <Check className='h-[18px] w-[18px] text-success' />
+                ) : (
+                  <Copy className='h-[18px] w-[18px]' />
+                )}
               </button>
-              {/* Live phase while the agent authors the template (B2 L2). */}
-              {generating && generatePhase && (
-                <span className='flex items-center gap-1.5 text-xs capitalize text-accent'>
-                  <span className='h-1.5 w-1.5 animate-pulse rounded-full bg-accent' />
-                  {generatePhase}…
-                </span>
-              )}
-              {/* Inline error from a failed regeneration (template is still shown) */}
-              {error && !generating && (
-                <span className='flex items-center gap-1 text-xs text-red-400'>
-                  <AlertTriangle className='h-3 w-3' />
-                  {error}
-                </span>
-              )}
             </div>
 
             {/* Monaco editor */}
@@ -362,21 +378,16 @@ export default function IacEditor({
               <div className='flex items-center gap-2'>
                 <button
                   type='button'
-                  onClick={handleCopy}
-                  title='Copy template'
-                  className='flex items-center gap-1.5 rounded-md border border-white/[0.07] bg-white/[0.03] px-2 py-1 text-xs text-text-muted transition-colors hover:border-white/[0.15] hover:text-text-primary'
+                  onClick={onValidate}
+                  disabled={validating || refining || generating || !template}
+                  className='inline-flex h-10 min-w-[40px] items-center justify-center gap-2 rounded-[10px] border border-[#3a3a3a] bg-[#1e1e1e] px-3 text-sm font-medium text-white transition-all duration-[180ms] ease-in-out hover:border-[#4a4a4a] hover:bg-[#242424] hover:brightness-110 active:bg-[#161616] disabled:pointer-events-none disabled:opacity-40'
                 >
-                  {copied ? (
-                    <><Check className='h-3.5 w-3.5 text-success' strokeWidth={3} /><span>Copied!</span></>
+                  {validating ? (
+                    <span className='h-[18px] w-[18px] rounded-full border-2 border-current border-t-transparent animate-spin' />
                   ) : (
-                    <><Copy className='h-3.5 w-3.5' /><span>Copy</span></>
+                    <><CheckCheck className='h-[18px] w-[18px]' />Validate</>
                   )}
                 </button>
-                <Button variant='secondary' size='sm' onClick={onValidate} disabled={validating || refining || generating || !template}>
-                  {validating ? (
-                    <span className='h-3.5 w-3.5 rounded-full border-2 border-current border-t-transparent animate-spin' />
-                  ) : 'Validate'}
-                </Button>
               </div>
             </div>
           </div>
@@ -384,63 +395,59 @@ export default function IacEditor({
           {/* Right: chat sidebar — resizable on desktop, stacked on mobile */}
           <div
             style={isMobile ? {} : { width: chatWidth, minWidth: MIN_CHAT_WIDTH }}
-            className={`flex shrink-0 flex-col ${isMobile ? 'h-[340px] border-t border-white/[0.07]' : 'relative border-l border-white/[0.07]'}`}
+            className={`flex shrink-0 flex-col overflow-hidden bg-[#0a0a0a] shadow-[0_24px_80px_rgba(0,0,0,0.35),0_0_50px_rgba(251,191,36,0.05)] ${isMobile ? 'h-[340px] rounded-t-[26px] border-t border-x border-amber-400/[0.14]' : 'relative rounded-l-[26px] border-y border-l border-amber-400/[0.14]'}`}
           >
             {/* Drag handle */}
             {!isMobile && (
               <div
                 onMouseDown={handleDragStart}
-                className='absolute inset-y-0 left-0 z-10 w-1 cursor-ew-resize transition-colors hover:bg-accent/40 active:bg-accent/60'
+                className='absolute inset-y-0 left-0 z-10 w-1 cursor-ew-resize transition-colors hover:bg-amber-400/40 active:bg-amber-400/60'
                 title='Drag to resize'
               />
             )}
 
-            {/* Chat header — title only */}
-            <div className='shrink-0 border-b border-white/[0.07] px-4 py-3'>
-              <p className='flex items-center gap-2 text-sm font-semibold text-text-primary'>
-                <Sparkles className='h-4 w-4 text-accent' />
-                Ask Clyro
-              </p>
+            {/* Chat header */}
+            <div className='flex shrink-0 items-center gap-2.5 px-4 py-3'>
+              <span className='grid h-[54px] w-[54px] shrink-0 place-items-center rounded-full border border-amber-400/30 bg-[#111] text-amber-400'>
+                <Sparkles className='h-[23px] w-[23px]' />
+              </span>
+              <h2 className='truncate text-xl font-bold leading-none tracking-tight text-white'>Ask Clyro</h2>
             </div>
-
-            {/* Model selector — full-width row above messages (Claude/Cursor style) */}
-            <div className='shrink-0 border-b border-white/[0.07] bg-white/[0.02] px-3 py-2.5'>
-              <p className='mb-1.5 text-[10px] font-medium uppercase tracking-wider text-text-muted/60'>Model</p>
-              <ModelSelect value={chatModel} onChange={setChatModel} large />
-            </div>
+            <div className='h-px w-full shrink-0 bg-white/[0.08]' />
 
             {/* Messages */}
-            <div className='flex-1 overflow-y-auto px-3 py-4'>
+            <div className='flex-1 overflow-y-auto px-4 py-3'>
               {refineHistory.length === 0 ? (
-                <div className='space-y-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3'>
-                  <p className='text-[11px] font-medium text-text-muted/70 uppercase tracking-wider'>Try asking</p>
+                <div className='space-y-1.5'>
+                  <p className='px-1 pb-1 text-[11px] font-medium uppercase tracking-[0.15em] text-text-muted/60'>Try asking</p>
                   {[
-                    'Make the database multi-AZ',
-                    'Increase backend tasks to 2',
-                    'Add a CloudWatch alarm for SQS backlog',
-                  ].map((hint) => (
+                    { text: 'Make the database multi-AZ', icon: Database },
+                    { text: 'Increase backend tasks to 2', icon: Settings },
+                    { text: 'Add a CloudWatch alarm for SQS backlog', icon: Bell },
+                  ].map(({ text, icon: Icon }) => (
                     <button
-                      key={hint}
+                      key={text}
                       type='button'
-                      onClick={() => onRefineInputChange(hint)}
-                      className='block w-full rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-left text-xs text-text-muted transition-colors hover:border-accent/30 hover:bg-accent/5 hover:text-text-primary'
+                      onClick={() => onRefineInputChange(text)}
+                      className='flex h-12 w-full items-center gap-2 rounded-full border border-white/[0.12] bg-white/[0.03] px-4 text-left text-[15px] font-medium text-white transition-colors duration-200 hover:border-white/[0.20] hover:bg-white/[0.06]'
                     >
-                      {hint}
+                      <Icon className='h-[18px] w-[18px] shrink-0 text-amber-400' />
+                      <span className='truncate'>{text}</span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <div className='space-y-4'>
+                <div className='space-y-3'>
                   {refineHistory.map((m, i) => (
                     <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       {m.role === 'assistant' && (
-                        <div className='mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/20'>
-                          <Sparkles className='h-2.5 w-2.5 text-accent' />
+                        <div className='mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/20'>
+                          <Sparkles className='h-2.5 w-2.5 text-amber-400' />
                         </div>
                       )}
-                      <div className={`max-w-[88%] rounded-xl px-3 py-2 text-xs leading-relaxed ${
+                      <div className={`max-w-[88%] rounded-xl px-2.5 py-1.5 text-[15px] leading-[1.5] ${
                         m.role === 'user'
-                          ? 'rounded-br-sm bg-accent/15 text-text-primary'
+                          ? 'rounded-br-sm bg-amber-400/15 text-text-primary'
                           : 'rounded-bl-sm bg-white/[0.04] text-text-muted'
                       }`}>
                         {m.role === 'user' ? m.text : (
@@ -454,9 +461,9 @@ export default function IacEditor({
                 </div>
               )}
               {refining && (
-                <div className='mt-4 flex items-center gap-2 text-xs text-text-muted'>
-                  <div className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/20'>
-                    <span className='h-2 w-2 rounded-full border border-accent border-t-transparent animate-spin' />
+                <div className='mt-3 flex items-center gap-2 text-xs text-text-muted'>
+                  <div className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/20'>
+                    <span className='h-2 w-2 rounded-full border border-amber-400 border-t-transparent animate-spin' />
                   </div>
                   {/* Live phase from the stream (B2) — falls back to a static label. */}
                   <span className='capitalize'>{generatePhase ? `${generatePhase}…` : 'Updating the template…'}</span>
@@ -465,8 +472,8 @@ export default function IacEditor({
             </div>
 
             {/* Chat input */}
-            <div className='shrink-0 border-t border-white/[0.07] p-3'>
-              <div className='flex items-end gap-2 rounded-xl border border-white/[0.09] bg-white/[0.03] px-3 py-2 focus-within:border-accent/40 focus-within:ring-1 focus-within:ring-accent/20 transition-[border-color,box-shadow] duration-150'>
+            <div className='shrink-0 px-4 pb-4 pt-1.5'>
+              <div className='rounded-[18px] border border-amber-400/20 bg-[#111] p-3 transition-all duration-200 ease-out focus-within:border-amber-400/40'>
                 <textarea
                   rows={1}
                   value={refineInput}
@@ -481,19 +488,23 @@ export default function IacEditor({
                   }}
                   placeholder='Describe a change…'
                   disabled={refining}
-                  className='flex-1 resize-none bg-transparent text-sm text-text-primary placeholder:text-text-muted/50 focus-visible:outline-none disabled:opacity-50'
+                  className='w-full resize-none bg-transparent text-[16px] font-medium text-white placeholder:font-medium placeholder:text-text-muted focus-visible:outline-none disabled:opacity-50'
                   style={{ minHeight: '22px' }}
                 />
-                <button
-                  type='button'
-                  onClick={onRefine}
-                  disabled={refining || !refineInput.trim()}
-                  className='mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-black transition-opacity disabled:opacity-30 hover:opacity-90'
-                >
-                  <Send className='h-3.5 w-3.5' />
-                </button>
+                <div className='mt-2 flex items-center justify-between gap-2'>
+                  <ModelSelect value={chatModel} onChange={setChatModel} variant='pill' />
+                  <button
+                    type='button'
+                    onClick={onRefine}
+                    disabled={refining || !refineInput.trim()}
+                    className='grid h-11 w-11 shrink-0 place-items-center rounded-full border border-amber-300/70 bg-gradient-to-b from-amber-400 to-amber-500 text-black transition-all duration-200 ease-out hover:from-amber-300 hover:to-amber-400 disabled:opacity-50'
+                    aria-label='Send message'
+                  >
+                    <ArrowUp className='h-[18px] w-[18px]' />
+                  </button>
+                </div>
               </div>
-              <p className='mt-1.5 text-center text-[10px] text-text-muted/40'>Enter to send · Shift+Enter for new line</p>
+              <p className='mt-1.5 text-center text-[11px] text-text-muted/60'>Enter to send · Shift+Enter for new line</p>
             </div>
           </div>
 
