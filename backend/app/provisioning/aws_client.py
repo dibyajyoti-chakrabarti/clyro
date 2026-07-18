@@ -446,6 +446,40 @@ def start_codebuild(credentials: dict, region: str, project_name: str, source_lo
     return response['build']['id']
 
 
+def list_s3_keys(credentials: dict, region: str, bucket: str, prefix: str,
+                 max_keys: int = 5000) -> list[str]:
+    """Every object key under ``prefix``, lexicographically ascending (which for
+    the log archive's time-encoded keys means chronological). Returns [] for a
+    missing bucket; raises AwsAccessDenied when the role lacks s3:ListBucket."""
+    s3 = _s3_client(credentials, region)
+    keys: list[str] = []
+    try:
+        paginator = s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            keys.extend(obj['Key'] for obj in page.get('Contents', []))
+            if len(keys) >= max_keys:
+                break
+    except ClientError as exc:
+        code = exc.response.get('Error', {}).get('Code', '')
+        if code in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('s3:ListBucket') from exc
+        return []
+    return keys[:max_keys]
+
+
+def get_s3_object(credentials: dict, region: str, bucket: str, key: str) -> bytes:
+    """One object's body, or b'' if the key vanished between list and get.
+    Raises AwsAccessDenied when the role lacks s3:GetObject."""
+    s3 = _s3_client(credentials, region)
+    try:
+        return s3.get_object(Bucket=bucket, Key=key)['Body'].read()
+    except ClientError as exc:
+        code = exc.response.get('Error', {}).get('Code', '')
+        if code in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('s3:GetObject') from exc
+        return b''
+
+
 def empty_s3_bucket(credentials: dict, region: str, bucket: str) -> None:
     """Delete every object (and, for a versioned bucket, every version and
     delete marker) in a bucket the stack is about to delete. CloudFormation
