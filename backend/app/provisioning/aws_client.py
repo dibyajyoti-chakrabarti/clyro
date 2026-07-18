@@ -104,6 +104,20 @@ def write_secret(credentials: dict, region: str, secret_name: str, secret_value:
         raise
 
 
+def delete_secret(credentials: dict, region: str, secret_arn: str) -> None:
+    """Permanently delete a Clyro-written secret (project delete). Without
+    ForceDeleteWithoutRecovery the secret lingers ~30 days in a recovery window
+    and blocks a same-named secret if the user recreates the project."""
+    sm = boto3.client(
+        'secretsmanager',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+    sm.delete_secret(SecretId=secret_arn, ForceDeleteWithoutRecovery=True)
+
+
 # ── CloudFormation (Step 4.5 provisioning) ─────────────────────────────────────
 
 def _cfn_client(credentials: dict, region: str):
