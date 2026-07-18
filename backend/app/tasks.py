@@ -187,6 +187,41 @@ def run_recreate_task(job_id: str, project_id: str):
     _run(job_id, _do)
 
 
+@shared_task(soft_time_limit=1500, time_limit=1800)
+def run_delete_project_task(job_id: str, project_id: str):
+    """Full project delete: purge AWS (app stack, secrets, connector stack —
+    deploy.destroy) then hard-delete the DB rows. Not routed through _run():
+    the final project.delete() cascades this AgentJob row away too, so _run's
+    post-fn job.save() would hit a deleted row — success is signalled to the
+    poller by the job 404ing. Failure leaves the row behind with error set and
+    flips the project to FAILED so the delete can be retried."""
+    from app.provisioning import deploy
+
+    job = AgentJob.objects.get(id=job_id)
+    job.status = AgentJob.Status.RUNNING
+    job.save(update_fields=["status", "updated_at"])
+
+    def _fail(message: str):
+        job.status = AgentJob.Status.FAILED
+        job.error = message
+        job.save(update_fields=["status", "error", "updated_at"])
+        Project.objects.filter(id=project_id).update(status=Project.Status.FAILED)
+
+    try:
+        project = Project.objects.get(id=project_id)
+        deploy.destroy(project)
+        # Deployment's PROTECT FKs (canvas_version/intent_record/aws_connection)
+        # block Project.delete()'s cascade to those rows — clear deployments first.
+        project.deployments.all().delete()
+        project.delete()
+    except SoftTimeLimitExceeded:
+        log.error("AgentJob %s (delete) hit its soft time limit", job_id)
+        _fail("Timed out — infrastructure teardown took longer than expected; delete again to retry.")
+    except Exception as exc:
+        log.exception("AgentJob %s (delete) failed", job_id)
+        _fail(str(exc))
+
+
 @shared_task
 def run_warmup_task(project_id: str, runtime_env_var: str = "IAC_RUNTIME_ARN"):
     # Warm a given AgentCore runtime so the next step's first real call doesn't
