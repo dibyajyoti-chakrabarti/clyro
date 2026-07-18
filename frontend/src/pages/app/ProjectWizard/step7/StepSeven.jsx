@@ -4,6 +4,7 @@ import { api } from '../../../../api'
 import HealthOverview from './HealthOverview'
 import MetricsGrid from './MetricsGrid'
 import AlertsList from './AlertsList'
+import LogsPanel from './LogsPanel'
 import StackStatus from './StackStatus'
 
 const POLL_INTERVAL_MS = 20000
@@ -100,6 +101,7 @@ function StepSevenPanel({ projectId }) {
           </div>
         </div>
         <AlertsList alerts={alerts} />
+        <LogsPanel projectId={projectId} services={healthItems.map((item) => item.name)} />
         <StackStatus stackStatus={stackStatus} />
       </div>
     </div>
