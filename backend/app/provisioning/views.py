@@ -525,6 +525,21 @@ def deploy_health(request, pk):
     return Response(data)
 
 
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_logs(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    service = request.query_params.get('service') or None
+    level = 'error' if request.query_params.get('level') == 'error' else 'all'
+    try:
+        return Response(deploy.logs(project, service=service, level=level))
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
 @api_view(['POST'])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)
