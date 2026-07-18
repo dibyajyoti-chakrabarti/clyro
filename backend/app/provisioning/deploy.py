@@ -623,9 +623,15 @@ _LOG_EVENT_LIMIT = 50
 _LOG_LOOKBACK_MINUTES = 60
 # CloudWatch filter syntax: '?' terms OR together — any common error marker matches.
 _LOG_ERROR_PATTERN = "?ERROR ?Error ?CRITICAL ?FATAL ?Exception ?Traceback"
+# Granularity options for the logs panel: the last hour is read live from
+# CloudWatch; anything longer comes from the stack's S3 log archive (value =
+# lookback hours), written by monitoring.archive_logs.
+LOG_RANGES = {"1h": None, "6h": 6, "24h": 24, "7d": 168}
+_ARCHIVE_EVENT_LIMIT = 200
 
 
-def logs(project: Project, service: str | None = None, level: str = "all") -> dict[str, Any]:
+def logs(project: Project, service: str | None = None, level: str = "all",
+         log_range: str = "1h") -> dict[str, Any]:
     """Recent application log events for one ECS service in the live stack.
     Log groups are read from the service's task definition (not guessed from
     naming — the template is LLM-authored, so group names vary). Same
@@ -638,7 +644,8 @@ def logs(project: Project, service: str | None = None, level: str = "all") -> di
     stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
 
     not_found = {"stack_status": "not_found", "service": None, "services": [],
-                 "level": level, "events": [], "warnings": []}
+                 "level": level, "range": log_range, "source": None,
+                 "truncated": False, "events": [], "warnings": []}
     try:
         resources = aws_client.list_stack_resources(creds, region, stack_name)
     except ClientError:
@@ -651,6 +658,36 @@ def logs(project: Project, service: str | None = None, level: str = "all") -> di
     requested = service if service in names else names[0]
     cluster = next(c for c, svc in services if svc == requested)
 
+    warnings: list[str] = []
+    hours = LOG_RANGES.get(log_range)
+    if hours:
+        # Lazy import: monitoring imports this module at load time.
+        from . import monitoring
+
+        bucket = next(
+            (r["physical_id"] for r in resources
+             if r["logical_id"] == "LogArchiveBucket" and r["physical_id"]),
+            None,
+        )
+        events: list[dict] = []
+        truncated = False
+        if not bucket:
+            warnings.append(
+                "This stack has no log archive bucket — ranges beyond the last "
+                "hour become available after the next re-provision.")
+        else:
+            try:
+                events, truncated = monitoring.read_archived_events(
+                    creds, region, bucket, requested, hours,
+                    level=level, limit=_ARCHIVE_EVENT_LIMIT)
+            except aws_client.AwsAccessDenied as exc:
+                warnings.append(
+                    f"Archived logs are unavailable: your AWS role is missing {exc}. "
+                    "Update your Clyro bootstrap stack.")
+        return {"stack_status": "ok", "service": requested, "services": names,
+                "level": level, "range": log_range, "source": "archive",
+                "truncated": truncated, "events": events, "warnings": warnings}
+
     detail = aws_client.describe_ecs_service(creds, region, cluster, requested)
     task_definition = detail.get("taskDefinition")
     groups = (
@@ -660,8 +697,7 @@ def logs(project: Project, service: str | None = None, level: str = "all") -> di
 
     start_ms = int((timezone.now() - timedelta(minutes=_LOG_LOOKBACK_MINUTES)).timestamp() * 1000)
     pattern = _LOG_ERROR_PATTERN if level == "error" else None
-    events: list[dict] = []
-    warnings: list[str] = []
+    events = []
     for group in groups:
         try:
             events.extend(aws_client.filter_log_events(
@@ -675,7 +711,8 @@ def logs(project: Project, service: str | None = None, level: str = "all") -> di
 
     events.sort(key=lambda e: e["timestamp"] or 0)
     return {"stack_status": "ok", "service": requested, "services": names,
-            "level": level, "events": events[-_LOG_EVENT_LIMIT:], "warnings": warnings}
+            "level": level, "range": log_range, "source": "cloudwatch",
+            "truncated": False, "events": events[-_LOG_EVENT_LIMIT:], "warnings": warnings}
 
 
 def scale_services_to_spec(project: Project) -> dict[str, Any]:

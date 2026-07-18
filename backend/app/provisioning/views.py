@@ -545,8 +545,11 @@ def deploy_logs(request, pk):
         return err
     service = request.query_params.get('service') or None
     level = 'error' if request.query_params.get('level') == 'error' else 'all'
+    log_range = request.query_params.get('range')
+    if log_range not in deploy.LOG_RANGES:
+        log_range = '1h'
     try:
-        return Response(deploy.logs(project, service=service, level=level))
+        return Response(deploy.logs(project, service=service, level=level, log_range=log_range))
     except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 

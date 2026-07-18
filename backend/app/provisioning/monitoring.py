@@ -157,6 +157,55 @@ def _archive_project_logs(project: Project) -> int:
     return written
 
 
+# Reading caps for the archive fetch path: newest slots first, stop at the
+# event limit or this many objects — honest truncation, never an unbounded scan.
+_ARCHIVE_READ_MAX_OBJECTS = 60
+_ERROR_MARKERS = ("ERROR", "Error", "CRITICAL", "FATAL", "Exception", "Traceback")
+
+
+def read_archived_events(creds: dict, region: str, bucket: str, service: str,
+                         hours: int, level: str = "all", limit: int = 200) -> tuple[list[dict], bool]:
+    """The most recent ``limit`` events for one service from the S3 archive,
+    oldest first, plus a truncated flag saying older slots in the range were
+    left unread. Slot keys sort chronologically, so listing per day-prefix and
+    walking newest-first is enough. Raises AwsAccessDenied when the role lacks
+    the S3 read grants."""
+    now = timezone.now()
+    start = now - timedelta(hours=hours)
+    start_key = archive_slot_key(service, _floor_to_slot(start))
+    keys: list[str] = []
+    day = start.date()
+    while day <= now.date():
+        prefix = f"logs/{service}/{day:%Y-%m-%d}/"
+        keys.extend(
+            key for key in aws_client.list_s3_keys(creds, region, bucket, prefix)
+            if key >= start_key
+        )
+        day += timedelta(days=1)
+    keys.sort()
+
+    events: list[dict] = []
+    read = 0
+    for key in reversed(keys):  # newest slot first
+        if read >= _ARCHIVE_READ_MAX_OBJECTS or len(events) >= limit:
+            break
+        body = aws_client.get_s3_object(creds, region, bucket, key)
+        read += 1
+        if not body:
+            continue
+        slot_events = []
+        for line in body.decode(errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if level == "error" and not any(m in (event.get("message") or "") for m in _ERROR_MARKERS):
+                continue
+            slot_events.append(event)
+        events = slot_events + events  # prepend older slots to keep chronological order
+    return events[-limit:], read < len(keys)
+
+
 def history(project: Project) -> dict[str, Any]:
     """Uptime over the last 24h/7d plus a 48-bucket status strip of the last
     24 hours. A bucket is ``down`` if ANY snapshot in it was unhealthy, ``empty``
