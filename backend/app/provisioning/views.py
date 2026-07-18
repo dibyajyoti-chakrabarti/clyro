@@ -1,6 +1,7 @@
 import logging
 import uuid
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
 from botocore.exceptions import ClientError
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -500,6 +501,12 @@ def deploy_status(request, pk):
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+# Each health snapshot costs an AssumeRole plus several live AWS calls — cache it
+# briefly so multiple open tabs (or rapid re-polls) share one snapshot. Ownership
+# is enforced per-request before the cache is read, so there's no cross-user leak.
+_HEALTH_CACHE_SECONDS = 15
+
+
 @api_view(['GET'])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)
@@ -507,10 +514,15 @@ def deploy_health(request, pk):
     project, err = _get_project_or_404(request, pk)
     if err:
         return err
-    try:
-        return Response(deploy.health(project))
-    except deploy.DeployError as exc:
-        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    cache_key = f'deploy-health:{pk}'
+    data = cache.get(cache_key)
+    if data is None:
+        try:
+            data = deploy.health(project)
+        except deploy.DeployError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        cache.set(cache_key, data, _HEALTH_CACHE_SECONDS)
+    return Response(data)
 
 
 @api_view(['POST'])

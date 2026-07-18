@@ -100,6 +100,13 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+# Production has no Redis (see the SQS note above), so the cache is deliberately
+# per-process LocMem — only used for short-TTL snapshots (the Step 7 health poll)
+# that absorb rapid re-polls/multiple tabs and don't need cross-process coherence.
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
+}
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
