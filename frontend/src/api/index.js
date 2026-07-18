@@ -96,10 +96,11 @@ export const api = {
   getDeployStatus: (id, since) => request('GET', `/api/projects/${id}/deploy/status/${since !== undefined && since !== null ? `?since=${since}` : ''}`),
   getDeployHealth: (id) => request('GET', `/api/projects/${id}/deploy/health/`),
   getDeployHistory: (id) => request('GET', `/api/projects/${id}/deploy/history/`),
-  getDeployLogs: (id, { service, level } = {}) => {
+  getDeployLogs: (id, { service, level, range } = {}) => {
     const qs = new URLSearchParams()
     if (service) qs.set('service', service)
     if (level && level !== 'all') qs.set('level', level)
+    if (range && range !== '1h') qs.set('range', range)
     return request('GET', `/api/projects/${id}/deploy/logs/${qs.size > 0 ? `?${qs}` : ''}`)
   },
   pauseDeploy: (id) => request('POST', `/api/projects/${id}/deploy/pause/`),
