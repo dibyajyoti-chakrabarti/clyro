@@ -699,6 +699,58 @@ def _cloudwatch_client(credentials: dict, region: str):
     )
 
 
+def get_cloudwatch_metric_series(credentials: dict, region: str, queries: dict[str, tuple],
+                                 minutes: int = 60, period: int = 300) -> dict[str, list[dict]]:
+    """Time series for several metrics in ONE GetMetricData call. ``queries`` maps
+    a result key to ``(namespace, metric_name, dimensions, stat)``. Returns
+    ``{key: [{'t': iso, 'v': float}, ...]}`` oldest-first; keys with no data map
+    to []. Raises AwsAccessDenied when the role can't read metrics at all
+    (bootstrap roles created before the cloudwatch:GetMetricData grant); returns
+    {} on other ClientErrors."""
+    from datetime import datetime, timedelta, timezone
+
+    cloudwatch = _cloudwatch_client(credentials, region)
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(minutes=minutes)
+    ids = {f'q{i}': key for i, key in enumerate(queries)}
+    try:
+        response = cloudwatch.get_metric_data(
+            MetricDataQueries=[
+                {
+                    'Id': qid,
+                    'MetricStat': {
+                        'Metric': {
+                            'Namespace': queries[key][0],
+                            'MetricName': queries[key][1],
+                            'Dimensions': queries[key][2],
+                        },
+                        'Period': period,
+                        'Stat': queries[key][3],
+                    },
+                    'ReturnData': True,
+                }
+                for qid, key in ids.items()
+            ],
+            StartTime=start,
+            EndTime=end,
+            ScanBy='TimestampAscending',
+        )
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('cloudwatch:GetMetricData') from exc
+        return {}
+    series: dict[str, list[dict]] = {key: [] for key in queries}
+    for result in response.get('MetricDataResults') or []:
+        key = ids.get(result.get('Id'))
+        if key is None:
+            continue
+        series[key] = [
+            {'t': ts.isoformat(), 'v': value}
+            for ts, value in zip(result.get('Timestamps') or [], result.get('Values') or [])
+        ]
+    return series
+
+
 def get_cloudwatch_metric(credentials: dict, region: str, namespace: str, metric_name: str,
                           dimensions: list[dict], stat: str = 'Average', minutes: int = 5) -> float | None:
     """Latest datapoint for one metric over the last ``minutes``, or None if there's
