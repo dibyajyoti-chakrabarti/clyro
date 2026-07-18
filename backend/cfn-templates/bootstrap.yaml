@@ -331,7 +331,11 @@ Resources:
                 Action:
                   - secretsmanager:GetRandomPassword
                 Resource: '*'
-              # CloudWatch logs for ECS tasks and RDS — scoped to clyro-* named log groups
+              # CloudWatch logs for ECS tasks and RDS — scoped to clyro-* named log groups.
+              # GetLogEvents/FilterLogEvents power the Step 7 logs panel; GetLogEvents is
+              # also what the runtime probe's log tail needs (it was silently
+              # AccessDenied on roles created before this grant, so failed-deploy
+              # diagnoses came back without container logs).
               - Effect: Allow
                 Action:
                   - logs:CreateLogGroup
@@ -341,6 +345,8 @@ Resources:
                   - logs:CreateLogStream
                   - logs:DeleteLogStream
                   - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
                   - logs:TagLogGroup
                   - logs:TagResource
                 Resource:
