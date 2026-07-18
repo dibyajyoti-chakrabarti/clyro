@@ -16,6 +16,7 @@ from .aws_client import assume_role, get_account_id, get_account_plan_type, writ
 from .cfn_bootstrap import generate_cfn_console_url
 from . import iac
 from . import deploy
+from . import monitoring
 
 _AUTH = [CognitoAuthentication]
 _PERMS = [IsAuthenticated]
@@ -523,6 +524,16 @@ def deploy_health(request, pk):
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         cache.set(cache_key, data, _HEALTH_CACHE_SECONDS)
     return Response(data)
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_history(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    return Response(monitoring.history(project))
 
 
 @api_view(['GET'])
