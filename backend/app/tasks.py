@@ -225,3 +225,12 @@ def run_reconcile_sweep_task():
     # to poll; see app.provisioning.reconcile for the incident that motivated this.
     from app.provisioning import reconcile
     return reconcile.sweep()
+
+
+@shared_task
+def run_health_snapshot_task():
+    # Scheduled via CELERY_BEAT_SCHEDULE — records a HealthSnapshot per live
+    # project every minute so Step 7 can show uptime and history, which the
+    # dashboard's live-only poll can't provide. Not job-tracked (no AgentJob).
+    from app.provisioning import monitoring
+    return monitoring.collect_snapshots()

@@ -98,6 +98,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "app.tasks.run_reconcile_sweep_task",
         "schedule": 900.0,  # 15 minutes
     },
+    # Step 7 history: one HealthSnapshot per live project per minute
+    # (app.provisioning.monitoring) — powers uptime % and the 24h status strip.
+    "collect-health-snapshots": {
+        "task": "app.tasks.run_health_snapshot_task",
+        "schedule": 60.0,
+    },
 }
 
 # Production has no Redis (see the SQS note above), so the cache is deliberately
