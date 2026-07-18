@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { api } from '../../../../api'
+import { cachedFetch, invalidate } from '../../../../lib/apiCache'
 
 const REFRESH_INTERVAL_MS = 60000
+const CACHE_TTL_MS = 30000
 
 function LogsPanel({ projectId, services }) {
   const [selected, setSelected] = useState('')
@@ -16,11 +18,14 @@ function LogsPanel({ projectId, services }) {
     if (!services.includes(selected)) setSelected(services[0])
   }, [services, selected])
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = useCallback(async (force = false) => {
     if (!projectId || !selected) return
+    const cacheKey = `logs:${projectId}:${selected}:${level}`
+    if (force) invalidate(cacheKey)
     setLoading(true)
     try {
-      const data = await api.getDeployLogs(projectId, { service: selected, level })
+      const data = await cachedFetch(cacheKey, CACHE_TTL_MS,
+        () => api.getDeployLogs(projectId, { service: selected, level }))
       setEvents(data.events || [])
       setWarnings(data.warnings || [])
     } catch {
@@ -64,7 +69,7 @@ function LogsPanel({ projectId, services }) {
             ))}
           </div>
           <button
-            onClick={fetchLogs}
+            onClick={() => fetchLogs(true)}
             className='rounded-lg border border-border bg-surface p-1.5 text-text-muted hover:text-text-primary'
             aria-label='Refresh logs'
           >

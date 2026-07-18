@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, X, XCircle } from 'lucide-react'
 import { api } from '../../../../api'
+import { cachedFetch } from '../../../../lib/apiCache'
 import HealthOverview from './HealthOverview'
 import MetricsGrid from './MetricsGrid'
 import AlertsList from './AlertsList'
@@ -32,7 +33,9 @@ function StepSevenPanel({ projectId }) {
 
     const poll = async () => {
       try {
-        const data = await api.getDeployHealth(projectId)
+        // 15s TTL matches the server-side snapshot cache — a remount within
+        // that window (navigating away and back) renders without a round trip.
+        const data = await cachedFetch(`health:${projectId}`, 15_000, () => api.getDeployHealth(projectId))
         if (cancelled) return
         setNotFound(data.stack_status === 'not_found')
         setHealthItems((data.health_items || []).map((item) => ({

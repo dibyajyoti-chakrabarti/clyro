@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../../../api'
+import { cachedFetch } from '../../../../lib/apiCache'
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
@@ -20,7 +21,7 @@ function UptimeSection({ projectId }) {
     let cancelled = false
     const fetchHistory = async () => {
       try {
-        const data = await api.getDeployHistory(projectId)
+        const data = await cachedFetch(`history:${projectId}`, REFRESH_INTERVAL_MS, () => api.getDeployHistory(projectId))
         if (!cancelled) setHistory(data)
       } catch {
         // Transient failure — keep the last known history, retry next tick.
