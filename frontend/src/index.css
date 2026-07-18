@@ -77,3 +77,33 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #3c3e4a;
 }
+
+/* Model dropdown — dark scrollbar with a gold hover accent, scoped to this menu only */
+.model-dropdown-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.model-dropdown-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.model-dropdown-scroll::-webkit-scrollbar-thumb {
+  background: #2c2e38;
+  border-radius: 99px;
+}
+.model-dropdown-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(251, 191, 36, 0.45);
+}
+
+/* Chat message entrance — subtle fade + slight upward motion, no flashy effects */
+@keyframes chat-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.chat-message-in {
+  animation: chat-message-in 260ms ease-out;
+}

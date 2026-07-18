@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Check, CheckCheck, ChevronDown, Copy, Database, FileCode2, RefreshCw, RotateCcw, Settings, Sparkles } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Check, CheckCheck, ChevronDown, Copy, Database, FileCode2, Quote, RefreshCw, RotateCcw, Settings, Sparkles, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Button from '../../../../components/ui/Button'
 import CfnEditor from '../../../../components/wizard/CfnEditor'
@@ -42,11 +42,6 @@ function stageIndex(elapsed) {
   }
   return idx
 }
-
-const MIN_CHAT_WIDTH = 260
-const MIN_EDITOR_WIDTH = 380
-const DEFAULT_CHAT_RATIO = 0.30
-const MOBILE_BREAKPOINT = 768
 
 // ── ModelSelect ────────────────────────────────────────────────────────────────
 
@@ -94,13 +89,13 @@ function ModelSelect({ value, onChange, placeholder = 'Select model…', large =
       </button>
       {open && createPortal(
         <div ref={dropdownRef} style={{ position: 'absolute', zIndex: 99999, ...pos }}>
-          <div className='rounded-lg border border-white/[0.09] bg-[#111] py-1 shadow-xl'>
+          <div className='model-dropdown-scroll max-h-[280px] overflow-y-auto overscroll-contain rounded-xl border border-white/[0.09] bg-[#111] p-1 shadow-xl [scroll-behavior:smooth]'>
             {MODEL_OPTIONS.map((m) => (
               <button
                 key={m.key}
                 type='button'
                 onClick={() => { onChange(m.key); setOpen(false) }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-sm text-left whitespace-nowrap hover:bg-white/[0.06] ${m.key === value ? 'text-amber-400' : 'text-text-primary'}`}
+                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-left whitespace-nowrap transition-colors duration-150 hover:bg-amber-400/10 ${m.key === value ? 'text-amber-400' : 'text-text-primary'}`}
               >
                 {m.key === value ? <Check className='h-3.5 w-3.5 shrink-0' /> : <span className='h-3.5 w-3.5 shrink-0' />}
                 {m.label}
@@ -173,56 +168,24 @@ export default function IacEditor({
     } catch { /* clipboard unavailable */ }
   }, [template])
 
-  // ── Mobile detection ───────────────────────────────────────────────────────
+  // ── Chat drawer (Step 4 Canvas Agent open/close pattern) ───────────────────
 
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < MOBILE_BREAKPOINT)
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
-  }, [])
-
-  // ── Resizable chat sidebar ─────────────────────────────────────────────────
-
-  const containerRef = useRef(null)
-  const [chatWidth, setChatWidth] = useState(() =>
-    Math.max(MIN_CHAT_WIDTH, Math.round(window.innerWidth * DEFAULT_CHAT_RATIO))
-  )
-  const dragging = useRef(false)
-  const dragStartX = useRef(0)
-  const dragStartWidth = useRef(0)
-
-  const handleDragStart = useCallback((e) => {
-    dragging.current = true
-    dragStartX.current = e.clientX
-    dragStartWidth.current = chatWidth
-    document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'ew-resize'
-    e.preventDefault()
-  }, [chatWidth])
+  const [chatOpen, setChatOpen] = useState(false)
 
   useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (!dragging.current) return
-      const delta = dragStartX.current - e.clientX
-      const containerW = containerRef.current?.offsetWidth ?? window.innerWidth
-      const maxChat = containerW - MIN_EDITOR_WIDTH
-      const newWidth = Math.max(MIN_CHAT_WIDTH, Math.min(dragStartWidth.current + delta, maxChat))
-      setChatWidth(newWidth)
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setChatOpen(false)
     }
-    const handleMouseUp = () => {
-      if (!dragging.current) return
-      dragging.current = false
-      document.body.style.userSelect = ''
-      document.body.style.cursor = ''
-    }
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
-    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  // ── Auto-scroll to newest message ──────────────────────────────────────────
+
+  const messagesEndRef = useRef(null)
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [refineHistory, refining])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -292,14 +255,8 @@ export default function IacEditor({
         </div>
 
       ) : (
-        /* ── Editor + chat split view ── */
-        <div
-          ref={containerRef}
-          className={`flex min-h-0 flex-1 ${isMobile ? 'flex-col' : 'flex-row'}`}
-        >
-
-          {/* Left: editor panel */}
-          <div className='flex min-w-0 flex-1 flex-col'>
+        /* ── Editor with floating Canvas Agent chat (Step 4 open/close pattern) ── */
+        <div className='relative flex min-h-0 flex-1 flex-col'>
 
             {/* IaC toolbar */}
             <div className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/[0.07] px-4 py-2'>
@@ -344,13 +301,28 @@ export default function IacEditor({
             </div>
 
             {/* Monaco editor */}
-            <div className='min-h-0 flex-1'>
+            <div className='relative min-h-0 flex-1'>
               <CfnEditor
                 value={template}
                 onChange={onTemplateChange}
                 markers={validation?.diagnostics || []}
                 readOnly={refining || generating}
               />
+
+              {/* Floating assistant button — same button chrome/animation as the Step 4 Canvas Agent trigger,
+                  anchored to this editor pane (not the viewport or the status bar below it) */}
+              <div className='pointer-events-none absolute bottom-6 right-6 z-30 flex flex-col items-end'>
+                <div className='pointer-events-auto overflow-hidden rounded-[22px] border border-border bg-surface/90 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-md transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-accent hover:shadow-[0_24px_48px_rgba(0,0,0,0.32)]'>
+                  <button
+                    type='button'
+                    className='grid h-12 w-12 place-items-center text-xl text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
+                    onClick={() => setChatOpen((v) => !v)}
+                    aria-label='Open chat assistant'
+                  >
+                    ✨
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Status bar */}
@@ -390,121 +362,136 @@ export default function IacEditor({
                 </button>
               </div>
             </div>
-          </div>
 
-          {/* Right: chat sidebar — resizable on desktop, stacked on mobile */}
+          {/* Backdrop — same blur/opacity/z-index as the Step 4 drawer backdrop */}
+          {chatOpen ? (
+            <button
+              type='button'
+              aria-label='Close chat backdrop'
+              className='absolute inset-0 z-30 cursor-default bg-black/35 backdrop-blur-[4px]'
+              onClick={() => setChatOpen(false)}
+            />
+          ) : null}
+
+          {/* Docked chat drawer — same slide/fade animation, positioning, and sizing as Step 4 */}
           <div
-            style={isMobile ? {} : { width: chatWidth, minWidth: MIN_CHAT_WIDTH }}
-            className={`flex shrink-0 flex-col overflow-hidden bg-[#0a0a0a] shadow-[0_24px_80px_rgba(0,0,0,0.35),0_0_50px_rgba(251,191,36,0.05)] ${isMobile ? 'h-[340px] rounded-t-[26px] border-t border-x border-amber-400/[0.14]' : 'relative rounded-l-[26px] border-y border-l border-amber-400/[0.14]'}`}
+            className={`absolute inset-y-0 right-0 z-40 h-full min-h-0 w-full max-w-[420px] p-4 ${
+              chatOpen
+                ? 'translate-x-0 opacity-100 transition-[transform,opacity] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)]'
+                : 'pointer-events-none translate-x-6 opacity-0 transition-[transform,opacity] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)]'
+            }`}
+            aria-hidden={!chatOpen}
           >
-            {/* Drag handle */}
-            {!isMobile && (
-              <div
-                onMouseDown={handleDragStart}
-                className='absolute inset-y-0 left-0 z-10 w-1 cursor-ew-resize transition-colors hover:bg-amber-400/40 active:bg-amber-400/60'
-                title='Drag to resize'
-              />
-            )}
+            <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-[26px] border border-amber-400/[0.14] bg-[#0a0a0a] shadow-[0_24px_80px_rgba(0,0,0,0.35),0_0_50px_rgba(251,191,36,0.05)]'>
 
-            {/* Chat header */}
-            <div className='flex shrink-0 items-center gap-2.5 px-4 py-3'>
-              <span className='grid h-[54px] w-[54px] shrink-0 place-items-center rounded-full border border-amber-400/30 bg-[#111] text-amber-400'>
-                <Sparkles className='h-[23px] w-[23px]' />
-              </span>
-              <h2 className='truncate text-xl font-bold leading-none tracking-tight text-white'>Ask Clyro</h2>
-            </div>
-            <div className='h-px w-full shrink-0 bg-white/[0.08]' />
-
-            {/* Messages */}
-            <div className='flex-1 overflow-y-auto px-4 py-3'>
-              {refineHistory.length === 0 ? (
-                <div className='space-y-1.5'>
-                  <p className='px-1 pb-1 text-[11px] font-medium uppercase tracking-[0.15em] text-text-muted/60'>Try asking</p>
-                  {[
-                    { text: 'Make the database multi-AZ', icon: Database },
-                    { text: 'Increase backend tasks to 2', icon: Settings },
-                    { text: 'Add a CloudWatch alarm for SQS backlog', icon: Bell },
-                  ].map(({ text, icon: Icon }) => (
-                    <button
-                      key={text}
-                      type='button'
-                      onClick={() => onRefineInputChange(text)}
-                      className='flex h-12 w-full items-center gap-2 rounded-full border border-white/[0.12] bg-white/[0.03] px-4 text-left text-[15px] font-medium text-white transition-colors duration-200 hover:border-white/[0.20] hover:bg-white/[0.06]'
-                    >
-                      <Icon className='h-[18px] w-[18px] shrink-0 text-amber-400' />
-                      <span className='truncate'>{text}</span>
-                    </button>
-                  ))}
+              {/* Chat header */}
+              <div className='flex shrink-0 items-center justify-between gap-2.5 px-4 py-3'>
+                <div className='flex min-w-0 items-center gap-2.5'>
+                  <span className='grid h-[54px] w-[54px] shrink-0 place-items-center rounded-full border border-amber-400/30 bg-[#111] text-amber-400'>
+                    <Sparkles className='h-[23px] w-[23px]' />
+                  </span>
+                  <h2 className='truncate text-xl font-bold leading-none tracking-tight text-white'>Ask Clyro</h2>
                 </div>
-              ) : (
-                <div className='space-y-3'>
-                  {refineHistory.map((m, i) => (
-                    <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      {m.role === 'assistant' && (
-                        <div className='mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/20'>
-                          <Sparkles className='h-2.5 w-2.5 text-amber-400' />
-                        </div>
-                      )}
-                      <div className={`max-w-[88%] rounded-xl px-2.5 py-1.5 text-[15px] leading-[1.5] ${
-                        m.role === 'user'
-                          ? 'rounded-br-sm bg-amber-400/15 text-text-primary'
-                          : 'rounded-bl-sm bg-white/[0.04] text-text-muted'
-                      }`}>
-                        {m.role === 'user' ? m.text : (
-                          <div className='space-y-2 [&_p]:m-0 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-4 [&_strong]:font-semibold [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_a]:underline'>
-                            <ReactMarkdown>{m.text}</ReactMarkdown>
+                <button
+                  type='button'
+                  onClick={() => setChatOpen(false)}
+                  title='Close chat'
+                  aria-label='Close chat'
+                  className='grid h-8 w-8 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.02] text-text-muted transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-[rgba(255,193,7,0.18)] hover:bg-[rgba(255,255,255,0.04)] hover:text-text-primary'
+                >
+                  <X className='h-4 w-4' />
+                </button>
+              </div>
+              <div className='h-px w-full shrink-0 bg-white/[0.08]' />
+
+              {/* Messages */}
+              <div className='flex-1 overflow-y-auto scroll-smooth px-4 py-4'>
+                {refineHistory.length === 0 ? (
+                  <div className='space-y-1.5'>
+                    <p className='px-1 pb-1 text-[11px] font-medium uppercase tracking-[0.15em] text-text-muted/60'>Try asking</p>
+                    {[
+                      { text: 'Make the database multi-AZ', icon: Database },
+                      { text: 'Increase backend tasks to 2', icon: Settings },
+                      { text: 'Add a CloudWatch alarm for SQS backlog', icon: Bell },
+                    ].map(({ text, icon: Icon }) => (
+                      <button
+                        key={text}
+                        type='button'
+                        onClick={() => onRefineInputChange(text)}
+                        className='flex h-12 w-full items-center gap-2 rounded-full border border-white/[0.12] bg-white/[0.03] px-4 text-left text-[15px] font-medium text-white transition-colors duration-200 hover:border-white/[0.20] hover:bg-white/[0.06]'
+                      >
+                        <Icon className='h-[18px] w-[18px] shrink-0 text-amber-400' />
+                        <span className='truncate'>{text}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className='space-y-5'>
+                    {refineHistory.map((m, i) => (
+                      <div key={i} className={`chat-message-in flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        {m.role === 'user' ? (
+                          <div className='max-w-[70%] rounded-2xl border border-amber-400/25 bg-white/[0.07] px-4 py-3 text-[15px] leading-relaxed text-white shadow-[0_4px_16px_rgba(0,0,0,0.18)] transition-shadow duration-200'>
+                            {m.text}
+                          </div>
+                        ) : (
+                          <div className='relative max-w-[80%] rounded-[22px] border border-white/[0.08] bg-white/[0.035] px-5 py-4 pl-8 text-[15px] leading-[1.7] text-text-muted shadow-[0_8px_24px_rgba(0,0,0,0.22)] transition-shadow duration-200'>
+                            <Quote className='absolute left-3 top-3.5 h-4 w-4 text-amber-400/30' aria-hidden='true' />
+                            <div className='space-y-3 [&_p]:m-0 [&_h1]:mb-2 [&_h1]:mt-0 [&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-text-primary [&_h2]:mb-2 [&_h2]:mt-0 [&_h2]:text-[15px] [&_h2]:font-semibold [&_h2]:text-text-primary [&_h3]:font-semibold [&_h3]:text-text-primary [&_strong]:font-semibold [&_strong]:text-text-primary [&_em]:italic [&_ul]:list-disc [&_ul]:space-y-1.5 [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:space-y-1.5 [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-amber-400/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_a]:text-amber-400 [&_a]:underline [&_a]:underline-offset-2 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[13px] [&_code]:text-amber-200 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:border [&_pre]:border-white/[0.06] [&_pre]:bg-black/40 [&_pre]:p-3 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:w-full [&_table]:border-collapse [&_th]:border [&_th]:border-white/10 [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-white/10 [&_td]:px-2 [&_td]:py-1'>
+                              <ReactMarkdown>{m.text}</ReactMarkdown>
+                            </div>
                           </div>
                         )}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {refining && (
-                <div className='mt-3 flex items-center gap-2 text-xs text-text-muted'>
-                  <div className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/20'>
-                    <span className='h-2 w-2 rounded-full border border-amber-400 border-t-transparent animate-spin' />
+                    ))}
                   </div>
-                  {/* Live phase from the stream (B2) — falls back to a static label. */}
-                  <span className='capitalize'>{generatePhase ? `${generatePhase}…` : 'Updating the template…'}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Chat input */}
-            <div className='shrink-0 px-4 pb-4 pt-1.5'>
-              <div className='rounded-[18px] border border-amber-400/20 bg-[#111] p-3 transition-all duration-200 ease-out focus-within:border-amber-400/40'>
-                <textarea
-                  rows={1}
-                  value={refineInput}
-                  onChange={(e) => {
-                    onRefineInputChange(e.target.value)
-                    // auto-resize
-                    e.target.style.height = 'auto'
-                    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onRefine() }
-                  }}
-                  placeholder='Describe a change…'
-                  disabled={refining}
-                  className='w-full resize-none bg-transparent text-[16px] font-medium text-white placeholder:font-medium placeholder:text-text-muted focus-visible:outline-none disabled:opacity-50'
-                  style={{ minHeight: '22px' }}
-                />
-                <div className='mt-2 flex items-center justify-between gap-2'>
-                  <ModelSelect value={chatModel} onChange={setChatModel} variant='pill' />
-                  <button
-                    type='button'
-                    onClick={onRefine}
-                    disabled={refining || !refineInput.trim()}
-                    className='grid h-11 w-11 shrink-0 place-items-center rounded-full border border-amber-300/70 bg-gradient-to-b from-amber-400 to-amber-500 text-black transition-all duration-200 ease-out hover:from-amber-300 hover:to-amber-400 disabled:opacity-50'
-                    aria-label='Send message'
-                  >
-                    <ArrowUp className='h-[18px] w-[18px]' />
-                  </button>
-                </div>
+                )}
+                {refining && (
+                  <div className='mt-4 flex items-center gap-2 text-xs text-text-muted'>
+                    <div className='flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400/20'>
+                      <span className='h-2 w-2 rounded-full border border-amber-400 border-t-transparent animate-spin' />
+                    </div>
+                    {/* Live phase from the stream (B2) — falls back to a static label. */}
+                    <span className='capitalize'>{generatePhase ? `${generatePhase}…` : 'Updating the template…'}</span>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
-              <p className='mt-1.5 text-center text-[11px] text-text-muted/60'>Enter to send · Shift+Enter for new line</p>
+
+              {/* Chat input */}
+              <div className='shrink-0 px-4 pb-4 pt-1.5'>
+                <div className='rounded-[18px] border border-amber-400/20 bg-[#111] p-3 transition-all duration-200 ease-out focus-within:border-amber-400/40'>
+                  <textarea
+                    rows={1}
+                    value={refineInput}
+                    onChange={(e) => {
+                      onRefineInputChange(e.target.value)
+                      // auto-resize
+                      e.target.style.height = 'auto'
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onRefine() }
+                    }}
+                    placeholder='Describe a change…'
+                    disabled={refining}
+                    className='w-full resize-none bg-transparent text-[16px] font-medium text-white placeholder:font-medium placeholder:text-text-muted focus-visible:outline-none disabled:opacity-50'
+                    style={{ minHeight: '22px' }}
+                  />
+                  <div className='mt-2 flex items-center justify-between gap-2'>
+                    <ModelSelect value={chatModel} onChange={setChatModel} variant='pill' />
+                    <button
+                      type='button'
+                      onClick={onRefine}
+                      disabled={refining || !refineInput.trim()}
+                      className='grid h-11 w-11 shrink-0 place-items-center rounded-full border border-amber-300/70 bg-gradient-to-b from-amber-400 to-amber-500 text-black transition-all duration-200 ease-out hover:from-amber-300 hover:to-amber-400 disabled:opacity-50'
+                      aria-label='Send message'
+                    >
+                      <ArrowUp className='h-[18px] w-[18px]' />
+                    </button>
+                  </div>
+                </div>
+                <p className='mt-1.5 text-center text-[11px] text-text-muted/60'>Enter to send · Shift+Enter for new line</p>
+              </div>
             </div>
           </div>
 
@@ -530,26 +517,24 @@ export default function IacEditor({
       )}
 
       {/* ── Footer ── */}
-      <div className='flex shrink-0 items-center gap-4 border-t border-white/[0.07] px-6 py-3'>
-        <button
-          type='button'
-          className='inline-flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-text-primary'
-          onClick={onBack}
-        >
+      <div className='flex shrink-0 items-center justify-between gap-4 border-t border-white/[0.07] px-6 py-3'>
+        <Button variant='secondary' onClick={onBack}>
           <ArrowLeft className='h-4 w-4' />
           Back
-        </button>
-        <Button variant='primary' disabled={!ready} onClick={onContinue}>
-          Continue
-          <ArrowRight className='h-4 w-4' />
         </Button>
-        {!ready && template && !generating && !error && (
-          <span className='text-xs text-text-muted'>
-            {blockers.length > 0
-              ? 'Resolve the security blocker(s) above to continue.'
-              : 'Validate the template to continue.'}
-          </span>
-        )}
+        <div className='flex items-center gap-4'>
+          {!ready && template && !generating && !error && (
+            <span className='text-xs text-text-muted'>
+              {blockers.length > 0
+                ? 'Resolve the security blocker(s) above to continue.'
+                : 'Validate the template to continue.'}
+            </span>
+          )}
+          <Button variant='primary' disabled={!ready} onClick={onContinue}>
+            Continue
+            <ArrowRight className='h-4 w-4' />
+          </Button>
+        </div>
       </div>
 
     </div>
