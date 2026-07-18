@@ -689,16 +689,20 @@ def tail_log_group(credentials: dict, region: str, log_group: str, limit: int = 
 
 
 def filter_log_events(credentials: dict, region: str, log_group: str, start_time_ms: int,
-                      filter_pattern: str | None = None, limit: int = 50,
-                      max_pages: int = 3) -> list[dict]:
+                      end_time_ms: int | None = None, filter_pattern: str | None = None,
+                      limit: int = 50, max_pages: int = 3) -> list[dict]:
     """The last ``limit`` events across ALL streams of a log group since
-    ``start_time_ms`` (epoch ms), oldest first, as ``{timestamp, stream, message}``.
-    Returns [] for a missing group (same reasoning as tail_log_group); raises
-    AwsAccessDenied when the role lacks logs:FilterLogEvents (bootstrap roles
-    created before that grant) so the caller can tell the user."""
+    ``start_time_ms`` (epoch ms, optionally bounded by ``end_time_ms`` — the log
+    archiver uses that to read one closed slot), oldest first, as
+    ``{timestamp, stream, message}``. Returns [] for a missing group (same
+    reasoning as tail_log_group); raises AwsAccessDenied when the role lacks
+    logs:FilterLogEvents (bootstrap roles created before that grant) so the
+    caller can tell the user."""
     logs = _logs_client(credentials, region)
     events: list[dict] = []
     kwargs: dict = {'logGroupName': log_group, 'startTime': start_time_ms, 'limit': 200}
+    if end_time_ms is not None:
+        kwargs['endTime'] = end_time_ms
     if filter_pattern:
         kwargs['filterPattern'] = filter_pattern
     try:
