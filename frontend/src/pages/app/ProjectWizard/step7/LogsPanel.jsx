@@ -15,10 +15,37 @@ const RANGES = [
   ['7d', 'Last 7 days'],
 ]
 
+// Wrap each case-insensitive match of the active search term in a <mark> so
+// the hit is visible inside long log lines.
+function highlight(message, query) {
+  if (!query) return message
+  const lower = message.toLowerCase()
+  const needle = query.toLowerCase()
+  const parts = []
+  let i = 0
+  for (;;) {
+    const at = lower.indexOf(needle, i)
+    if (at === -1) {
+      parts.push(message.slice(i))
+      break
+    }
+    parts.push(message.slice(i, at))
+    parts.push(
+      <mark key={at} className='rounded-sm bg-accent/30 text-inherit'>
+        {message.slice(at, at + needle.length)}
+      </mark>,
+    )
+    i = at + needle.length
+  }
+  return parts
+}
+
 function LogsPanel({ projectId, services }) {
   const [selected, setSelected] = useState('')
   const [level, setLevel] = useState('all')
   const [range, setRange] = useState('1h')
+  const [queryInput, setQueryInput] = useState('')
+  const [query, setQuery] = useState('')
   const [events, setEvents] = useState([])
   const [warnings, setWarnings] = useState([])
   const [truncated, setTruncated] = useState(false)
@@ -31,12 +58,12 @@ function LogsPanel({ projectId, services }) {
 
   const fetchLogs = useCallback(async (force = false) => {
     if (!projectId || !selected) return
-    const cacheKey = `logs:${projectId}:${selected}:${level}:${range}`
+    const cacheKey = `logs:${projectId}:${selected}:${level}:${range}:${query}`
     if (force) invalidate(cacheKey)
     setLoading(true)
     try {
       const data = await cachedFetch(cacheKey, CACHE_TTL_MS,
-        () => api.getDeployLogs(projectId, { service: selected, level, range }))
+        () => api.getDeployLogs(projectId, { service: selected, level, range, q: query || undefined }))
       setEvents(data.events || [])
       setWarnings(data.warnings || [])
       setTruncated(Boolean(data.truncated))
@@ -45,7 +72,7 @@ function LogsPanel({ projectId, services }) {
     } finally {
       setLoading(false)
     }
-  }, [projectId, selected, level, range])
+  }, [projectId, selected, level, range, query])
 
   useEffect(() => {
     fetchLogs()
@@ -59,7 +86,18 @@ function LogsPanel({ projectId, services }) {
     <div>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <h3 className='text-lg font-semibold'>Logs</h3>
-        <div className='flex items-center gap-2'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <input
+            type='search'
+            value={queryInput}
+            onChange={(e) => setQueryInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') setQuery(queryInput.trim())
+            }}
+            placeholder='Search logs… (Enter)'
+            aria-label='Search logs'
+            className='w-44 rounded-lg border border-border bg-surface px-2 py-1 text-sm text-text-primary placeholder:text-text-muted'
+          />
           <select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
@@ -104,7 +142,9 @@ function LogsPanel({ projectId, services }) {
       ))}
       <div className='mt-3 max-h-80 overflow-auto rounded-lg border border-border bg-surface p-3 font-mono text-xs'>
         {events.length === 0 ? (
-          <p className='font-sans text-sm text-text-muted'>No log events in the selected range.</p>
+          <p className='font-sans text-sm text-text-muted'>
+            {query ? `No matches for “${query}” in the selected range.` : 'No log events in the selected range.'}
+          </p>
         ) : (
           events.map((event, index) => (
             <p key={index} className='whitespace-pre-wrap break-all py-0.5'>
@@ -113,7 +153,7 @@ function LogsPanel({ projectId, services }) {
                   ? new Date(event.timestamp).toLocaleTimeString()
                   : new Date(event.timestamp).toLocaleString()}
               </span>{' '}
-              <span className='text-text-primary'>{event.message}</span>
+              <span className='text-text-primary'>{highlight(event.message, query)}</span>
             </p>
           ))
         )}
