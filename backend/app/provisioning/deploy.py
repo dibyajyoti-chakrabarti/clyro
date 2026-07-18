@@ -21,9 +21,13 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from core.models import Deployment, DeploymentStackOutput, IntentRecord, Project, ProvisioningLogEntry
+from core.models import (
+    AWSAccountConnection, Deployment, DeploymentStackOutput, EnvVarKey,
+    IntentRecord, Project, ProvisioningLogEntry,
+)
 
 from . import aws_client, cfn_events, runtime_probe
+from .cfn_bootstrap import bootstrap_stack_name
 
 log = logging.getLogger(__name__)
 
@@ -1125,6 +1129,66 @@ def teardown(project: Project) -> dict[str, Any]:
     deployment.status = Deployment.Status.DELETING
     deployment.save(update_fields=["status", "updated_at"])
     return {"status": deployment.status}
+
+
+# ── Full AWS purge (project delete) ──────────────────────────────────────────
+
+def destroy(project: Project) -> dict[str, Any]:
+    """Everything project deletion must remove from the user's AWS account, in
+    dependency order: the app stack (waited on — CFN delete is async), then the
+    Secrets Manager secrets Clyro wrote directly (not stack resources, so
+    teardown alone orphans them), then the ClyroBootstrap connector stack.
+    The connector's IAM role is the credential every one of these calls runs
+    on, so its stack must go last — nothing is reachable after it.
+
+    A DeployError from teardown/_wait propagates: a stack that refuses to
+    delete must fail the delete job loudly rather than silently orphan a
+    running (billing) stack. An already-dead connection is the one exception —
+    there's nothing left we *can* reach, so purge is a no-op."""
+    deployment = _active_deployment(project)
+    if deployment is not None and deployment.status != Deployment.Status.DELETED:
+        try:
+            if deployment.status != Deployment.Status.DELETING:
+                teardown(project)
+                deployment.refresh_from_db()
+            _wait_stack_deleted(deployment)
+        except DeployError as exc:
+            if "no longer valid" not in str(exc):
+                raise
+            return {"purged": False, "reason": "aws_connection_dead"}
+        deployment.status = Deployment.Status.DELETED
+        deployment.save(update_fields=["status", "updated_at"])
+
+    conn = (AWSAccountConnection.objects
+            .filter(project=project, connected_at__isnull=False)
+            .order_by("-connected_at").first())
+    if conn is None:
+        return {"purged": False, "reason": "never_connected"}
+    try:
+        creds = aws_client.assume_role(
+            conn.iam_role_arn, conn.bootstrap_stack_id, session_name=f"Clyro-{project.pk}"
+        )
+    except ClientError:
+        return {"purged": False, "reason": "aws_connection_dead"}
+    region = conn.aws_region or "us-east-1"
+
+    # Best-effort per secret: one already-deleted secret must not strand the rest.
+    for var in EnvVarKey.objects.filter(project=project, secrets_manager_arn__isnull=False):
+        try:
+            aws_client.delete_secret(creds, region, var.secrets_manager_arn)
+        except ClientError:
+            log.warning("destroy: could not delete secret %s for project %s",
+                        var.secrets_manager_arn, project.pk)
+
+    # Best-effort: CFN deletes the role mid-delete, which can invalidate the very
+    # session driving the delete — a DELETE_FAILED connector stack holds only the
+    # IAM role and is trivially removed from the user's console.
+    try:
+        aws_client.delete_stack(creds, region, bootstrap_stack_name(project.name))
+    except ClientError:
+        log.warning("destroy: could not delete bootstrap stack for project %s", project.pk)
+
+    return {"purged": True}
 
 
 # ── Rebuild from scratch (user-confirmed) ────────────────────────────────────
