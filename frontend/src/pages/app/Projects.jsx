@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
-import { api } from '../../api'
+import { api, pollJob } from '../../api'
 import ProjectsHeader from '../../components/projects/ProjectsHeader'
 import ProjectsToolbar from '../../components/projects/ProjectsToolbar'
 import ProjectCard from '../../components/projects/ProjectCard'
@@ -11,26 +11,58 @@ export default function Projects() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('All')
   const [sort, setSort] = useState('Newest')
+  const [deletingIds, setDeletingIds] = useState(() => new Set())
 
-  useEffect(() => {
-    api.listProjects()
-      .then(setProjects)
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+  const setDeleting = (id, on) => {
+    setDeletingIds((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this project? This cannot be undone.')) return
+  const runDelete = async (id) => {
+    setDeleting(id, true)
     try {
       const res = await api.deleteProject(id)
-      if (res && res.status === 'tearing_down') {
-        window.alert('Infrastructure teardown started — delete again once it finishes to remove the project.')
-        return
+      if (res && res.job_id) {
+        // Async full purge — the job row itself is deleted with the project,
+        // so the poll finishing in a 404 is the success signal.
+        try {
+          await pollJob(id, res.job_id)
+        } catch (err) {
+          if (err.status !== 404) throw err
+        }
       }
       setProjects((prev) => prev.filter((project) => project.id !== id))
     } catch (err) {
       window.alert(err.message || 'Failed to delete project')
+      api.listProjects().then(setProjects).catch(() => {})
+    } finally {
+      setDeleting(id, false)
     }
+  }
+
+  useEffect(() => {
+    api.listProjects()
+      .then((list) => {
+        setProjects(list)
+        // A reload mid-delete leaves projects at status 'deleting' with no local
+        // poll — re-attach (the DELETE endpoint reuses the in-flight job).
+        list.filter((p) => p.status === 'deleting').forEach((p) => runDelete(p.id))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleDelete = async (id) => {
+    const message =
+      'Delete this project? Its AWS infrastructure, secrets and the Clyro connector stack ' +
+      'will be permanently deleted. This cannot be undone.'
+    if (!window.confirm(message)) return
+    await runDelete(id)
   }
 
   const filtered = useMemo(() => {
@@ -85,7 +117,12 @@ export default function Projects() {
       ) : (
         <div className='space-y-3'>
           {filtered.map((project) => (
-            <ProjectCard key={project.id} project={project} onDelete={handleDelete} />
+            <ProjectCard
+              key={project.id}
+              project={project}
+              onDelete={handleDelete}
+              deleting={deletingIds.has(project.id) || project.status === 'deleting'}
+            />
           ))}
         </div>
       )}

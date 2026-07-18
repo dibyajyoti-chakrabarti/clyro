@@ -4,6 +4,7 @@ import {
   Folder,
   Rocket,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import Button from "../ui/Button";
@@ -22,8 +23,8 @@ function formatDate(value) {
   }).format(date);
 }
 
-export default function ProjectCard({ project, onDelete }) {
-  const status = project.status || "default";
+export default function ProjectCard({ project, onDelete, deleting = false }) {
+  const status = deleting ? "deleting" : project.status || "default";
   const iconClassName = "h-5 w-5";
 
   const renderProjectIcon = () => {
@@ -105,11 +106,16 @@ export default function ProjectCard({ project, onDelete }) {
 
           <button
             type="button"
-            aria-label="Delete project"
+            aria-label={deleting ? "Deleting project" : "Delete project"}
+            disabled={deleting}
             onClick={() => onDelete?.(project.id)}
-            className="flex items-center justify-center text-red-400 transition-all duration-200 hover:scale-110 hover:text-red-300"
+            className="flex items-center justify-center text-red-400 transition-all duration-200 hover:scale-110 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
           >
-            <Trash2 strokeWidth={2.2} className="h-6 w-6" />
+            {deleting ? (
+              <Loader2 strokeWidth={2.2} className="h-6 w-6 animate-spin" />
+            ) : (
+              <Trash2 strokeWidth={2.2} className="h-6 w-6" />
+            )}
           </button>
 
           <Link
