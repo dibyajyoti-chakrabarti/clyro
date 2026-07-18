@@ -413,6 +413,28 @@ class DeploymentStackOutput(models.Model):
         return f"{self.output_key} = {self.output_value}"
 
 
+class HealthSnapshot(models.Model):
+    """One point-in-time record of a live project's health, written by the
+    collect-health-snapshots beat task once a minute. The Step 7 dashboard's
+    live poll only sees "now" — snapshots are what make uptime percentages and
+    history possible, including while nobody has the page open."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='health_snapshots')
+    stack_status = models.TextField()  # 'ok' | 'not_found'
+    healthy = models.BooleanField()  # stack found and every service at its desired count
+    health_items = models.JSONField(default=list)
+    metrics = models.JSONField(default=dict)
+    alerts = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'health_snapshots'
+        indexes = [models.Index(fields=['project', 'created_at'])]
+
+    def __str__(self):
+        return f"HealthSnapshot {self.project.name} @ {self.created_at} healthy={self.healthy}"
+
+
 class AgentJob(models.Model):
     """A single async invocation of one of the Bedrock AgentCore agents (scan,
     Step-3 chat, IaC generate/refine, provisioning-with-feedback), run via Celery
