@@ -737,6 +737,88 @@ def _cloudwatch_client(credentials: dict, region: str):
     )
 
 
+def describe_alarms(credentials: dict, region: str, alarm_names: list[str]) -> list[dict]:
+    """Current state for the given alarms as ``{name, description, state,
+    reason, updated}``. Raises AwsAccessDenied on a permissions gap; [] on
+    other errors (e.g. alarms deleted out-of-band)."""
+    if not alarm_names:
+        return []
+    cloudwatch = _cloudwatch_client(credentials, region)
+    try:
+        response = cloudwatch.describe_alarms(AlarmNames=alarm_names[:100], MaxRecords=100)
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('cloudwatch:DescribeAlarms') from exc
+        return []
+    alarms = []
+    for item in response.get('MetricAlarms') or []:
+        updated = item.get('StateUpdatedTimestamp')
+        alarms.append({
+            'name': item.get('AlarmName', ''),
+            'description': item.get('AlarmDescription') or '',
+            'state': item.get('StateValue', ''),
+            'reason': item.get('StateReason') or '',
+            'updated': updated.isoformat() if updated else None,
+        })
+    return alarms
+
+
+def describe_alarm_history(credentials: dict, region: str, alarm_names: list[str],
+                           days: int = 30, limit: int = 50) -> list[dict]:
+    """State transitions for the given alarms over the past ``days``, newest
+    first, as ``{alarm, at, summary}``. Raises AwsAccessDenied on a permissions
+    gap; skips alarms that error individually."""
+    from datetime import datetime, timedelta, timezone
+
+    cloudwatch = _cloudwatch_client(credentials, region)
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days)
+    items: list[dict] = []
+    for name in alarm_names[:20]:
+        try:
+            response = cloudwatch.describe_alarm_history(
+                AlarmName=name, HistoryItemType='StateUpdate',
+                StartDate=start, EndDate=end, MaxRecords=100,
+                ScanBy='TimestampDescending')
+        except ClientError as exc:
+            if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+                raise AwsAccessDenied('cloudwatch:DescribeAlarmHistory') from exc
+            continue
+        for history in response.get('AlarmHistoryItems') or []:
+            stamp = history.get('Timestamp')
+            items.append({
+                'alarm': name,
+                'at': stamp.isoformat() if stamp else None,
+                'summary': history.get('HistorySummary') or '',
+            })
+    items.sort(key=lambda i: i['at'] or '', reverse=True)
+    return items[:limit]
+
+
+def topic_subscription_status(credentials: dict, region: str, topic_arn: str) -> str | None:
+    """'confirmed' | 'pending' | None (no subscriptions) for an SNS topic's
+    email subscriptions — Step 7 uses 'pending' to remind the user to click the
+    confirmation link AWS emailed them. Raises AwsAccessDenied on a permissions
+    gap; None on other errors."""
+    sns = boto3.client(
+        'sns',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+    try:
+        subs = sns.list_subscriptions_by_topic(TopicArn=topic_arn).get('Subscriptions') or []
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('sns:ListSubscriptionsByTopic') from exc
+        return None
+    if not subs:
+        return None
+    pending = any(s.get('SubscriptionArn') == 'PendingConfirmation' for s in subs)
+    return 'pending' if pending else 'confirmed'
+
+
 def get_cloudwatch_metric_series(credentials: dict, region: str, queries: dict[str, tuple],
                                  minutes: int = 60, period: int = 300) -> dict[str, list[dict]]:
     """Time series for several metrics in ONE GetMetricData call. ``queries`` maps
