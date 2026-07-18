@@ -304,6 +304,39 @@ def _add_security_groups(resources: dict[str, Any], spec: dict[str, Any]) -> dic
     return sg_by_node
 
 
+def _add_log_archive_bucket(resources: dict[str, Any], spec: dict[str, Any]) -> None:
+    """Every stack gets a log-archive bucket: Clyro's beat task copies each
+    service's CloudWatch log events here in 5-minute JSONL slots, which is what
+    the Step 7 logs panel reads for ranges beyond the last hour (CloudWatch
+    retention in this template is only 14 days, and FilterLogEvents over long
+    ranges is slow and expensive). Objects expire after 30 days."""
+    iam_prefix = spec.get("iam_scoped_prefix") or "clyro-app"
+    resources["LogArchiveBucket"] = {
+        "Type": "AWS::S3::Bucket",
+        "Properties": {
+            "BucketName": _sub(f"{iam_prefix}-log-archive-${{AWS::AccountId}}"),
+            "PublicAccessBlockConfiguration": {
+                "BlockPublicAcls": True,
+                "BlockPublicPolicy": True,
+                "IgnorePublicAcls": True,
+                "RestrictPublicBuckets": True,
+            },
+            "BucketEncryption": {
+                "ServerSideEncryptionConfiguration": [{
+                    "ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}
+                }]
+            },
+            "LifecycleConfiguration": {
+                "Rules": [{
+                    "Id": "expire-archived-logs",
+                    "Status": "Enabled",
+                    "ExpirationInDays": 30,
+                }]
+            },
+        },
+    }
+
+
 def _add_s3_and_cloudfront(resources: dict[str, Any], spec: dict[str, Any]) -> str | None:
     iam_prefix = spec.get("iam_scoped_prefix") or "clyro-app"
     has_static = bool(_first_resource(spec, "static"))
@@ -823,6 +856,7 @@ def generate_template(spec: dict[str, Any]) -> str:
 
     _add_networking(resources, spec)
     sg_by_node = _add_security_groups(resources, spec)
+    _add_log_archive_bucket(resources, spec)
     app_bucket = _add_s3_and_cloudfront(resources, spec)
     _add_data_resources(resources, spec, sg_by_node)
     _add_queue(resources, spec)
@@ -842,6 +876,7 @@ def generate_template(spec: dict[str, Any]) -> str:
         outputs["FrontendBucketName"] = {"Description": "Frontend bucket", "Value": _ref("FrontendBucket")}
     if "TaskQueue" in resources:
         outputs["TaskQueueURL"] = {"Description": "Task queue URL", "Value": _ref("TaskQueue")}
+    outputs["LogArchiveBucketName"] = {"Description": "Log archive bucket", "Value": _ref("LogArchiveBucket")}
     if "DbInstance" in resources:
         outputs["DatabaseEndpoint"] = {"Description": "Database endpoint", "Value": _getatt("DbInstance", "Endpoint.Address")}
     if "DomainCertificate" in resources:
