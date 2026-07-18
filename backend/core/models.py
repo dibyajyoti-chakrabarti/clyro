@@ -93,6 +93,9 @@ class Project(models.Model):
         LIVE = 'live'
         FAILED = 'failed'
         PAUSED = 'paused'
+        # Full delete in flight (run_delete_project_task): AWS purge then hard
+        # row delete — the row only holds this status until it disappears.
+        DELETING = 'deleting'
         DELETED = 'deleted'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -450,6 +453,7 @@ class AgentJob(models.Model):
         IAC_REFINE = 'iac_refine'
         PROVISION = 'provision'
         BUILD = 'build'
+        DELETE = 'delete'
 
     class Status(models.TextChoices):
         PENDING = 'pending'
