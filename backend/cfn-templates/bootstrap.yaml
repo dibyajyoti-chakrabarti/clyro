@@ -372,7 +372,31 @@ Resources:
                   # rationale as above — GetMetricData isn't scoped to individual
                   # metrics by ARN.
                   - cloudwatch:GetMetricData
+                  # Read-only: powers the Step 7 alarm-history lane (what fired
+                  # in the last 30 days).
+                  - cloudwatch:DescribeAlarmHistory
                 Resource: '*'
+              # SNS — the generated stack's alert topic + email subscription
+              # (AlertTopic/AlertEmailSubscription in the deterministic template).
+              # Topic names use IamScopedPrefix, so this scopes to clyro-* like
+              # the S3/logs statements; subscription ARNs are the topic ARN plus
+              # a :uuid suffix, covered by the second pattern.
+              - Effect: Allow
+                Action:
+                  - sns:CreateTopic
+                  - sns:DeleteTopic
+                  - sns:GetTopicAttributes
+                  - sns:SetTopicAttributes
+                  - sns:Subscribe
+                  - sns:Unsubscribe
+                  - sns:GetSubscriptionAttributes
+                  - sns:ListSubscriptionsByTopic
+                  - sns:ListTagsForResource
+                  - sns:TagResource
+                  - sns:UntagResource
+                Resource:
+                  - !Sub 'arn:aws:sns:*:${AWS::AccountId}:*clyro-*'
+                  - !Sub 'arn:aws:sns:*:${AWS::AccountId}:*clyro-*:*'
               # S3 — static frontend assets and CF template staging — scoped to clyro-* buckets
               - Effect: Allow
                 Action:
