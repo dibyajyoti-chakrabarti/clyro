@@ -95,6 +95,12 @@ export const api = {
   startDeploy: (id) => request('POST', `/api/projects/${id}/deploy/`),
   getDeployStatus: (id, since) => request('GET', `/api/projects/${id}/deploy/status/${since !== undefined && since !== null ? `?since=${since}` : ''}`),
   getDeployHealth: (id) => request('GET', `/api/projects/${id}/deploy/health/`),
+  getDeployLogs: (id, { service, level } = {}) => {
+    const qs = new URLSearchParams()
+    if (service) qs.set('service', service)
+    if (level && level !== 'all') qs.set('level', level)
+    return request('GET', `/api/projects/${id}/deploy/logs/${qs.size > 0 ? `?${qs}` : ''}`)
+  },
   pauseDeploy: (id) => request('POST', `/api/projects/${id}/deploy/pause/`),
   resumeDeploy: (id) => request('POST', `/api/projects/${id}/deploy/resume/`),
   teardownDeploy: (id) => request('POST', `/api/projects/${id}/deploy/teardown/`),
