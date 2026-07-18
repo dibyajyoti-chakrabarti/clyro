@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { Download, RefreshCw } from 'lucide-react'
 import { api } from '../../../../api'
 import { cachedFetch, invalidate } from '../../../../lib/apiCache'
 
@@ -50,6 +50,7 @@ function LogsPanel({ projectId, services }) {
   const [warnings, setWarnings] = useState([])
   const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   useEffect(() => {
     if (services.length === 0) return
@@ -79,6 +80,25 @@ function LogsPanel({ projectId, services }) {
     const intervalId = setInterval(fetchLogs, REFRESH_INTERVAL_MS)
     return () => clearInterval(intervalId)
   }, [fetchLogs])
+
+  const downloadLogs = async () => {
+    if (!projectId || !selected || downloading) return
+    setDownloading(true)
+    try {
+      const blob = await api.downloadDeployLogs(projectId,
+        { service: selected, level, range, q: query || undefined })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${selected}-${range}-logs.txt`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // Keep the panel usable — the user can simply retry the download.
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   if (services.length === 0) return null
 
@@ -134,6 +154,14 @@ function LogsPanel({ projectId, services }) {
             aria-label='Refresh logs'
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={downloadLogs}
+            disabled={downloading}
+            className='rounded-lg border border-border bg-surface p-1.5 text-text-muted hover:text-text-primary disabled:opacity-50'
+            aria-label='Download logs'
+          >
+            <Download className='h-4 w-4' />
           </button>
         </div>
       </div>
