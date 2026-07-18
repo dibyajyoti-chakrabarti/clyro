@@ -733,6 +733,57 @@ def logs(project: Project, service: str | None = None, level: str = "all",
             "truncated": False, "events": events[-event_limit:], "warnings": warnings}
 
 
+def alarms(project: Project) -> dict[str, Any]:
+    """Real CloudWatch alarm states + 30-day history + the alert topic's email
+    subscription status for the stack. Alarm/topic names come from the stack's
+    own resources (not name-prefix guessing), so LLM-refined templates work
+    too. ``configured`` is False for stacks provisioned before the alarm set
+    existed — the UI turns that into a re-provision hint."""
+    deployment = _active_deployment(project)
+    if deployment is None:
+        raise DeployError("No provisioned infrastructure to check alarms for.")
+
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+    try:
+        resources = aws_client.list_stack_resources(creds, region, stack_name)
+    except ClientError:
+        return {"stack_status": "not_found", "configured": False, "alarms": [],
+                "history": [], "subscription": None, "warnings": []}
+
+    alarm_names = [r["physical_id"] for r in resources
+                   if r["resource_type"] == "AWS::CloudWatch::Alarm" and r["physical_id"]]
+    topic_arn = next(
+        (r["physical_id"] for r in resources
+         if r["resource_type"] == "AWS::SNS::Topic" and r["physical_id"]),
+        None,
+    )
+
+    warnings: list[str] = []
+    alarm_states: list[dict] = []
+    history: list[dict] = []
+    try:
+        alarm_states = aws_client.describe_alarms(creds, region, alarm_names)
+        history = aws_client.describe_alarm_history(creds, region, alarm_names)
+    except aws_client.AwsAccessDenied as exc:
+        warnings.append(
+            f"Alarm status is unavailable: your AWS role is missing {exc}. "
+            "Update your Clyro bootstrap stack.")
+
+    subscription = None
+    if topic_arn:
+        try:
+            subscription = aws_client.topic_subscription_status(creds, region, topic_arn)
+        except aws_client.AwsAccessDenied as exc:
+            warnings.append(
+                f"Email subscription status is unavailable: your AWS role is missing {exc}. "
+                "Update your Clyro bootstrap stack.")
+
+    return {"stack_status": "ok", "configured": bool(alarm_names),
+            "alarms": alarm_states, "history": history,
+            "subscription": subscription, "warnings": warnings}
+
+
 _EXPORT_EVENT_LIMIT = 50_000
 _EXPORT_MAX_OBJECTS = 2500  # > 2016, so a full 7 days of 5-minute slots fits
 

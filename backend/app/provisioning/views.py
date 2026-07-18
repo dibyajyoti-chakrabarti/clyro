@@ -540,6 +540,19 @@ def deploy_history(request, pk):
 @api_view(['GET'])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)
+def deploy_alarms(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    try:
+        return Response(deploy.alarms(project))
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
 def deploy_logs(request, pk):
     project, err = _get_project_or_404(request, pk)
     if err:
