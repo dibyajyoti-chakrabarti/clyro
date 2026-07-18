@@ -6,6 +6,7 @@ import MetricsGrid from './MetricsGrid'
 import AlertsList from './AlertsList'
 import LogsPanel from './LogsPanel'
 import StackStatus from './StackStatus'
+import UptimeSection from './UptimeSection'
 
 const POLL_INTERVAL_MS = 20000
 
@@ -87,6 +88,7 @@ function StepSevenPanel({ projectId }) {
         ) : null}
         <HealthOverview healthItems={healthItems} statusIcon={statusIcon} notFound={notFound} />
         <MetricsGrid metrics={metrics} series={series} />
+        <UptimeSection projectId={projectId} />
         <div>
           <h3 className='text-lg font-semibold'>Cost</h3>
           <div className='mt-3 grid gap-3 md:grid-cols-3'>
