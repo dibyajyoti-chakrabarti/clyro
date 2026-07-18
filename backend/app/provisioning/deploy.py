@@ -632,7 +632,8 @@ _ARCHIVE_EVENT_LIMIT = 200
 
 
 def logs(project: Project, service: str | None = None, level: str = "all",
-         log_range: str = "1h", query: str | None = None) -> dict[str, Any]:
+         log_range: str = "1h", query: str | None = None,
+         limit: int | None = None, max_objects: int | None = None) -> dict[str, Any]:
     """Recent application log events for one ECS service in the live stack.
     Log groups are read from the service's task definition (not guessed from
     naming — the template is LLM-authored, so group names vary). ``query``
@@ -682,7 +683,8 @@ def logs(project: Project, service: str | None = None, level: str = "all",
             try:
                 events, truncated = monitoring.read_archived_events(
                     creds, region, bucket, requested, hours,
-                    level=level, query=query, limit=_ARCHIVE_EVENT_LIMIT)
+                    level=level, query=query, limit=limit or _ARCHIVE_EVENT_LIMIT,
+                    max_objects=max_objects)
             except aws_client.AwsAccessDenied as exc:
                 warnings.append(
                     f"Archived logs are unavailable: your AWS role is missing {exc}. "
@@ -708,12 +710,14 @@ def logs(project: Project, service: str | None = None, level: str = "all",
         pattern = _LOG_ERROR_PATTERN
     else:
         pattern = None
+    event_limit = limit or _LOG_EVENT_LIMIT
     events = []
     for group in groups:
         try:
             events.extend(aws_client.filter_log_events(
                 creds, region, group, start_ms,
-                filter_pattern=pattern, limit=_LOG_EVENT_LIMIT))
+                filter_pattern=pattern, limit=event_limit,
+                max_pages=max(3, event_limit // 200 + 1)))
         except aws_client.AwsAccessDenied:
             warnings.append(
                 "Logs are unavailable: your AWS role is missing logs:FilterLogEvents. "
@@ -726,7 +730,32 @@ def logs(project: Project, service: str | None = None, level: str = "all",
     events.sort(key=lambda e: e["timestamp"] or 0)
     return {"stack_status": "ok", "service": requested, "services": names,
             "level": level, "range": log_range, "query": query, "source": "cloudwatch",
-            "truncated": False, "events": events[-_LOG_EVENT_LIMIT:], "warnings": warnings}
+            "truncated": False, "events": events[-event_limit:], "warnings": warnings}
+
+
+_EXPORT_EVENT_LIMIT = 50_000
+_EXPORT_MAX_OBJECTS = 2500  # > 2016, so a full 7 days of 5-minute slots fits
+
+
+def export_logs(project: Project, service: str | None = None, level: str = "all",
+                log_range: str = "1h", query: str | None = None) -> dict[str, Any]:
+    """The same events the logs panel shows, with download-sized caps, as plain
+    text lines ``iso-timestamp<TAB>stream<TAB>message``. Returns
+    ``{filename, text}``; a truncation notice becomes the file's first line."""
+    from datetime import datetime, timezone as utc_tz
+
+    data = logs(project, service=service, level=level, log_range=log_range,
+                query=query, limit=_EXPORT_EVENT_LIMIT, max_objects=_EXPORT_MAX_OBJECTS)
+    lines = []
+    if data.get("stack_status") == "not_found":
+        lines.append("# stack not found — no logs available")
+    if data.get("truncated"):
+        lines.append("# truncated: only the most recent events in this range are included")
+    for event in data.get("events") or []:
+        stamp = datetime.fromtimestamp((event.get("timestamp") or 0) / 1000, tz=utc_tz.utc).isoformat()
+        lines.append(f"{stamp}\t{event.get('stream', '')}\t{event.get('message', '')}")
+    filename = f"{data.get('service') or 'logs'}-{log_range}.txt"
+    return {"filename": filename, "text": "\n".join(lines) + "\n"}
 
 
 def scale_services_to_spec(project: Project) -> dict[str, Any]:

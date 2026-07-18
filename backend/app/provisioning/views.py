@@ -2,6 +2,7 @@ import logging
 import uuid
 from django.conf import settings
 from django.core.cache import cache
+from django.http import HttpResponse
 from django.utils import timezone
 from botocore.exceptions import ClientError
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -554,6 +555,29 @@ def deploy_logs(request, pk):
                                     log_range=log_range, query=query))
     except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_logs_download(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    service = request.query_params.get('service') or None
+    level = 'error' if request.query_params.get('level') == 'error' else 'all'
+    log_range = request.query_params.get('range')
+    if log_range not in deploy.LOG_RANGES:
+        log_range = '1h'
+    query = (request.query_params.get('q') or '').strip()[:200] or None
+    try:
+        result = deploy.export_logs(project, service=service, level=level,
+                                    log_range=log_range, query=query)
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    response = HttpResponse(result['text'], content_type='text/plain; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="{result["filename"]}"'
+    return response
 
 
 @api_view(['POST'])
