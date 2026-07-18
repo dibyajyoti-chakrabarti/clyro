@@ -104,6 +104,13 @@ CELERY_BEAT_SCHEDULE = {
         "task": "app.tasks.run_health_snapshot_task",
         "schedule": 60.0,
     },
+    # Step 7 logs: archive each live service's CloudWatch events into the
+    # stack's LogArchiveBucket in 5-minute JSONL slots (idempotent keys, so the
+    # cadence matching the slot size is safe).
+    "archive-service-logs": {
+        "task": "app.tasks.run_log_archive_task",
+        "schedule": 300.0,
+    },
 }
 
 # Production has no Redis (see the SQS note above), so the cache is deliberately

@@ -234,3 +234,13 @@ def run_health_snapshot_task():
     # dashboard's live-only poll can't provide. Not job-tracked (no AgentJob).
     from app.provisioning import monitoring
     return monitoring.collect_snapshots()
+
+
+@shared_task
+def run_log_archive_task():
+    # Scheduled via CELERY_BEAT_SCHEDULE — copies each live service's CloudWatch
+    # events into the stack's LogArchiveBucket in 5-minute JSONL slots, which
+    # the Step 7 logs panel reads for ranges beyond the last hour. Not
+    # job-tracked (no AgentJob).
+    from app.provisioning import monitoring
+    return monitoring.archive_logs()
