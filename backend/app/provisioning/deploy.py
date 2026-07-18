@@ -477,15 +477,19 @@ def _service_is_serving(creds: dict, region: str, cluster: str, service: str,
     return True, ""
 
 
-def _stack_ecs_services(creds: dict, region: str, stack_name: str) -> list[tuple[str, str]]:
+def _ecs_services_from_resources(resources: list[dict]) -> list[tuple[str, str]]:
     services = []
-    for resource in aws_client.list_stack_resources(creds, region, stack_name):
+    for resource in resources:
         if resource["resource_type"] != "AWS::ECS::Service" or not resource["physical_id"]:
             continue
         parsed = aws_client.parse_ecs_service_arn(resource["physical_id"])
         if parsed:
             services.append(parsed)
     return services
+
+
+def _stack_ecs_services(creds: dict, region: str, stack_name: str) -> list[tuple[str, str]]:
+    return _ecs_services_from_resources(aws_client.list_stack_resources(creds, region, stack_name))
 
 
 def _lb_dimension_value(lb_arn: str) -> str | None:
@@ -510,11 +514,11 @@ def health(project: Project) -> dict[str, Any]:
     stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
 
     try:
-        services = _stack_ecs_services(creds, region, stack_name)
         resources = aws_client.list_stack_resources(creds, region, stack_name)
     except ClientError:
         return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": []}
 
+    services = _ecs_services_from_resources(resources)
     if not services:
         return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": []}
 
