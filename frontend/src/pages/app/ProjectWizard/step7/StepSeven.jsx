@@ -13,6 +13,7 @@ function StepSevenPanel({ projectId }) {
   const [healthItems, setHealthItems] = useState([])
   const [alerts, setAlerts] = useState([])
   const [metrics, setMetrics] = useState(null)
+  const [series, setSeries] = useState(null)
   const [notFound, setNotFound] = useState(false)
   const [stackStatus, setStackStatus] = useState(null)
   const [warnings, setWarnings] = useState([])
@@ -45,6 +46,7 @@ function StepSevenPanel({ projectId }) {
           fired_at: alert.fired_at ? new Date(alert.fired_at).toLocaleTimeString() : '',
         })))
         setMetrics(data.metrics || null)
+        setSeries(data.series || null)
         setStackStatus(data.stack ? {
           stackName: data.stack.name,
           status: data.stack.status,
@@ -84,7 +86,7 @@ function StepSevenPanel({ projectId }) {
           </div>
         ) : null}
         <HealthOverview healthItems={healthItems} statusIcon={statusIcon} notFound={notFound} />
-        <MetricsGrid metrics={metrics} />
+        <MetricsGrid metrics={metrics} series={series} />
         <div>
           <h3 className='text-lg font-semibold'>Cost</h3>
           <div className='mt-3 grid gap-3 md:grid-cols-3'>
