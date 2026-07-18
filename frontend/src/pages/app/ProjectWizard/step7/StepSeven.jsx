@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, CheckCircle2, X, XCircle } from 'lucide-react'
 import { api } from '../../../../api'
 import { cachedFetch } from '../../../../lib/apiCache'
+import AlarmsPanel from './AlarmsPanel'
 import HealthOverview from './HealthOverview'
 import MetricsGrid from './MetricsGrid'
 import AlertsList from './AlertsList'
@@ -108,6 +109,7 @@ function StepSevenPanel({ projectId }) {
           </div>
         </div>
         <AlertsList alerts={alerts} />
+        <AlarmsPanel projectId={projectId} />
         <LogsPanel projectId={projectId} services={healthItems.map((item) => item.name)} />
         <StackStatus stackStatus={stackStatus} />
       </div>

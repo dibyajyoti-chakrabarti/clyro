@@ -105,6 +105,7 @@ export const api = {
   getDeployStatus: (id, since) => request('GET', `/api/projects/${id}/deploy/status/${since !== undefined && since !== null ? `?since=${since}` : ''}`),
   getDeployHealth: (id) => request('GET', `/api/projects/${id}/deploy/health/`),
   getDeployHistory: (id) => request('GET', `/api/projects/${id}/deploy/history/`),
+  getDeployAlarms: (id) => request('GET', `/api/projects/${id}/deploy/alarms/`),
   getDeployLogs: (id, { service, level, range, q } = {}) => {
     const qs = deployLogsParams({ service, level, range, q })
     return request('GET', `/api/projects/${id}/deploy/logs/${qs.size > 0 ? `?${qs}` : ''}`)
