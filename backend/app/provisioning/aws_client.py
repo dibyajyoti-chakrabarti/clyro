@@ -751,38 +751,3 @@ def get_cloudwatch_metric_series(credentials: dict, region: str, queries: dict[s
     return series
 
 
-def get_cloudwatch_metric(credentials: dict, region: str, namespace: str, metric_name: str,
-                          dimensions: list[dict], stat: str = 'Average', minutes: int = 5) -> float | None:
-    """Latest datapoint for one metric over the last ``minutes``, or None if there's
-    no data yet. Raises AwsAccessDenied when the role can't read metrics at all
-    (bootstrap roles created before the cloudwatch:GetMetricData grant was added)
-    so the caller can tell the user, instead of silently showing no data."""
-    from datetime import datetime, timedelta, timezone
-
-    cloudwatch = _cloudwatch_client(credentials, region)
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(minutes=minutes)
-    try:
-        response = cloudwatch.get_metric_data(
-            MetricDataQueries=[{
-                'Id': 'm1',
-                'MetricStat': {
-                    'Metric': {
-                        'Namespace': namespace,
-                        'MetricName': metric_name,
-                        'Dimensions': dimensions,
-                    },
-                    'Period': minutes * 60,
-                    'Stat': stat,
-                },
-                'ReturnData': True,
-            }],
-            StartTime=start,
-            EndTime=end,
-        )
-    except ClientError as exc:
-        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
-            raise AwsAccessDenied('cloudwatch:GetMetricData') from exc
-        return None
-    values = (response.get('MetricDataResults') or [{}])[0].get('Values') or []
-    return values[0] if values else None

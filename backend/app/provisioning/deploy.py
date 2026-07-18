@@ -518,11 +518,11 @@ def health(project: Project) -> dict[str, Any]:
         resources = aws_client.list_stack_resources(creds, region, stack_name)
         stack_info = aws_client.describe_stack(creds, region, stack_name)
     except ClientError:
-        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": [], "warnings": []}
+        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "series": {}, "alerts": [], "warnings": []}
 
     services = _ecs_services_from_resources(resources)
     if not services:
-        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": [], "warnings": []}
+        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "series": {}, "alerts": [], "warnings": []}
 
     lb_arn = next(
         (r["physical_id"] for r in resources
@@ -566,41 +566,49 @@ def health(project: Project) -> dict[str, Any]:
                 })
 
     metrics = {"response_time_ms": None, "request_rate": None, "error_rate": None, "cpu_percent": None}
+    series: dict[str, list[dict]] = {key: [] for key in metrics}
     warnings: list[str] = []
     lb_dimension = _lb_dimension_value(lb_arn) if lb_arn else None
-    try:
-        if lb_dimension:
-            dims = [{"Name": "LoadBalancer", "Value": lb_dimension}]
-            response_time = aws_client.get_cloudwatch_metric(
-                creds, region, "AWS/ApplicationELB", "TargetResponseTime", dims, stat="Average")
-            metrics["response_time_ms"] = round(response_time * 1000, 1) if response_time is not None else None
-            request_count = aws_client.get_cloudwatch_metric(
-                creds, region, "AWS/ApplicationELB", "RequestCount", dims, stat="Sum")
-            metrics["request_rate"] = round(request_count / 5, 2) if request_count is not None else None
-            error_count = aws_client.get_cloudwatch_metric(
-                creds, region, "AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", dims, stat="Sum")
-            if error_count is not None and request_count:
-                metrics["error_rate"] = round(100 * error_count / request_count, 2)
-            elif error_count is not None:
-                metrics["error_rate"] = 0.0
+    queries: dict[str, tuple] = {}
+    if lb_dimension:
+        dims = [{"Name": "LoadBalancer", "Value": lb_dimension}]
+        queries["response_time"] = ("AWS/ApplicationELB", "TargetResponseTime", dims, "Average")
+        queries["requests"] = ("AWS/ApplicationELB", "RequestCount", dims, "Sum")
+        queries["errors_5xx"] = ("AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", dims, "Sum")
+    if serving:
+        cluster, service = serving
+        queries["cpu"] = ("AWS/ECS", "CPUUtilization", [
+            {"Name": "ClusterName", "Value": cluster},
+            {"Name": "ServiceName", "Value": service},
+        ], "Average")
 
-        if serving:
-            cluster, service = serving
-            cpu = aws_client.get_cloudwatch_metric(
-                creds, region, "AWS/ECS", "CPUUtilization", [
-                    {"Name": "ClusterName", "Value": cluster},
-                    {"Name": "ServiceName", "Value": service},
-                ], stat="Average")
-            metrics["cpu_percent"] = round(cpu, 1) if cpu is not None else None
-    except aws_client.AwsAccessDenied:
-        warnings.append(
-            "Metrics are unavailable: your AWS role is missing cloudwatch:GetMetricData. "
-            "Update your Clyro bootstrap stack to restore metrics.")
+    if queries:
+        try:
+            raw = aws_client.get_cloudwatch_metric_series(creds, region, queries)
+        except aws_client.AwsAccessDenied:
+            raw = {}
+            warnings.append(
+                "Metrics are unavailable: your AWS role is missing cloudwatch:GetMetricData. "
+                "Update your Clyro bootstrap stack to restore metrics.")
+        series["response_time_ms"] = [
+            {"t": p["t"], "v": round(p["v"] * 1000, 1)} for p in raw.get("response_time", [])]
+        series["request_rate"] = [
+            {"t": p["t"], "v": round(p["v"] / 5, 2)} for p in raw.get("requests", [])]
+        requests_by_t = {p["t"]: p["v"] for p in raw.get("requests", [])}
+        series["error_rate"] = [
+            {"t": p["t"],
+             "v": round(100 * p["v"] / requests_by_t[p["t"]], 2) if requests_by_t.get(p["t"]) else 0.0}
+            for p in raw.get("errors_5xx", [])]
+        series["cpu_percent"] = [
+            {"t": p["t"], "v": round(p["v"], 1)} for p in raw.get("cpu", [])]
+        for key, points in series.items():
+            metrics[key] = points[-1]["v"] if points else None
 
     return {
         "stack_status": "ok",
         "health_items": health_items,
         "metrics": metrics,
+        "series": series,
         "alerts": alerts,
         "warnings": warnings,
         "stack": {
