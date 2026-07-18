@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from datetime import timedelta
 from typing import Any
 
 from botocore.exceptions import ClientError
@@ -608,6 +609,65 @@ def health(project: Project) -> dict[str, Any]:
             "last_updated": stack_info["last_updated_time"],
         },
     }
+
+
+_LOG_EVENT_LIMIT = 50
+_LOG_LOOKBACK_MINUTES = 60
+# CloudWatch filter syntax: '?' terms OR together — any common error marker matches.
+_LOG_ERROR_PATTERN = "?ERROR ?Error ?CRITICAL ?FATAL ?Exception ?Traceback"
+
+
+def logs(project: Project, service: str | None = None, level: str = "all") -> dict[str, Any]:
+    """Recent application log events for one ECS service in the live stack.
+    Log groups are read from the service's task definition (not guessed from
+    naming — the template is LLM-authored, so group names vary). Same
+    ``stack_status: "not_found"`` semantics as ``health()``."""
+    deployment = _active_deployment(project)
+    if deployment is None:
+        raise DeployError("No provisioned infrastructure to read logs from.")
+
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+
+    not_found = {"stack_status": "not_found", "service": None, "services": [],
+                 "level": level, "events": [], "warnings": []}
+    try:
+        resources = aws_client.list_stack_resources(creds, region, stack_name)
+    except ClientError:
+        return not_found
+    services = _ecs_services_from_resources(resources)
+    if not services:
+        return not_found
+
+    names = [svc for _, svc in services]
+    requested = service if service in names else names[0]
+    cluster = next(c for c, svc in services if svc == requested)
+
+    detail = aws_client.describe_ecs_service(creds, region, cluster, requested)
+    task_definition = detail.get("taskDefinition")
+    groups = (
+        aws_client.task_definition_log_groups(creds, region, task_definition)
+        if task_definition else []
+    )
+
+    start_ms = int((timezone.now() - timedelta(minutes=_LOG_LOOKBACK_MINUTES)).timestamp() * 1000)
+    pattern = _LOG_ERROR_PATTERN if level == "error" else None
+    events: list[dict] = []
+    warnings: list[str] = []
+    for group in groups:
+        try:
+            events.extend(aws_client.filter_log_events(
+                creds, region, group, start_ms,
+                filter_pattern=pattern, limit=_LOG_EVENT_LIMIT))
+        except aws_client.AwsAccessDenied:
+            warnings.append(
+                "Logs are unavailable: your AWS role is missing logs:FilterLogEvents. "
+                "Update your Clyro bootstrap stack to enable the logs panel.")
+            break
+
+    events.sort(key=lambda e: e["timestamp"] or 0)
+    return {"stack_status": "ok", "service": requested, "services": names,
+            "level": level, "events": events[-_LOG_EVENT_LIMIT:], "warnings": warnings}
 
 
 def scale_services_to_spec(project: Project) -> dict[str, Any]:
