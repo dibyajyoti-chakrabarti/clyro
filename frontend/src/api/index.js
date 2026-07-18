@@ -95,6 +95,7 @@ export const api = {
   startDeploy: (id) => request('POST', `/api/projects/${id}/deploy/`),
   getDeployStatus: (id, since) => request('GET', `/api/projects/${id}/deploy/status/${since !== undefined && since !== null ? `?since=${since}` : ''}`),
   getDeployHealth: (id) => request('GET', `/api/projects/${id}/deploy/health/`),
+  getDeployHistory: (id) => request('GET', `/api/projects/${id}/deploy/history/`),
   getDeployLogs: (id, { service, level } = {}) => {
     const qs = new URLSearchParams()
     if (service) qs.set('service', service)
