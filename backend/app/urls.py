@@ -2,6 +2,13 @@ from django.urls import path
 
 from core.views import health_check
 
+from .admin_api import (
+    admin_login,
+    admin_me,
+    admin_overview,
+    admin_whitelist,
+    admin_whitelist_detail,
+)
 from .canvas.views import (
     canvas_agent,
     canvas_chat,
@@ -90,6 +97,11 @@ urlpatterns = [
     path('projects/<uuid:pk>/deploy/teardown/', deploy_teardown),
     path('projects/<uuid:pk>/deploy/recreate/', deploy_recreate),
     path('projects/<uuid:pk>/deploy/retry-build/', deploy_retry_build),
+    path('admin/login/', admin_login),
+    path('admin/me/', admin_me),
+    path('admin/overview/', admin_overview),
+    path('admin/whitelist/', admin_whitelist),
+    path('admin/whitelist/<uuid:pk>/', admin_whitelist_detail),
     path('github/installations/', github_installations),
     path('github/repos/', github_repos),
     path('github/branches/', github_branches),
