@@ -1,13 +1,39 @@
 import { AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react'
+import { useMemo } from 'react'
 import Button from '../../../../components/ui/Button'
 import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPanel'
+import { buildCfnBom } from '../../../../utils/cfnBom'
 
 function ReviewArchitecture({ showTemplate, cfTemplate, onToggleTemplate, onEditArchitecture, onProvision }) {
+  const bom = useMemo(() => buildCfnBom(cfTemplate), [cfTemplate])
+
   return (
     <WizardPanel>
       <WizardCard width='lg'>
         <h3 className='text-lg font-semibold'>What Clyro will create</h3>
-        {/* TODO: derive review summary from canvas_version + intent_record via API */}
+
+        {bom ? (
+          <>
+            <p className='mt-1 text-sm text-text-muted'>
+              {bom.total} AWS resource{bom.total === 1 ? '' : 's'} will be created in your account.
+            </p>
+            <div className='mt-4 overflow-hidden rounded-lg border border-border'>
+              {bom.groups.map((group) => (
+                <div key={group.service} className='border-b border-border px-4 py-3 last:border-b-0'>
+                  <p className='text-xs font-medium uppercase tracking-wide text-text-muted'>{group.service}</p>
+                  <ul className='mt-1.5 space-y-1'>
+                    {group.items.map((item) => (
+                      <li key={item.type} className='flex items-center justify-between gap-4 text-sm'>
+                        <span title={item.names.join(', ')}>{item.label}</span>
+                        {item.count > 1 ? <span className='shrink-0 text-text-muted'>×{item.count}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
 
         <div className='mt-6'>
           <button type='button' className='text-sm font-medium text-accent hover:underline' onClick={onToggleTemplate}>
