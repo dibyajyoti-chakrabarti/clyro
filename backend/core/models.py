@@ -1,5 +1,71 @@
 import uuid
+from django.contrib.auth import hashers
 from django.db import models
+
+
+class AdminUser(models.Model):
+    """Operator account for the custom /admin panel. Deliberately separate from
+    both the Cognito-backed User table and django.contrib.auth — admin
+    credentials are provisioned only via `manage.py create_admin`, never
+    self-service, and authenticate with an HS256 JWT (see app.admin_api)
+    instead of the Cognito RS256 flow."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    username = models.TextField(unique=True)
+    password_hash = models.TextField()
+    is_active = models.BooleanField(default=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def set_password(self, raw_password: str):
+        self.password_hash = hashers.make_password(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        return hashers.check_password(raw_password, self.password_hash)
+
+    # DRF / Django auth compatibility — same trick as User below
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    class Meta:
+        db_table = 'admin_users'
+
+    def __str__(self):
+        return self.username
+
+
+class WhitelistedEmail(models.Model):
+    """Gate on project creation: only emails on this list may create projects
+    (checked in projects_list POST). Managed from the admin panel."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(unique=True)  # always stored lowercased
+    note = models.TextField(null=True, blank=True)
+    added_by = models.ForeignKey(
+        AdminUser, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='whitelisted_emails'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def allows(cls, email: str) -> bool:
+        return cls.objects.filter(email=email.strip().lower()).exists()
+
+    class Meta:
+        db_table = 'whitelisted_emails'
+
+    def __str__(self):
+        return self.email
 
 
 class User(models.Model):
