@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import GitHubInstallation, IntentRecord, Project, ScanResult, User
+from .models import GitHubInstallation, IntentRecord, Project, ScanResult, User, WhitelistedEmail
 
 
 class GitHubInstallationSerializer(serializers.ModelSerializer):
@@ -35,6 +35,7 @@ class ScanResultSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     project_count = serializers.SerializerMethodField()
     subscription_status = serializers.SerializerMethodField()
+    can_create_projects = serializers.SerializerMethodField()
 
     def get_project_count(self, obj):
         return obj.projects.count()
@@ -43,12 +44,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
         sub = obj.subscriptions.order_by('-created_at').first()
         return sub.status if sub else 'active'
 
+    def get_can_create_projects(self, obj):
+        return WhitelistedEmail.allows(obj.email)
+
     class Meta:
         model = User
         fields = ['id', 'name', 'email', 'avatar_url', 'subscription_tier',
-                  'subscription_status', 'project_count', 'created_at']
+                  'subscription_status', 'project_count', 'can_create_projects', 'created_at']
         read_only_fields = ['id', 'email', 'avatar_url', 'subscription_status',
-                            'project_count', 'created_at']
+                            'project_count', 'can_create_projects', 'created_at']
 
 
 class IntentRecordSerializer(serializers.ModelSerializer):

@@ -4,7 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import AgentJob, AWSAccountConnection, Deployment, EnvVarKey, GitHubInstallation, IntentRecord, Project, ScanResult
+from core.models import AgentJob, AWSAccountConnection, Deployment, EnvVarKey, GitHubInstallation, IntentRecord, Project, ScanResult, WhitelistedEmail
 from core.serializers import (
     GitHubInstallationSerializer, IntentRecordSerializer,
     ProjectSerializer, ScanResultSerializer, UserProfileSerializer,
@@ -33,6 +33,15 @@ def projects_list(request):
     if request.method == 'GET':
         qs = Project.objects.filter(user=request.user).order_by('-created_at')
         return Response(ProjectSerializer(qs, many=True).data)
+
+    if not WhitelistedEmail.allows(request.user.email):
+        return Response(
+            {
+                'error': 'Your email is not authorized to create projects yet. Contact the Clyro team for access.',
+                'code': 'not_whitelisted',
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     name = request.data.get('name', '').strip()
     if not name:
