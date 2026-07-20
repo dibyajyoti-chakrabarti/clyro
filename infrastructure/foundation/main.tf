@@ -64,6 +64,21 @@ module "frontend" {
   route53_zone_id     = module.route53.zone_id
 }
 
+# Admin panel — separate app/bundle/port from the main site, deployed to its
+# own subdomain. Reuses the wildcard ACM cert (SANs include "*.<domain>") and
+# the same Route53 zone; no "www.admin.<domain>" alias needed.
+module "frontend_admin" {
+  source = "../modules/frontend"
+
+  project             = var.project
+  environment         = var.environment
+  domain              = "admin.${var.domain}"
+  app_name            = "frontend-admin"
+  include_www         = false
+  acm_certificate_arn = module.acm_cloudfront.certificate_arn
+  route53_zone_id     = module.route53.zone_id
+}
+
 module "cognito" {
   source = "../modules/cognito"
 

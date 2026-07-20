@@ -113,6 +113,19 @@ output "frontend_bucket_name" {
   value = module.frontend.bucket_name
 }
 
+# ── CloudFront (admin panel) ─────────────────────────────────────────────────
+output "frontend_admin_cloudfront_domain" {
+  value = module.frontend_admin.cloudfront_domain
+}
+
+output "frontend_admin_cloudfront_distribution_id" {
+  value = module.frontend_admin.cloudfront_distribution_id
+}
+
+output "frontend_admin_bucket_name" {
+  value = module.frontend_admin.bucket_name
+}
+
 # ── Monitoring ────────────────────────────────────────────────────────────────
 output "backend_lambda_log_group" {
   value = module.monitoring.backend_lambda_log_group

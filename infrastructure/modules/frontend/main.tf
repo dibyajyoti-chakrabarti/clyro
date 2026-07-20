@@ -1,12 +1,13 @@
 locals {
-  prefix = "${var.project}-${var.environment}"
+  prefix       = "${var.project}-${var.environment}"
+  bucket_label = "${local.prefix}-${var.app_name}"
 }
 
 # ── S3 bucket (private, versioned) ───────────────────────────────────────────
 
 resource "aws_s3_bucket" "frontend" {
-  bucket = "${local.prefix}-frontend"
-  tags   = { Name = "${local.prefix}-frontend" }
+  bucket = local.bucket_label
+  tags   = { Name = local.bucket_label }
 }
 
 resource "aws_s3_bucket_versioning" "frontend" {
@@ -34,7 +35,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
 # ── CloudFront OAC ───────────────────────────────────────────────────────────
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "${local.prefix}-oac"
+  name                              = "${local.bucket_label}-oac"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
@@ -68,7 +69,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   is_ipv6_enabled     = true
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
-  aliases             = [var.domain, "www.${var.domain}"]
+  aliases             = var.include_www ? [var.domain, "www.${var.domain}"] : [var.domain]
 
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
@@ -120,7 +121,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
   }
 
-  tags = { Name = "${local.prefix}-cf" }
+  tags = { Name = "${local.bucket_label}-cf" }
 }
 
 # ── Route53 records ───────────────────────────────────────────────────────────
@@ -138,6 +139,7 @@ resource "aws_route53_record" "apex" {
 }
 
 resource "aws_route53_record" "www" {
+  count   = var.include_www ? 1 : 0
   zone_id = var.route53_zone_id
   name    = "www.${var.domain}"
   type    = "A"
