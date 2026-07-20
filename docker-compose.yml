@@ -114,5 +114,20 @@ services:
     depends_on:
       - backend
 
+  # Separate app, separate port — admin credentials/token never share an origin
+  # (and never share a JS bundle) with the Cognito-backed user frontend above.
+  frontend_admin:
+    build: ./frontend-admin
+    container_name: clyro_frontend_admin
+    restart: unless-stopped
+    ports:
+      - "5174:5174"
+    volumes:
+      - ./frontend-admin:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev -- --host"
+    depends_on:
+      - backend
+
 volumes:
   clyro_db_data:
