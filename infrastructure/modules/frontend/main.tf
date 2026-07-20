@@ -1,6 +1,12 @@
 locals {
   prefix       = "${var.project}-${var.environment}"
   bucket_label = "${local.prefix}-${var.app_name}"
+  # Historically this module only ran once and every non-bucket name (OAC,
+  # tags) was keyed off the bare prefix, not bucket_label. Preserve that exact
+  # value when app_name is left at its default so the already-live main-site
+  # OAC/distribution are never renamed by a second module instance existing —
+  # only a distinctly-named instance (app_name set explicitly) gets a suffix.
+  resource_label = var.app_name == "frontend" ? local.prefix : "${local.prefix}-${var.app_name}"
 }
 
 # ── S3 bucket (private, versioned) ───────────────────────────────────────────
@@ -35,7 +41,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
 # ── CloudFront OAC ───────────────────────────────────────────────────────────
 
 resource "aws_cloudfront_origin_access_control" "frontend" {
-  name                              = "${local.bucket_label}-oac"
+  name                              = "${local.resource_label}-oac"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
@@ -121,7 +127,7 @@ resource "aws_cloudfront_distribution" "frontend" {
     }
   }
 
-  tags = { Name = "${local.bucket_label}-cf" }
+  tags = { Name = "${local.resource_label}-cf" }
 }
 
 # ── Route53 records ───────────────────────────────────────────────────────────
