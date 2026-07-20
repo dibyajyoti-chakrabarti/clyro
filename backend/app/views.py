@@ -1,14 +1,16 @@
+from django.conf import settings
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import AgentJob, GitHubInstallation, IntentRecord, Project, ScanResult
+from core.models import AgentJob, AWSAccountConnection, Deployment, EnvVarKey, GitHubInstallation, IntentRecord, Project, ScanResult, WhitelistedEmail
 from core.serializers import (
     GitHubInstallationSerializer, IntentRecordSerializer,
     ProjectSerializer, ScanResultSerializer, UserProfileSerializer,
 )
 from .auth import CognitoAuthentication
+from .provisioning import deploy
 from . import github_utils, tasks
 
 _AUTH = [CognitoAuthentication]
@@ -32,6 +34,15 @@ def projects_list(request):
         qs = Project.objects.filter(user=request.user).order_by('-created_at')
         return Response(ProjectSerializer(qs, many=True).data)
 
+    if not WhitelistedEmail.allows(request.user.email):
+        return Response(
+            {
+                'error': 'Your email is not authorized to create projects yet. Contact the Clyro team for access.',
+                'code': 'not_whitelisted',
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     name = request.data.get('name', '').strip()
     if not name:
         return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -40,7 +51,7 @@ def projects_list(request):
     return Response(ProjectSerializer(project).data, status=status.HTTP_201_CREATED)
 
 
-@api_view(['GET', 'PATCH'])
+@api_view(['GET', 'PATCH', 'DELETE'])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)
 def project_detail(request, pk):
@@ -51,6 +62,47 @@ def project_detail(request, pk):
 
     if request.method == 'GET':
         return Response(ProjectSerializer(project).data)
+
+    if request.method == 'DELETE':
+        # Idempotent: a second click / post-refresh retry re-attaches to the
+        # in-flight delete job instead of spawning a competing purge.
+        existing = AgentJob.objects.filter(
+            project=project, kind=AgentJob.Kind.DELETE,
+            status__in=[AgentJob.Status.PENDING, AgentJob.Status.RUNNING],
+        ).order_by('-created_at').first()
+        if existing:
+            return Response({'job_id': str(existing.id)}, status=status.HTTP_202_ACCEPTED)
+
+        # Anything real in the user's AWS account (a submitted stack, secrets
+        # Clyro wrote, or the ClyroBootstrap connector stack behind a verified
+        # connection) must be purged before the rows disappear — otherwise
+        # nothing is left in Clyro that can ever manage it. That purge is
+        # CFN-async and slow, so it runs as an AgentJob the client polls; the
+        # job (and every other row) is gone on success, so the poll ending in
+        # 404 is the completion signal.
+        has_aws_resources = (
+            Deployment.objects.filter(project=project)
+            .exclude(status__in=[Deployment.Status.PENDING, Deployment.Status.DELETED])
+            .exists()
+            or EnvVarKey.objects.filter(project=project, secrets_manager_arn__isnull=False).exists()
+            or AWSAccountConnection.objects.filter(project=project, connected_at__isnull=False).exists()
+        )
+        if has_aws_resources:
+            project.status = Project.Status.DELETING
+            project.save(update_fields=['status', 'updated_at'])
+            job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.DELETE)
+            tasks.run_delete_project_task.delay(str(job.id), str(project.id))
+            return Response({'job_id': str(job.id)}, status=status.HTTP_202_ACCEPTED)
+
+        # Nothing in AWS — pure DB delete, synchronous. Deployment.canvas_version/
+        # intent_record/aws_connection are PROTECT (so a live Deployment can't have
+        # its CanvasVersion/IntentRecord/AWSAccountConnection pulled out from under
+        # it) -- but PROTECT still blocks Project.delete()'s cascade to those same
+        # rows even though the protecting Deployment is *also* being cascade-deleted
+        # here. Delete deployments first so nothing is left protecting them.
+        project.deployments.all().delete()
+        project.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     serializer = ProjectSerializer(project, data=request.data, partial=True)
     if serializer.is_valid():
@@ -137,6 +189,7 @@ def agent_job_status(request, pk, job_id):
         'kind': job.kind,
         'status': job.status,
         'result': job.result,
+        'progress': job.progress,  # live {phase, partial_template} while running (B2)
         'error': job.error,
     })
 
@@ -173,13 +226,32 @@ def wizard_state(request, pk):
     except Project.DoesNotExist:
         return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
+    # Step 1 entry — warm RepoRecon now so the eventual Scan click skips the
+    # ~17s AgentCore cold start. Only fires once per project (CREATED is the
+    # very first status, before repo connect/scan) rather than on every poll.
+    if project.status == Project.Status.CREATED and getattr(settings, "IAC_WARMUP_ENABLED", False):
+        tasks.run_warmup_task.delay(str(project.id), "REPORECON_RUNTIME_ARN")
+
     scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
     intent = project.intent_records.order_by('-created_at').first()
+
+    # AWS-connect + secret entry live in Step 4's 'connect AWS' phase (after IaC
+    # generation, before provisioning), so the wizard needs to know on load
+    # whether the account is already connected — otherwise a refresh mid-connect
+    # would re-prompt the role stack instead of resuming at secrets.
+    connection = AWSAccountConnection.objects.filter(
+        project=project, connected_at__isnull=False
+    ).order_by('-connected_at').first()
 
     return Response({
         'project': ProjectSerializer(project).data,
         'scan': ScanResultSerializer(scan).data if scan else None,
         'intent': IntentRecordSerializer(intent).data if intent else None,
+        'connection': {
+            'connected': bool(connection),
+            'region': connection.aws_region if connection else None,
+            'health_status': connection.health_status if connection else None,
+        },
     })
 
 
@@ -211,6 +283,11 @@ def save_intent(request, pk):
     project.status = Project.Status.INTENT_COLLECTED
     project.save(update_fields=['status', 'updated_at'])
 
+    # Warm the Reasoning runtime now so the canvas step's first chat call is
+    # already hot by the time the user gets there.
+    if getattr(settings, "IAC_WARMUP_ENABLED", False):
+        tasks.run_warmup_task.delay(str(project.id), "REASONING_RUNTIME_ARN")
+
     return Response(IntentRecordSerializer(intent).data, status=status.HTTP_201_CREATED)
 
 
@@ -228,14 +305,34 @@ def github_installations(request):
     if not installation_id:
         return Response({'error': 'installation_id is required'}, status=status.HTTP_400_BAD_REQUEST)
 
+    installation_id = int(installation_id)
+
+    # installation_id is a GitHub-assigned identifier, not a secret bound to
+    # the requesting user — without this check, any authenticated user who
+    # learns another org's installation_id (e.g. from a shared URL) could
+    # silently reassign that installation's ownership to themselves and gain
+    # access to every repo it covers via Clyro's own GitHub App credentials.
+    existing = GitHubInstallation.objects.filter(installation_id=installation_id).first()
+    if existing and existing.user_id != request.user.id:
+        return Response(
+            {
+                'error': (
+                    'This GitHub installation is already connected to a different '
+                    'account. If you own this GitHub organization, reinstall the '
+                    'Clyro GitHub App from that organization to reconnect it here.'
+                )
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     try:
-        info = github_utils.get_installation_info(int(installation_id))
+        info = github_utils.get_installation_info(installation_id)
     except Exception as exc:
         return Response({'error': f'GitHub API error: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
 
     account = info.get('account', {})
     installation, _ = GitHubInstallation.objects.update_or_create(
-        installation_id=int(installation_id),
+        installation_id=installation_id,
         defaults={
             'user': request.user,
             'account_login': account.get('login', ''),

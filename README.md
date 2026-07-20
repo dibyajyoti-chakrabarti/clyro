@@ -1,5 +1,9 @@
 # Clyro
 
+Welcome to Clyro. The full Engineering Handbook is located in the `documentation/` directory.
+
+**👉 Start here: [Engineering Handbook](documentation/index.md)**
+
 AI-powered infrastructure provisioning platform — give it your GitHub repo and it generates, reviews, and deploys your AWS architecture.
 
 - Frontend: React + Vite + Tailwind CSS

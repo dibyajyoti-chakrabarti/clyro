@@ -32,6 +32,18 @@ def resolve_model_id(key: str | None, default_key: str) -> str:
     return MODELS.get(key or "", MODELS[default_key])
 
 
-def load_model(model_id: str) -> BedrockModel:
-    """Bedrock model client (IAM credentials) for a resolved model id."""
+def load_model(model_id: str, thinking: bool = False) -> BedrockModel:
+    """Bedrock model client (IAM credentials) for a resolved model id.
+
+    ``thinking`` turns on Claude extended thinking (Anthropic models only — the field
+    is unsupported/ignored elsewhere; MiniMax reasons natively regardless) so the
+    reasoning streams for the Step-4 'Thinking…' UX. Extended thinking requires an
+    explicit max_tokens greater than the thinking budget; 16k comfortably fits both a
+    ~2k-token thinking pass and a large (~50k-char) template."""
+    if thinking and "anthropic" in model_id:
+        return BedrockModel(
+            model_id=model_id,
+            max_tokens=16000,
+            additional_request_fields={"thinking": {"type": "enabled", "budget_tokens": 2048}},
+        )
     return BedrockModel(model_id=model_id)

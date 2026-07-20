@@ -85,6 +85,17 @@ REGION_MULTIPLIER: dict[str, float] = {
     "ap-northeast-1": 1.09,
 }
 
+# AWS Free Tier allowances (12 months from account creation) relevant to the
+# services this engine prices. Deliberately narrow: ECS Fargate and
+# ElastiCache have NO free tier at all, and Aurora is excluded too — silently
+# zeroing those would under-quote a real bill, which is worse than showing no
+# discount. Only RDS single-AZ *.micro instances and baseline S3/CloudFront
+# usage are actually covered.
+FREE_TIER_ELIGIBLE_DATABASE: set[str] = {"rds_postgres"}  # not aurora_postgres
+FREE_TIER_ELIGIBLE_FLAT: set[str] = {"s3_cloudfront", "s3"}
+FREE_TIER_RDS_CLASSES: set[str] = {"db.t3.micro", "db.t2.micro", "db.t4g.micro"}
+FREE_TIER_INELIGIBLE_LABELS: set[str] = {"ecs_fargate", "ecs_ec2", "ec2", "elasticache", "aurora_postgres"}
+
 DISPLAY_NAME: dict[str, str] = {
     "ecs_fargate": "ECS Fargate",
     "ecs_ec2": "ECS on EC2",
@@ -154,11 +165,18 @@ def estimate_cost(
     intent: Intent,
     overrides: Overrides | None = None,
     price_book: PriceBook | None = None,
+    account_type: str | None = None,
 ) -> CostEstimate:
     """Return a line-item monthly cost estimate for the canvas.
 
     ``price_book`` is the live book from the Pricing MCP (may be partial); when
     omitted, the calibrated ``DEFAULT_PRICE_BOOK`` is used.
+
+    ``account_type`` — pass ``"free_tier"`` (``AWSAccountConnection.
+    verified_account_type``/``claimed_account_type``) to zero/cap the specific
+    line items AWS's real Free Tier covers (RDS single-AZ *.micro, baseline
+    S3/CloudFront). Services with no free tier at all (ECS Fargate,
+    ElastiCache, Aurora) are always priced normally — never guessed as free.
 
     Returns::
 
@@ -178,12 +196,16 @@ def estimate_cost(
     region_mult = REGION_MULTIPLIER.get(region, 1.0)
     eff_hours = _effective_hours(overrides)
     hour_factor = eff_hours / HOURS_PER_MONTH  # scales hourly-billed resources
+    is_free_tier = account_type == "free_tier"
+    rds_class = SIZING_BY_SCALE.get(scale, SIZING_BY_SCALE["small"])["rds_class"]
 
     public_ids = _public_service_ids(canvas)
     tasks = SIZING_BY_SCALE.get(scale, SIZING_BY_SCALE["small"])["tasks"]
 
     line_items: list[CostLineItem] = []
     has_container = False
+    free_tier_applied: set[str] = set()
+    free_tier_ineligible: set[str] = set()
 
     for node in canvas.get("nodes", []):
         node_id = node.get("id")
@@ -191,6 +213,7 @@ def estimate_cost(
         aws = node.get("aws_service")
         monthly = 0.0
         label = DISPLAY_NAME.get(aws, aws or node_type)
+        node_free = False
 
         if node_type in ("service", "worker"):
             table = book["compute"].get(aws, book["compute"]["ecs_fargate"])
@@ -202,25 +225,40 @@ def estimate_cost(
             if node.get("image") == "ecr":
                 has_container = True
             label = f"{DISPLAY_NAME.get(aws, aws)} ({node_id})"
+            if is_free_tier and aws in FREE_TIER_INELIGIBLE_LABELS:
+                free_tier_ineligible.add(DISPLAY_NAME.get(aws, aws))
         elif node_type == "database":
             table = book["database"].get(aws, book["database"]["rds_postgres"])
             monthly = table.get(scale, table.get("small"))
             if multi_az:
                 monthly *= 2
+            if is_free_tier:
+                if aws in FREE_TIER_ELIGIBLE_DATABASE and rds_class in FREE_TIER_RDS_CLASSES and not multi_az:
+                    node_free = True
+                    free_tier_applied.add(DISPLAY_NAME.get(aws, aws))
+                else:
+                    free_tier_ineligible.add(DISPLAY_NAME.get(aws, aws))
         elif node_type == "cache":
             table = book["cache"].get(aws, book["cache"]["elasticache"])
             monthly = table.get(scale, table.get("small"))
             if multi_az:
                 monthly *= 2
+            if is_free_tier:
+                free_tier_ineligible.add(DISPLAY_NAME.get(aws, aws))
         else:
             monthly = book["flat"].get(aws, 0)
+            if is_free_tier and aws in FREE_TIER_ELIGIBLE_FLAT:
+                node_free = True
+                free_tier_applied.add(DISPLAY_NAME.get(aws, aws))
 
         # Hourly-billed resources scale with uptime; flat usage services do not.
         if node_type in ("service", "worker", "database", "cache"):
             monthly *= hour_factor
         monthly *= region_mult
+        if node_free:
+            monthly = 0.0
 
-        if monthly > 0:
+        if monthly > 0 or node_free:
             line_items.append({"node_id": node_id, "label": label, "monthly": round(monthly)})
 
     if has_container:
@@ -236,12 +274,19 @@ def estimate_cost(
         "currency": "USD",
         "total": total,
         "line_items": line_items,
-        "assumptions": _assumptions(overrides, region, eff_hours),
+        "assumptions": _assumptions(overrides, region, eff_hours, is_free_tier, free_tier_applied, free_tier_ineligible),
         "price_source": "pricing_mcp" if price_book else "default",
     }
 
 
-def _assumptions(overrides: Overrides | None, region: str, eff_hours: float) -> list[str]:
+def _assumptions(
+    overrides: Overrides | None,
+    region: str,
+    eff_hours: float,
+    is_free_tier: bool = False,
+    free_tier_applied: set[str] | None = None,
+    free_tier_ineligible: set[str] | None = None,
+) -> list[str]:
     assumptions: list[str] = []
     if overrides and (overrides.get("hours_per_day") is not None or overrides.get("days_per_week") is not None):
         hpd = overrides.get("hours_per_day", 24)
@@ -254,7 +299,18 @@ def _assumptions(overrides: Overrides | None, region: str, eff_hours: float) -> 
         assumptions.append("730 hours/month (24/7 uptime)")
     assumptions.append(f"{region} pricing")
     assumptions.append("Prices exclude data transfer costs")
-    assumptions.append("Free tier not applied")
+    if not is_free_tier:
+        assumptions.append("Free tier not applied")
+    else:
+        if free_tier_applied:
+            assumptions.append(
+                f"AWS Free Tier applied to: {', '.join(sorted(free_tier_applied))} "
+                "(cost shown assumes usage stays within Free Tier limits)"
+            )
+        if free_tier_ineligible:
+            assumptions.append(
+                f"Not Free Tier-eligible, priced normally: {', '.join(sorted(free_tier_ineligible))}"
+            )
     return assumptions
 
 
@@ -264,8 +320,9 @@ def cost_delta(
     intent: Intent,
     overrides: Overrides | None = None,
     price_book: PriceBook | None = None,
+    account_type: str | None = None,
 ) -> dict[str, int]:
     """Return ``{"before": int, "after": int, "delta": int}`` totals for a change."""
-    before = estimate_cost(canvas_before, intent, overrides, price_book)["total"]
-    after = estimate_cost(canvas_after, intent, overrides, price_book)["total"]
+    before = estimate_cost(canvas_before, intent, overrides, price_book, account_type)["total"]
+    after = estimate_cost(canvas_after, intent, overrides, price_book, account_type)["total"]
     return {"before": before, "after": after, "delta": after - before}

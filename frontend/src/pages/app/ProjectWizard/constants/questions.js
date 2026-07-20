@@ -1,28 +1,21 @@
+// AWS account type is no longer asked as an intent question — Step 2 (Connect
+// your AWS account) captures it directly, right before verifying the role, since
+// it's needed to compare against the account's actual verified plan type.
+export const ACCOUNT_TYPE_OPTIONS = [
+  {
+    value: 'paid',
+    label: 'Paid account — I\'m fine paying for the right resources',
+    recommended: true,
+  },
+  {
+    value: 'free_tier',
+    label: 'Free tier — I want to stay within free limits',
+    note: 'NAT Gateway and some services will be excluded to avoid charges',
+  },
+]
+
 export function getQuestions() {
   return [
-    {
-      id: 'description',
-      question: 'Describe your app in one sentence.',
-      type: 'free',
-      options: [],
-    },
-    {
-      id: 'aws_account_type',
-      question: 'What type of AWS account are you deploying to?',
-      type: 'choice',
-      options: [
-        {
-          value: 'paid',
-          label: 'Paid account — I\'m fine paying for the right resources',
-          recommended: true,
-        },
-        {
-          value: 'free_tier',
-          label: 'Free tier — I want to stay within free limits',
-          note: 'NAT Gateway and some services will be excluded to avoid charges',
-        },
-      ],
-    },
     {
       id: 'environment',
       question: 'What environment is this deployment for?',
@@ -46,19 +39,18 @@ export function getQuestions() {
     },
     {
       id: 'domain_has',
-      question: 'Do you have a domain name for this app?',
+      question: 'Do you have a custom domain for this app?',
       type: 'choice',
       options: [
-        { value: 'yes', label: 'Yes — I have a domain to point to this' },
-        { value: 'no', label: 'Not yet — give me the AWS-generated URL for now' },
-        { value: 'internal', label: 'No public domain needed — internal use only' },
+        { value: 'yes', label: 'Yes — I want to use my own domain' },
+        { value: 'no', label: 'No — use the default AWS-provided URL' },
+        { value: 'internal', label: 'Internal only — no public domain needed' },
       ],
     },
     {
       id: 'domain_name',
-      question: "What’s the domain? (e.g. app.myproduct.com)",
+      question: "What's your domain? (e.g. app.example.com)",
       type: 'free',
-      options: [],
       condition: (answers) => answers.domain_has === 'yes',
     },
   ]

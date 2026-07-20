@@ -1,5 +1,71 @@
 import uuid
+from django.contrib.auth import hashers
 from django.db import models
+
+
+class AdminUser(models.Model):
+    """Operator account for the custom /admin panel. Deliberately separate from
+    both the Cognito-backed User table and django.contrib.auth — admin
+    credentials are provisioned only via `manage.py create_admin`, never
+    self-service, and authenticate with an HS256 JWT (see app.admin_api)
+    instead of the Cognito RS256 flow."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    username = models.TextField(unique=True)
+    password_hash = models.TextField()
+    is_active = models.BooleanField(default=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def set_password(self, raw_password: str):
+        self.password_hash = hashers.make_password(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        return hashers.check_password(raw_password, self.password_hash)
+
+    # DRF / Django auth compatibility — same trick as User below
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    class Meta:
+        db_table = 'admin_users'
+
+    def __str__(self):
+        return self.username
+
+
+class WhitelistedEmail(models.Model):
+    """Gate on project creation: only emails on this list may create projects
+    (checked in projects_list POST). Managed from the admin panel."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(unique=True)  # always stored lowercased
+    note = models.TextField(null=True, blank=True)
+    added_by = models.ForeignKey(
+        AdminUser, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='whitelisted_emails'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def allows(cls, email: str) -> bool:
+        return cls.objects.filter(email=email.strip().lower()).exists()
+
+    class Meta:
+        db_table = 'whitelisted_emails'
+
+    def __str__(self):
+        return self.email
 
 
 class User(models.Model):
@@ -69,15 +135,33 @@ class Project(models.Model):
     class Status(models.TextChoices):
         CREATED = 'created'
         REPO_CONNECTED = 'repo_connected'
+        # Set once env_vars_stage succeeds (Step 2 "set up your app" secrets
+        # entry) — staged only, nothing written to Secrets Manager yet.
+        SECRETS_STAGED = 'secrets_staged'
         SCANNING = 'scanning'
         SCAN_COMPLETE = 'scan_complete'
         INTENT_COLLECTED = 'intent_collected'
         CANVAS_DRAFT = 'canvas_draft'
         CANVAS_FINALIZED = 'canvas_finalized'
+        # AWS-connect substates (Step 4's "connect AWS" phase): pending is set by
+        # aws_connection_init (CFN console URL handed out, role not yet assumed);
+        # connected once assume_role/get_account_id succeed in aws_connection_verify;
+        # verified/mismatch once the account's verified_account_type is compared
+        # against the project's IntentRecord.aws_account_type claim.
+        AWS_CONNECT_PENDING = 'aws_connect_pending'
+        AWS_CONNECTED = 'aws_connected'
+        AWS_VERIFIED = 'aws_verified'
+        AWS_MISMATCH = 'aws_mismatch'
+        # Set at the end of iac.generate()/iac.validate() once each succeeds.
+        IAC_GENERATED = 'iac_generated'
+        IAC_VALIDATED = 'iac_validated'
         PROVISIONING = 'provisioning'
         LIVE = 'live'
         FAILED = 'failed'
         PAUSED = 'paused'
+        # Full delete in flight (run_delete_project_task): AWS purge then hard
+        # row delete — the row only holds this status until it disappears.
+        DELETING = 'deleting'
         DELETED = 'deleted'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -179,6 +263,10 @@ class IntentRecord(models.Model):
     worker_compute_choice = models.TextField(choices=ComputeChoice.choices, null=True, blank=True)
     domain_has = models.TextField(choices=DomainHas.choices, null=True, blank=True)
     domain_name = models.TextField(null=True, blank=True)
+    # Optional manual override — when blank, deploy.start() resolves the zone
+    # live via route53:ListHostedZones at provisioning time instead (the AWS
+    # account isn't necessarily connected yet when domain_name is answered).
+    route53_hosted_zone_id = models.TextField(null=True, blank=True)
     aws_account_type = models.TextField(choices=AwsAccountType.choices, null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -246,6 +334,32 @@ class AWSAccountConnection(models.Model):
     bootstrap_stack_status = models.TextField(null=True, blank=True)
     connected_at = models.DateTimeField(null=True, blank=True)
     last_verified_at = models.DateTimeField(null=True, blank=True)
+    # Proactively queried from AWS itself (freetier:GetAccountPlanState) right after
+    # the role is assumed, rather than trusting only the user's Step-2 self-report
+    # (IntentRecord.aws_account_type) — an AWS account can be free-tier-restricted
+    # regardless of what the user picked. Null when the call failed/was unavailable.
+    verified_account_type = models.CharField(
+        max_length=16, choices=IntentRecord.AwsAccountType.choices, null=True, blank=True,
+    )
+    # The user's self-report, submitted alongside the connect flow (Step 2) — the
+    # question that used to live on IntentRecord moved here since AWS now connects
+    # before intent is collected. Compared against verified_account_type to flag
+    # account_type_mismatch; also the fallback source when verification fails.
+    claimed_account_type = models.CharField(
+        max_length=16, choices=IntentRecord.AwsAccountType.choices, null=True, blank=True,
+    )
+
+    class HealthStatus(models.TextChoices):
+        HEALTHY = 'healthy'
+        UNREACHABLE = 'unreachable'  # AssumeRole AccessDenied — likely bootstrap stack torn down
+        UNKNOWN = 'unknown'  # never reconciled yet
+
+    # Proactively swept on a schedule (app.provisioning.reconcile.sweep) rather
+    # than only discovered reactively the next time the user hits _assume() —
+    # see reconcile.py for the incident that motivated this.
+    health_status = models.TextField(choices=HealthStatus.choices, default=HealthStatus.UNKNOWN)
+    last_reconciled_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -274,6 +388,11 @@ class EnvVarKey(models.Model):
     source_file = models.TextField(null=True, blank=True)
     context_block = models.TextField(null=True, blank=True)
     production_default = models.TextField(null=True, blank=True)
+    # Holds a value collected by env_vars_stage (Step 2, before an AWS connection
+    # exists) until env_vars_save actually writes it to Secrets Manager (Step 4).
+    # Cleared back to null once write_secret succeeds — plaintext secrets should
+    # not linger in the DB once they're safely in Secrets Manager.
+    staged_value = models.TextField(null=True, blank=True)
     secrets_manager_arn = models.TextField(null=True, blank=True)
     secrets_manager_key = models.TextField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
@@ -303,6 +422,7 @@ class Deployment(models.Model):
         BUILD_FAILED = 'build_failed'
         COMPLETE = 'complete'
         FAILED = 'failed'
+        ROLLING_BACK = 'rolling_back'
         ROLLED_BACK = 'rolled_back'
         PAUSING = 'pausing'
         PAUSED = 'paused'
@@ -319,7 +439,10 @@ class Deployment(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='deployments')
     canvas_version = models.ForeignKey(CanvasVersion, on_delete=models.PROTECT, related_name='deployments')
     intent_record = models.ForeignKey(IntentRecord, on_delete=models.PROTECT, related_name='deployments')
-    aws_connection = models.ForeignKey(AWSAccountConnection, on_delete=models.PROTECT, related_name='deployments')
+    aws_connection = models.ForeignKey(
+        AWSAccountConnection, on_delete=models.PROTECT, related_name='deployments',
+        null=True, blank=True,
+    )
     environment = models.TextField(choices=Environment.choices)
     status = models.TextField(choices=Status.choices, default=Status.PENDING)
     cloudformation_stack_id = models.TextField(null=True, blank=True)
@@ -359,6 +482,28 @@ class DeploymentStackOutput(models.Model):
         return f"{self.output_key} = {self.output_value}"
 
 
+class HealthSnapshot(models.Model):
+    """One point-in-time record of a live project's health, written by the
+    collect-health-snapshots beat task once a minute. The Step 7 dashboard's
+    live poll only sees "now" — snapshots are what make uptime percentages and
+    history possible, including while nobody has the page open."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='health_snapshots')
+    stack_status = models.TextField()  # 'ok' | 'not_found'
+    healthy = models.BooleanField()  # stack found and every service at its desired count
+    health_items = models.JSONField(default=list)
+    metrics = models.JSONField(default=dict)
+    alerts = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'health_snapshots'
+        indexes = [models.Index(fields=['project', 'created_at'])]
+
+    def __str__(self):
+        return f"HealthSnapshot {self.project.name} @ {self.created_at} healthy={self.healthy}"
+
+
 class AgentJob(models.Model):
     """A single async invocation of one of the Bedrock AgentCore agents (scan,
     Step-3 chat, IaC generate/refine, provisioning-with-feedback), run via Celery
@@ -374,6 +519,7 @@ class AgentJob(models.Model):
         IAC_REFINE = 'iac_refine'
         PROVISION = 'provision'
         BUILD = 'build'
+        DELETE = 'delete'
 
     class Status(models.TextChoices):
         PENDING = 'pending'
@@ -386,6 +532,10 @@ class AgentJob(models.Model):
     kind = models.TextField(choices=Kind.choices)
     status = models.TextField(choices=Status.choices, default=Status.PENDING)
     result = models.JSONField(null=True, blank=True)
+    # Live progress while the job runs (B2): {"phase": str, "partial_template": str}.
+    # Written throttled by the generate task as the agent streams; read by the
+    # frontend's poll loop to show the template forming instead of a spinner.
+    progress = models.JSONField(null=True, blank=True)
     error = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

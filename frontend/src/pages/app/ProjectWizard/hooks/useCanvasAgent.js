@@ -6,8 +6,9 @@ const CHAT_WELCOME = {
   text: 'Your architecture has been generated from your repository scan. You can ask me to explain any component, compare services, or suggest changes.',
 }
 
-export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3InputPrefill }) {
+export default function useCanvasAgent({ projectId, setStep4InputPrefill, step4InputPrefill }) {
   const [canvas, setCanvas] = useState(null)
+  const [assumptions, setAssumptions] = useState([])
   const [nodePositions, setNodePositions] = useState({})
   const [selectedNode, setSelectedNode] = useState(null)
   const [chatInput, setChatInput] = useState('')
@@ -18,16 +19,16 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
   const chatInputRef = useRef(null)
 
   useEffect(() => {
-    if (!step3InputPrefill) {
+    if (!step4InputPrefill) {
       return
     }
 
-    setChatInput(step3InputPrefill)
+    setChatInput(step4InputPrefill)
     if (chatInputRef.current) {
       chatInputRef.current.focus()
     }
-    setStep3InputPrefill('')
-  }, [step3InputPrefill, setStep3InputPrefill])
+    setStep4InputPrefill('')
+  }, [step4InputPrefill, setStep4InputPrefill])
 
   useEffect(() => {
     if (chatEndRef.current) {
@@ -50,6 +51,7 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
       .then((res) => {
         if (!active) return
         setCanvas(res.canvas)
+        setAssumptions(res.assumptions || [])
         setNodePositions(spreadPositions(res.positions || {}))
       })
       .catch(() => {})
@@ -74,9 +76,10 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
   const applyResult = (res) => {
     if (res.outcome === 'applied' && res.version) {
       setCanvas(res.version.canvas)
+      setAssumptions(res.version.assumptions || [])
       setNodePositions(res.version.positions || {})
       setPendingOp(null)
-      appendAgent(res.message || 'Done Ã¢â‚¬â€ I updated the canvas.')
+      appendAgent(res.message || 'Done — I updated the canvas.')
     } else if (res.outcome === 'proposal') {
       setPendingOp(res.operation || null)
       appendAgent(res.message)
@@ -173,6 +176,7 @@ export default function useCanvasAgent({ projectId, setStep3InputPrefill, step3I
     canvasConnections,
     canvasCost,
     totalCost,
+    assumptions,
     selectedNode,
     setSelectedNode,
     selected,

@@ -56,8 +56,10 @@ def _label(resource_type: str | None, logical_id: str | None) -> str:
 def status_kind(resource_status: str | None) -> str:
     """Map a CFN ResourceStatus to the live-feed kind the frontend renders."""
     s = resource_status or ""
-    if s.endswith("_FAILED"):
+    if s.endswith("_FAILED") and "ROLLBACK" not in s:
         return "failed"
+    if "ROLLBACK" in s or s.startswith("DELETE_"):
+        return "rolled_back"
     if s.endswith("_COMPLETE"):
         return "done"
     if s.endswith("_IN_PROGRESS"):
@@ -106,15 +108,18 @@ def translate_event(event: dict[str, Any], sequence: int) -> dict[str, Any]:
 
     if kind == "failed":
         message = f"❌ {label} failed — {translate_failure_reason(reason)}"
+    elif kind == "rolled_back":
+        if (resource_status or "").endswith("_IN_PROGRESS"):
+            message = f"↩️ Rolling back {label}…"
+        elif (resource_status or "").startswith("DELETE"):
+            message = f"🗑️ {label} removed"
+        else:
+            message = f"↩️ {label} rolled back"
     elif kind == "done":
         message = (
             "✅ Stack ready" if is_stack and (resource_status or "").startswith("CREATE")
             else f"✅ {label} ready"
         )
-        if is_stack and "ROLLBACK" in (resource_status or ""):
-            message = "↩️ Rolled back"
-        elif is_stack and (resource_status or "").startswith("DELETE"):
-            message = "🗑️ Previous stack removed"
     elif kind == "in_progress":
         if is_stack:
             message = "⏳ Provisioning started…"
@@ -161,6 +166,16 @@ def is_failure(stack_status: str | None) -> bool:
 def is_live(stack_status: str | None) -> bool:
     """A healthy, deployed stack (used to block re-provisioning a live stack)."""
     return stack_status in ("CREATE_COMPLETE", "UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE")
+
+
+def is_rolling_back(stack_status: str | None) -> bool:
+    """A failed create/update is still cleaning up; not terminal and not healthy."""
+    s = stack_status or ""
+    return (
+        "ROLLBACK_IN_PROGRESS" in s
+        or "ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS" in s
+        or s == "DELETE_IN_PROGRESS"
+    )
 
 
 def is_rolled_back(stack_status: str | None) -> bool:

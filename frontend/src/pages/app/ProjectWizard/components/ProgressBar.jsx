@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Box, Cloud, Folder, NotebookText, Rocket, ShieldCheck } from 'lucide-react'
+import { Activity, Box, Cloud, FileCode, Folder, NotebookText, Rocket, ShieldCheck } from 'lucide-react'
 
 export default function ProgressBar({ currentStep, stepConfig, completedSteps, statusMap }) {
   const totalSteps = stepConfig.length
@@ -8,10 +8,12 @@ export default function ProgressBar({ currentStep, stepConfig, completedSteps, s
 
   const stepIcons = {
     1: Folder,
-    2: NotebookText,
-    3: Box,
-    4: Cloud,
-    5: Rocket,
+    2: Cloud,
+    3: NotebookText,
+    4: Box,
+    5: FileCode,
+    6: Rocket,
+    7: Activity,
   }
 
   return (

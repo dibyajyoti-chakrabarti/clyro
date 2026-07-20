@@ -1,5 +1,7 @@
 """Deterministic CFN fragment generator for the build step that actually gets
-customer code into the infrastructure IacArchitect generates.
+customer code into the infrastructure ``cfn_generator`` deterministically
+authors (IacArchitect is only involved in ``refine()``, not the template
+this fragment splices into).
 
 Not LLM-authored, on purpose: mirrors the `enforce_*()` correctors in `iac.py`
 (`enforce_elasticache_deletion_policy`, `enforce_rds_deletion_policy`,
@@ -28,16 +30,32 @@ real prefix values as plain Python strings; using them directly here removes
 the dependency on how IacArchitect chose to declare (or not declare) them as
 CFN parameters. Only genuine AWS pseudo-parameters (`${AWS::AccountId}`,
 `${AWS::Region}`) are kept as `!Sub` substitutions, since those always exist
-regardless of authoring style. The CloudFront distribution's logical ID is
-the one piece that's still genuinely unpredictable and must be referenced by
-name — everything else in this module is fully determined by `spec` alone.
+regardless of authoring style. The CloudFront distribution's and the frontend
+bucket's logical IDs are the pieces that are still genuinely unpredictable and
+must be passed in by the caller.
+
+The frontend bucket used to be reconstructed here as
+``{iam_scoped_prefix}-{node_id}-{account}``. Found live: IacArchitect actually
+named it ``${IamScopedPrefix}-${AWS::AccountId}`` (no node-id segment), so the
+CodeBuild project synced to a bucket that did not exist and its IAM policy
+scoped to the wrong ARN — `aws s3 sync` exited 1 and the site never deployed.
+Bucket *names* are LLM-chosen, so reference the bucket by logical ID via
+``!Ref``/``!GetAtt`` instead of guessing what it was called.
+
+Also found live, and worth writing down because it is the opposite of what is
+commonly assumed: CodeBuild **does** carry the working directory across phases.
+A `cd` in `build` is still in effect in `post_build`. Paths that must survive a
+phase boundary are therefore anchored on ``$CODEBUILD_SRC_DIR``, which is correct
+either way, rather than on a repeated `cd` or a bare relative path.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 _BUILD_IMAGE = "aws/codebuild/standard:7.0"
+_OUTPUTS_SECTION_RE = re.compile(r"^Outputs:", re.M)
 
 
 def _pascal(node_id: str) -> str:
@@ -74,13 +92,30 @@ def _docker_buildspec(build_path: str, ecr_uri: str) -> str:
     )
 
 
+def _abs_build_dir(build_path: str) -> str:
+    """`./frontend` -> `$CODEBUILD_SRC_DIR/frontend`; `.` -> `$CODEBUILD_SRC_DIR`."""
+    rel = build_path[2:] if build_path.startswith("./") else build_path
+    rel = rel.strip("/")
+    return "$CODEBUILD_SRC_DIR" if rel in ("", ".") else f"$CODEBUILD_SRC_DIR/{rel}"
+
+
 def _frontend_buildspec(build_path: str) -> str:
     # No detection for the bundler's actual output directory today — dist
     # (Vite) and build (CRA) cover the overwhelming majority of React/Vue
     # scaffolds; fall back between them rather than hardcoding one.
+    #
+    # OUT_DIR is absolute rather than relative, so it resolves correctly no matter
+    # what the working directory is when post_build starts. Found live: CodeBuild
+    # *does* carry the working directory across phases — a `cd {build_path}` repeated
+    # in post_build failed with "can't cd to ./frontend" because `build` had already
+    # left us inside it. Anchoring on $CODEBUILD_SRC_DIR depends on neither behaviour.
+    out_dir = _abs_build_dir(build_path)
     return (
         "version: 0.2\n"
         "phases:\n"
+        "  install:\n"
+        "    commands:\n"
+        "      - n 20\n"
         "  build:\n"
         "    commands:\n"
         f"      - cd {build_path}\n"
@@ -88,7 +123,8 @@ def _frontend_buildspec(build_path: str) -> str:
         "      - npm run build\n"
         "  post_build:\n"
         "    commands:\n"
-        "      - OUT_DIR=dist; [ -d \"$OUT_DIR\" ] || OUT_DIR=build\n"
+        f"      - OUT_DIR=\"{out_dir}/dist\"; [ -d \"$OUT_DIR\" ] || "
+        f"OUT_DIR=\"{out_dir}/build\"\n"
         "      - aws s3 sync \"$OUT_DIR\" s3://$BUCKET_NAME --delete\n"
         "      - aws cloudfront create-invalidation --distribution-id "
         "$DISTRIBUTION_ID --paths \"/*\"\n"
@@ -169,10 +205,10 @@ def _docker_project_block(node_id: str, build_path: str, naming_prefix: str, iam
 """
 
 
-def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: str) -> str:
+def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: str,
+                            bucket_logical_id: str) -> str:
     role_id = _role_id(node_id)
     project_id = _project_id(node_id)
-    bucket_name = f"{iam_scoped_prefix}-{node_id}-${{AWS::AccountId}}"
     buildspec = _indent_buildspec(_frontend_buildspec(build_path), 10)
     return f"""  {role_id}:
     Type: AWS::IAM::Role
@@ -197,8 +233,8 @@ def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: st
                   - s3:ListBucket
                   - s3:DeleteObject
                 Resource:
-                  - !Sub 'arn:aws:s3:::{bucket_name}'
-                  - !Sub 'arn:aws:s3:::{bucket_name}/*'
+                  - !GetAtt {bucket_logical_id}.Arn
+                  - !Sub '${{{bucket_logical_id}.Arn}}/*'
               - Effect: Allow
                 Action:
                   - cloudfront:CreateInvalidation
@@ -225,11 +261,11 @@ def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: st
         Type: NO_ARTIFACTS
       Environment:
         Type: LINUX_CONTAINER
-        ComputeType: BUILD_GENERAL1_SMALL
+        ComputeType: BUILD_GENERAL1_MEDIUM
         Image: {_BUILD_IMAGE}
         EnvironmentVariables:
           - Name: BUCKET_NAME
-            Value: !Sub '{bucket_name}'
+            Value: !Ref {bucket_logical_id}
           - Name: DISTRIBUTION_ID
             Value: !Ref __CFDIST__
       Source:
@@ -241,13 +277,17 @@ def _frontend_project_block(node_id: str, build_path: str, iam_scoped_prefix: st
 """
 
 
-def generate_codebuild_resources(spec: dict[str, Any], cloudfront_logical_id: str | None) -> str:
+def generate_codebuild_resources(spec: dict[str, Any], cloudfront_logical_id: str | None,
+                                 frontend_bucket_logical_id: str | None = None) -> str:
     """Return a YAML fragment (2-space-indented top-level Resources entries) with
     one AWS::CodeBuild::Project + AWS::IAM::Role per buildable node in
     ``spec['resources']``. Worker nodes that share the backend's build_path
     (the common case — see canvas_builder.py) are skipped: the backend's
     project already pushes the one shared image. Returns "" if there is
-    nothing to build (defensive; every real spec has at least a backend)."""
+    nothing to build (defensive; every real spec has at least a backend).
+
+    Both the CloudFront distribution's and the frontend bucket's logical IDs are
+    LLM-chosen and must be passed in by the caller."""
     resources = spec.get("resources") or []
     naming_prefix = spec.get("naming_prefix", "app")
     iam_scoped_prefix = spec.get("iam_scoped_prefix", f"clyro-{naming_prefix}")
@@ -265,11 +305,12 @@ def generate_codebuild_resources(spec: dict[str, Any], cloudfront_logical_id: st
             seen_docker_paths.add(build_path)
             blocks.append(_docker_project_block(entry["node_id"], build_path, naming_prefix, iam_scoped_prefix))
         elif node_type == "static":
-            if not cloudfront_logical_id:
-                # No CloudFront::Distribution found in the template to reference —
-                # skip rather than emit a broken !Ref/Sub to a placeholder.
+            if not cloudfront_logical_id or not frontend_bucket_logical_id:
+                # No CloudFront::Distribution / origin bucket found in the template to
+                # reference — skip rather than emit a broken !Ref/Sub to a placeholder.
                 continue
-            block = _frontend_project_block(entry["node_id"], build_path, iam_scoped_prefix)
+            block = _frontend_project_block(entry["node_id"], build_path, iam_scoped_prefix,
+                                            frontend_bucket_logical_id)
             block = block.replace("__CFDIST__", cloudfront_logical_id)
             blocks.append(block)
 
@@ -287,6 +328,22 @@ def generate_codebuild_resources(spec: dict[str, Any], cloudfront_logical_id: st
             ExpirationInDays: 7
 """
     return archive_bucket + "\n" + "\n".join(blocks)
+
+
+def splice_into_template(template: str, fragment: str) -> str:
+    """Insert a Resources-entries YAML fragment into an already-rendered CFN
+    template. Anchored on the ``Outputs:`` section (falling back to
+    end-of-file) rather than on the ``Resources:`` header line, since the
+    header's exact formatting isn't guaranteed. Single implementation shared
+    by both `cfn_generator.generate_template` and `iac.enforce_codebuild_projects`
+    — they used to each splice this independently and had drifted."""
+    if not fragment:
+        return template
+    out_match = _OUTPUTS_SECTION_RE.search(template)
+    if out_match:
+        insert_at = out_match.start()
+        return template[:insert_at] + fragment + "\n" + template[insert_at:]
+    return template.rstrip("\n") + "\n" + fragment
 
 
 def buildable_node_ids(spec: dict[str, Any]) -> list[str]:

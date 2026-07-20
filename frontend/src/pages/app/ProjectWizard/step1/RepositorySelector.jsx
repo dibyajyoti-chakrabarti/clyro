@@ -30,7 +30,7 @@ function RepositorySelector({
 
       <div className='w-full max-w-[700px] box-border text-center'>
         <p className='text-[11px] font-semibold uppercase tracking-[0.24em] text-[#E8B84B]'>
-          STEP 1 OF 5
+          STEP 1 OF 7
         </p>
 
         <PremiumStepHeading prefix='Connect your' highlight='repository' className='text-[clamp(44px,5.3vw,64px)]' />

@@ -4,6 +4,7 @@ const STATUS_STYLES = {
   staging: 'border-sky-400/25 bg-sky-400/10 text-sky-200',
   live: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200',
   failed: 'border-red-400/25 bg-red-400/10 text-red-200',
+  deleting: 'border-red-400/25 bg-red-400/10 text-red-200',
   default: 'border-white/[0.08] bg-white/[0.04] text-text-muted',
 }
 
@@ -13,6 +14,7 @@ const STATUS_LABELS = {
   staging: 'Staging',
   live: 'Live',
   failed: 'Failed',
+  deleting: 'Deleting…',
 }
 
 export default function ProjectStatusBadge({ status = 'default', className = '' }) {

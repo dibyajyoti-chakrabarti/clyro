@@ -36,8 +36,11 @@ from django.utils import timezone
 from core.models import Deployment, DeploymentStackOutput, Project, ProvisioningLogEntry
 from app import github_utils
 
-from . import aws_client, codebuild_spec, iac
-from .deploy import DeployError, _active_deployment, _assume, _serialize_log
+from . import aws_client, codebuild_spec, iac, runtime_probe
+from .deploy import (
+    DeployError, _active_deployment, _assume, _serialize_log, run_migrations,
+    scale_services_to_spec,
+)
 
 log = logging.getLogger(__name__)
 
@@ -197,10 +200,13 @@ def _poll_build_to_terminal(started: dict[str, Any]) -> dict[str, Any]:
             if all(s == "SUCCEEDED" for s in statuses):
                 return {"status": Deployment.Status.COMPLETE, "error": None}
             failed = [n for n, s in zip(codebuild_names, statuses) if s != "SUCCEEDED"]
-            return {
-                "status": Deployment.Status.BUILD_FAILED,
-                "error": f"Build failed for: {', '.join(failed)} — check the CodeBuild logs for details.",
-            }
+            error = f"Build failed for: {', '.join(failed)}."
+            # Telling a user to "check the CodeBuild logs" makes them go find in the
+            # AWS console what Clyro is already holding the credentials to read.
+            diagnosis = runtime_probe.build_root_cause(creds, region, build_ids)
+            if diagnosis:
+                error += f"\n\n{diagnosis}"
+            return {"status": Deployment.Status.BUILD_FAILED, "error": error}
         time.sleep(_POLL_INTERVAL_SECONDS)
         elapsed += _POLL_INTERVAL_SECONDS
 
@@ -208,6 +214,29 @@ def _poll_build_to_terminal(started: dict[str, Any]) -> dict[str, Any]:
         "status": Deployment.Status.BUILD_FAILED,
         "error": "Build timed out — this took longer than expected.",
     }
+
+
+def _run_migrations_step(project: Project, deployment: Deployment) -> dict[str, Any]:
+    """Run database migrations and log the step to the live feed. Returns
+    ``{ok, error}``. A skipped migration (no migrate framework) logs nothing —
+    only a real run gets a feed row, so a static-only app's feed stays clean."""
+    try:
+        outcome = run_migrations(project)
+    except Exception as exc:  # noqa: BLE001 — surfaced as a deploy failure, not a crash
+        log.exception("run_migrations failed for project %s", project.id)
+        _log_build_status(deployment, "database-migrations", "failed",
+                          f"Database migrations failed: {exc}")
+        return {"ok": False, "error": f"Database migrations failed: {exc}"}
+
+    if not outcome.get("ran"):
+        return {"ok": True, "error": None}  # nothing to migrate — no feed noise
+    if outcome.get("ok"):
+        _log_build_status(deployment, "database-migrations", "done",
+                          "Database migrations complete.")
+        return {"ok": True, "error": None}
+    _log_build_status(deployment, "database-migrations", "failed",
+                      outcome.get("error") or "Database migrations failed.")
+    return {"ok": False, "error": outcome.get("error")}
 
 
 def build_with_feedback(project: Project) -> dict[str, Any]:
@@ -236,6 +265,31 @@ def build_with_feedback(project: Project) -> dict[str, Any]:
         deployment.status = Deployment.Status.BUILD_FAILED
         deployment.save(update_fields=["status", "updated_at"])
         return {"status": deployment.status, "log": _serialize_log(deployment), "outputs": _outputs(), "error": str(exc)}
+
+    # The database is empty until something runs the app's migrations — the image's
+    # CMD is the server only. Do it now, on the freshly-pushed image, BEFORE scaling
+    # up, or the service comes up healthy and 500s every query against a schema that
+    # was never created. A migration that runs and fails stops the deploy here rather
+    # than shipping a broken app. (No-op when the spec has no migrate step.)
+    if result["status"] == Deployment.Status.COMPLETE:
+        migrate = _run_migrations_step(project, deployment)
+        if not migrate["ok"]:
+            result = {"status": Deployment.Status.FAILED, "error": migrate["error"]}
+
+    # The services were authored DesiredCount: 0 so CloudFormation could complete
+    # without an image to pull (iac.enforce_ecs_desired_count). Now that the build
+    # has pushed one, scale them to the spec's task count — until this runs the stack
+    # is live but empty. This lives here, not in provision_with_feedback, because the
+    # "Retry build" path (tasks.run_build_task) calls this function directly and would
+    # otherwise report COMPLETE while every service still ran zero tasks.
+    if result["status"] == Deployment.Status.COMPLETE:
+        try:
+            scale = scale_services_to_spec(project)
+        except Exception as exc:  # noqa: BLE001 — a scale failure is a deploy failure
+            log.exception("scale_services_to_spec failed for project %s", project.id)
+            scale = {"steady": False, "error": str(exc)}
+        if not scale["steady"]:
+            result = {"status": Deployment.Status.FAILED, "error": scale["error"]}
 
     deployment.status = result["status"]
     deployment.completed_at = timezone.now()

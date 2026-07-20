@@ -122,5 +122,17 @@ resource "aws_instance" "nat" {
     encrypted   = true
   }
 
+  # data.aws_ami.al2023_arm's `most_recent = true` lookup resolves to a
+  # different (newer) AMI id every time Amazon publishes an AL2023 point
+  # release — without this, *any* future `terraform apply` on this layer,
+  # even a completely unrelated change, would want to destroy and recreate
+  # the live NAT instance to "match" the newer AMI. Found live 2026-07-16:
+  # a routine plan showed this instance needing replacement for exactly that
+  # reason. Bump the AMI deliberately (drop this from ignore_changes for one
+  # apply) when an intentional upgrade is wanted.
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   tags = merge(var.tags, { Name = "${var.name_prefix}-nat" })
 }

@@ -1,6 +1,18 @@
+import logging
+
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
+
+log = logging.getLogger(__name__)
+
+_ACCESS_DENIED_CODES = ('AccessDenied', 'AccessDeniedException', 'UnauthorizedOperation')
+
+
+class AwsAccessDenied(Exception):
+    """The assumed customer role lacks an IAM action (bootstrap stacks created
+    before that grant existed) — callers surface this as a user-facing warning
+    instead of degrading silently."""
 
 
 def _get_clyro_session():
@@ -44,6 +56,27 @@ def get_account_id(credentials: dict, region: str = 'us-east-1') -> str:
     return identity['Account']
 
 
+def get_account_plan_type(credentials: dict, region: str = 'us-east-1') -> str | None:
+    """Proactively ask AWS itself (freetier:GetAccountPlanState) whether the
+    connected account is FREE or PAID, using the just-assumed role's credentials.
+    Returns the raw ``accountPlanType`` string, or None if the call fails for any
+    reason (missing permission, API not available in this partition/region, etc.)
+    — this is a best-effort enrichment, never a reason to fail the connect flow."""
+    try:
+        client = boto3.client(
+            'freetier',
+            region_name=region,
+            aws_access_key_id=credentials['AccessKeyId'],
+            aws_secret_access_key=credentials['SecretAccessKey'],
+            aws_session_token=credentials['SessionToken'],
+        )
+        response = client.get_account_plan_state()
+        return response.get('accountPlanType')
+    except (ClientError, BotoCoreError) as exc:
+        log.info("get_account_plan_type: could not determine account plan type: %s", exc)
+        return None
+
+
 def write_secret(credentials: dict, region: str, secret_name: str, secret_value: str) -> str:
     """
     Write a single secret to AWS Secrets Manager in the user's account using assumed-role credentials.
@@ -71,6 +104,20 @@ def write_secret(credentials: dict, region: str, secret_name: str, secret_value:
         raise
 
 
+def delete_secret(credentials: dict, region: str, secret_arn: str) -> None:
+    """Permanently delete a Clyro-written secret (project delete). Without
+    ForceDeleteWithoutRecovery the secret lingers ~30 days in a recovery window
+    and blocks a same-named secret if the user recreates the project."""
+    sm = boto3.client(
+        'secretsmanager',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+    sm.delete_secret(SecretId=secret_arn, ForceDeleteWithoutRecovery=True)
+
+
 # ── CloudFormation (Step 4.5 provisioning) ─────────────────────────────────────
 
 def _cfn_client(credentials: dict, region: str):
@@ -83,20 +130,49 @@ def _cfn_client(credentials: dict, region: str):
     )
 
 
-def create_stack(credentials: dict, region: str, stack_name: str, template_body: str) -> str:
+def create_stack(
+    credentials: dict, region: str, stack_name: str, template_body: str,
+    parameters: dict[str, str] | None = None,
+) -> str:
     """Submit a CloudFormation stack to the user's account. Returns the stack id.
     CAPABILITY_NAMED_IAM is required because the template creates named IAM roles
     (ECS task/execution roles, etc.). create_stack returns immediately — CFN
     provisions asynchronously; progress is read via describe_stack_events."""
     cfn = _cfn_client(credentials, region)
+    kwargs = {}
+    if parameters:
+        kwargs['Parameters'] = [{'ParameterKey': k, 'ParameterValue': v} for k, v in parameters.items()]
     response = cfn.create_stack(
         StackName=stack_name,
         TemplateBody=template_body,
         Capabilities=['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
         Tags=[{'Key': 'ManagedBy', 'Value': 'Clyro'}],
         OnFailure='ROLLBACK',
+        **kwargs,
     )
     return response['StackId']
+
+
+def find_hosted_zone_id(credentials: dict, region: str, zone_name: str) -> str | None:
+    """Paginate route53:ListHostedZones and return the zone id (without the
+    '/hostedzone/' prefix) whose name matches ``zone_name``, or None. Route53
+    is a global service — ``region`` is accepted only for signature
+    consistency with the rest of this module. Uses ListHostedZones (already
+    granted in bootstrap.yaml) rather than ListHostedZonesByName (not
+    granted, and unnecessary — client-side filtering is cheap at this scale)."""
+    route53 = boto3.client(
+        'route53',
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+    target = f"{zone_name}." if not zone_name.endswith('.') else zone_name
+    paginator = route53.get_paginator('list_hosted_zones')
+    for page in paginator.paginate():
+        for zone in page.get('HostedZones', []):
+            if zone.get('Name') == target:
+                return zone['Id'].removeprefix('/hostedzone/')
+    return None
 
 
 def find_stack(credentials: dict, region: str, stack_name: str) -> str | None:
@@ -114,8 +190,9 @@ def find_stack(credentials: dict, region: str, stack_name: str) -> str | None:
 
 
 def describe_stack(credentials: dict, region: str, stack_name: str) -> dict:
-    """Return ``{status, reason, outputs}`` for a stack. ``outputs`` is a list of
-    ``{output_key, output_value, description}``."""
+    """Return ``{stack_name, status, reason, last_updated_time, outputs}`` for a
+    stack. ``outputs`` is a list of ``{output_key, output_value, description}``;
+    ``last_updated_time`` is an ISO string (CreationTime for never-updated stacks)."""
     cfn = _cfn_client(credentials, region)
     response = cfn.describe_stacks(StackName=stack_name)
     stack = response['Stacks'][0]
@@ -127,9 +204,12 @@ def describe_stack(credentials: dict, region: str, stack_name: str) -> dict:
         }
         for o in stack.get('Outputs', [])
     ]
+    last_updated = stack.get('LastUpdatedTime') or stack.get('CreationTime')
     return {
+        'stack_name': stack.get('StackName'),
         'status': stack['StackStatus'],
         'reason': stack.get('StackStatusReason'),
+        'last_updated_time': last_updated.isoformat() if last_updated else None,
         'outputs': outputs,
     }
 
@@ -150,6 +230,65 @@ def delete_stack(credentials: dict, region: str, stack_name: str) -> None:
     a full teardown)."""
     cfn = _cfn_client(credentials, region)
     cfn.delete_stack(StackName=stack_name)
+
+
+def create_change_set(credentials: dict, region: str, stack_name: str,
+                      template_body: str, change_set_name: str) -> str:
+    """Create an UPDATE change set for a live stack. A change set is CFN's dry-run:
+    it computes what the template would do (including whether any resource would be
+    *replaced*, i.e. destroyed and recreated) WITHOUT applying it, so an update that
+    would drop a database can be refused before it runs. Returns the change set id;
+    creation is async — poll ``describe_change_set`` for CREATE_COMPLETE."""
+    cfn = _cfn_client(credentials, region)
+    response = cfn.create_change_set(
+        StackName=stack_name,
+        TemplateBody=template_body,
+        ChangeSetName=change_set_name,
+        ChangeSetType='UPDATE',
+        Capabilities=['CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
+    )
+    return response['Id']
+
+
+def describe_change_set(credentials: dict, region: str, change_set_id: str) -> dict:
+    """Return ``{status, status_reason, changes}`` for a change set. Each change is
+    ``{action, logical_id, resource_type, replacement}`` — ``replacement`` is the
+    decisive signal ('True'/'Conditional' means the resource is destroyed and
+    recreated). An empty change set finishes with status FAILED and a status_reason
+    that says the submission didn't contain changes."""
+    cfn = _cfn_client(credentials, region)
+    response = cfn.describe_change_set(ChangeSetName=change_set_id)
+    changes = []
+    for change in response.get('Changes', []):
+        rc = change.get('ResourceChange') or {}
+        changes.append({
+            'action': rc.get('Action'),
+            'logical_id': rc.get('LogicalResourceId'),
+            'resource_type': rc.get('ResourceType'),
+            'replacement': rc.get('Replacement'),
+        })
+    return {
+        'status': response.get('Status'),
+        'status_reason': response.get('StatusReason'),
+        'changes': changes,
+    }
+
+
+def execute_change_set(credentials: dict, region: str, change_set_id: str) -> None:
+    """Apply a change set — this is the actual UpdateStack. Progress is read via
+    describe_stack_events / describe_stack the same way a create is."""
+    cfn = _cfn_client(credentials, region)
+    cfn.execute_change_set(ChangeSetName=change_set_id)
+
+
+def delete_change_set(credentials: dict, region: str, change_set_id: str) -> None:
+    """Discard a change set (an empty or refused one) so it doesn't linger on the
+    stack. Best-effort — a missing change set is not an error here."""
+    cfn = _cfn_client(credentials, region)
+    try:
+        cfn.delete_change_set(ChangeSetName=change_set_id)
+    except ClientError:
+        pass
 
 
 def list_stack_resources(credentials: dict, region: str, stack_name: str) -> list[dict]:
@@ -213,6 +352,22 @@ def get_ecs_service_desired_count(credentials: dict, region: str, cluster: str, 
 def set_ecs_service_desired_count(credentials: dict, region: str, cluster: str, service: str, desired: int) -> None:
     ecs = _ecs_client(credentials, region)
     ecs.update_service(cluster=cluster, service=service, desiredCount=desired)
+
+
+def get_ecs_service_counts(credentials: dict, region: str, cluster: str, service: str) -> dict:
+    """``{running, pending, desired}`` for one service — used to tell "scaled up and
+    actually serving" from "scaled up and crash-looping"."""
+    ecs = _ecs_client(credentials, region)
+    resp = ecs.describe_services(cluster=cluster, services=[service])
+    services = resp.get('services') or []
+    if not services:
+        return {'running': 0, 'pending': 0, 'desired': 0}
+    svc = services[0]
+    return {
+        'running': svc.get('runningCount', 0),
+        'pending': svc.get('pendingCount', 0),
+        'desired': svc.get('desiredCount', 0),
+    }
 
 
 def is_db_cluster_member(credentials: dict, region: str, db_instance_id: str) -> bool:
@@ -305,6 +460,40 @@ def start_codebuild(credentials: dict, region: str, project_name: str, source_lo
     return response['build']['id']
 
 
+def list_s3_keys(credentials: dict, region: str, bucket: str, prefix: str,
+                 max_keys: int = 5000) -> list[str]:
+    """Every object key under ``prefix``, lexicographically ascending (which for
+    the log archive's time-encoded keys means chronological). Returns [] for a
+    missing bucket; raises AwsAccessDenied when the role lacks s3:ListBucket."""
+    s3 = _s3_client(credentials, region)
+    keys: list[str] = []
+    try:
+        paginator = s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            keys.extend(obj['Key'] for obj in page.get('Contents', []))
+            if len(keys) >= max_keys:
+                break
+    except ClientError as exc:
+        code = exc.response.get('Error', {}).get('Code', '')
+        if code in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('s3:ListBucket') from exc
+        return []
+    return keys[:max_keys]
+
+
+def get_s3_object(credentials: dict, region: str, bucket: str, key: str) -> bytes:
+    """One object's body, or b'' if the key vanished between list and get.
+    Raises AwsAccessDenied when the role lacks s3:GetObject."""
+    s3 = _s3_client(credentials, region)
+    try:
+        return s3.get_object(Bucket=bucket, Key=key)['Body'].read()
+    except ClientError as exc:
+        code = exc.response.get('Error', {}).get('Code', '')
+        if code in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('s3:GetObject') from exc
+        return b''
+
+
 def empty_s3_bucket(credentials: dict, region: str, bucket: str) -> None:
     """Delete every object (and, for a versioned bucket, every version and
     delete marker) in a bucket the stack is about to delete. CloudFormation
@@ -349,3 +538,350 @@ def batch_get_builds(credentials: dict, region: str, build_ids: list[str]) -> li
     codebuild = _codebuild_client(credentials, region)
     response = codebuild.batch_get_builds(ids=build_ids)
     return response.get('builds') or []
+
+
+# ── Runtime probes ───────────────────────────────────────────────────────────
+#
+# Everything above answers "did AWS accept our API call?". These answer "is the
+# customer's app actually working?" — the question CloudFormation cannot, since
+# a stack reaches CREATE_COMPLETE the moment its resources exist, regardless of
+# whether a single container inside them can serve a request. Consumed by
+# runtime_probe.py, which turns them into a root cause.
+
+
+def _elbv2_client(credentials: dict, region: str):
+    return boto3.client(
+        'elbv2',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def _logs_client(credentials: dict, region: str):
+    return boto3.client(
+        'logs',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def describe_ecs_service(credentials: dict, region: str, cluster: str, service: str) -> dict:
+    """The full service dict. get_ecs_service_counts() throws away everything but
+    the three counts; a runtime diagnosis needs ``loadBalancers`` (to find the
+    target group), ``deployments`` (rolloutState) and ``events``."""
+    ecs = _ecs_client(credentials, region)
+    services = ecs.describe_services(cluster=cluster, services=[service]).get('services') or []
+    return services[0] if services else {}
+
+
+def describe_stopped_tasks(credentials: dict, region: str, cluster: str, service: str,
+                           limit: int = 5) -> list[dict]:
+    """The most recently stopped tasks for a service. ECS keeps stopped tasks
+    queryable for roughly an hour — long enough to explain a crash-loop, and the
+    only place ``stoppedReason`` and a container's ``exitCode`` ever appear."""
+    ecs = _ecs_client(credentials, region)
+    arns = ecs.list_tasks(
+        cluster=cluster, serviceName=service, desiredStatus='STOPPED',
+    ).get('taskArns') or []
+    if not arns:
+        return []
+    return ecs.describe_tasks(cluster=cluster, tasks=arns[:limit]).get('tasks') or []
+
+
+def task_definition_log_groups(credentials: dict, region: str, task_definition: str) -> list[str]:
+    """The awslogs group each container in a task definition writes to. Derived
+    from the task definition rather than guessed from a naming convention, since
+    the template is authored by an LLM and its log-group names vary."""
+    ecs = _ecs_client(credentials, region)
+    task_def = ecs.describe_task_definition(
+        taskDefinition=task_definition,
+    ).get('taskDefinition') or {}
+    groups = []
+    for container in task_def.get('containerDefinitions') or []:
+        options = (container.get('logConfiguration') or {}).get('options') or {}
+        group = options.get('awslogs-group')
+        if group and group not in groups:
+            groups.append(group)
+    return groups
+
+
+def describe_target_health(credentials: dict, region: str, target_group_arn: str) -> list[dict]:
+    """``[{state, reason, description}]`` per registered target. The decisive signal
+    for "the container runs but the load balancer refuses to send it traffic"."""
+    elbv2 = _elbv2_client(credentials, region)
+    descriptions = elbv2.describe_target_health(
+        TargetGroupArn=target_group_arn,
+    ).get('TargetHealthDescriptions') or []
+    return [
+        {
+            'state': d.get('TargetHealth', {}).get('State', ''),
+            'reason': d.get('TargetHealth', {}).get('Reason', ''),
+            'description': d.get('TargetHealth', {}).get('Description', ''),
+        }
+        for d in descriptions
+    ]
+
+
+def task_definition_containers(credentials: dict, region: str, task_definition: str) -> list[dict]:
+    """``[{name, image}]`` for every container in a task definition. Used to pick
+    which container a one-off migration run overrides the command of — the task
+    definition is authored by an LLM, so container names aren't guessable."""
+    ecs = _ecs_client(credentials, region)
+    task_def = ecs.describe_task_definition(
+        taskDefinition=task_definition,
+    ).get('taskDefinition') or {}
+    return [
+        {'name': c.get('name'), 'image': c.get('image')}
+        for c in task_def.get('containerDefinitions') or []
+        if c.get('name')
+    ]
+
+
+def run_task(credentials: dict, region: str, cluster: str, task_definition: str,
+             container_name: str, command: list[str], subnets: list[str],
+             security_groups: list[str], assign_public_ip: str = 'DISABLED') -> str:
+    """Run a task definition ONCE (RunTask), overriding one container's command —
+    how a database migration runs: it reuses the app's own task definition (image,
+    secret injection, execution role, log config all intact) and just changes the
+    entrypoint to the migrate command. ``subnets``/``security_groups``/
+    ``assign_public_ip`` are lifted from the live service so the one-off task has
+    identical network reachability to the database. Returns the task ARN, or raises
+    if ECS refused to place the task."""
+    ecs = _ecs_client(credentials, region)
+    response = ecs.run_task(
+        cluster=cluster,
+        taskDefinition=task_definition,
+        launchType='FARGATE',
+        count=1,
+        overrides={'containerOverrides': [{'name': container_name, 'command': command}]},
+        networkConfiguration={'awsvpcConfiguration': {
+            'subnets': subnets,
+            'securityGroups': security_groups,
+            'assignPublicIp': assign_public_ip,
+        }},
+    )
+    tasks = response.get('tasks') or []
+    if not tasks:
+        failures = response.get('failures') or []
+        reason = '; '.join(f.get('reason', '') for f in failures) or 'unknown reason'
+        raise RuntimeError(f'ECS refused to start the task: {reason}')
+    return tasks[0]['taskArn']
+
+
+def describe_task(credentials: dict, region: str, cluster: str, task_arn: str) -> dict:
+    """The full task dict for one task — ``lastStatus``, ``stoppedReason``, and each
+    container's ``exitCode``/``reason``, which is how a one-off run reports success
+    (exit 0) or failure."""
+    ecs = _ecs_client(credentials, region)
+    tasks = ecs.describe_tasks(cluster=cluster, tasks=[task_arn]).get('tasks') or []
+    return tasks[0] if tasks else {}
+
+
+def tail_log_group(credentials: dict, region: str, log_group: str, limit: int = 20) -> list[str]:
+    """The last ``limit`` messages from the most recently active stream in a log
+    group. Returns [] rather than raising when the group does not exist yet — a
+    container that dies before its first write leaves no stream at all, and that
+    absence is itself diagnostic rather than an error."""
+    logs = _logs_client(credentials, region)
+    try:
+        streams = logs.describe_log_streams(
+            logGroupName=log_group, orderBy='LastEventTime', descending=True, limit=1,
+        ).get('logStreams') or []
+        if not streams:
+            return []
+        events = logs.get_log_events(
+            logGroupName=log_group, logStreamName=streams[0]['logStreamName'],
+            limit=limit, startFromHead=False,
+        ).get('events') or []
+    except ClientError:
+        return []
+    return [e.get('message', '').rstrip() for e in events]
+
+
+def filter_log_events(credentials: dict, region: str, log_group: str, start_time_ms: int,
+                      end_time_ms: int | None = None, filter_pattern: str | None = None,
+                      limit: int = 50, max_pages: int = 3) -> list[dict]:
+    """The last ``limit`` events across ALL streams of a log group since
+    ``start_time_ms`` (epoch ms, optionally bounded by ``end_time_ms`` — the log
+    archiver uses that to read one closed slot), oldest first, as
+    ``{timestamp, stream, message}``. Returns [] for a missing group (same
+    reasoning as tail_log_group); raises AwsAccessDenied when the role lacks
+    logs:FilterLogEvents (bootstrap roles created before that grant) so the
+    caller can tell the user."""
+    logs = _logs_client(credentials, region)
+    events: list[dict] = []
+    kwargs: dict = {'logGroupName': log_group, 'startTime': start_time_ms, 'limit': 200}
+    if end_time_ms is not None:
+        kwargs['endTime'] = end_time_ms
+    if filter_pattern:
+        kwargs['filterPattern'] = filter_pattern
+    try:
+        for _ in range(max_pages):
+            response = logs.filter_log_events(**kwargs)
+            events.extend(response.get('events') or [])
+            token = response.get('nextToken')
+            if not token:
+                break
+            kwargs['nextToken'] = token
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('logs:FilterLogEvents') from exc
+        return []
+    return [
+        {
+            'timestamp': e.get('timestamp'),
+            'stream': e.get('logStreamName', ''),
+            'message': (e.get('message') or '').rstrip()[:500],
+        }
+        for e in events[-limit:]
+    ]
+
+
+def _cloudwatch_client(credentials: dict, region: str):
+    return boto3.client(
+        'cloudwatch',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+
+
+def describe_alarms(credentials: dict, region: str, alarm_names: list[str]) -> list[dict]:
+    """Current state for the given alarms as ``{name, description, state,
+    reason, updated}``. Raises AwsAccessDenied on a permissions gap; [] on
+    other errors (e.g. alarms deleted out-of-band)."""
+    if not alarm_names:
+        return []
+    cloudwatch = _cloudwatch_client(credentials, region)
+    try:
+        response = cloudwatch.describe_alarms(AlarmNames=alarm_names[:100], MaxRecords=100)
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('cloudwatch:DescribeAlarms') from exc
+        return []
+    alarms = []
+    for item in response.get('MetricAlarms') or []:
+        updated = item.get('StateUpdatedTimestamp')
+        alarms.append({
+            'name': item.get('AlarmName', ''),
+            'description': item.get('AlarmDescription') or '',
+            'state': item.get('StateValue', ''),
+            'reason': item.get('StateReason') or '',
+            'updated': updated.isoformat() if updated else None,
+        })
+    return alarms
+
+
+def describe_alarm_history(credentials: dict, region: str, alarm_names: list[str],
+                           days: int = 30, limit: int = 50) -> list[dict]:
+    """State transitions for the given alarms over the past ``days``, newest
+    first, as ``{alarm, at, summary}``. Raises AwsAccessDenied on a permissions
+    gap; skips alarms that error individually."""
+    from datetime import datetime, timedelta, timezone
+
+    cloudwatch = _cloudwatch_client(credentials, region)
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days)
+    items: list[dict] = []
+    for name in alarm_names[:20]:
+        try:
+            response = cloudwatch.describe_alarm_history(
+                AlarmName=name, HistoryItemType='StateUpdate',
+                StartDate=start, EndDate=end, MaxRecords=100,
+                ScanBy='TimestampDescending')
+        except ClientError as exc:
+            if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+                raise AwsAccessDenied('cloudwatch:DescribeAlarmHistory') from exc
+            continue
+        for history in response.get('AlarmHistoryItems') or []:
+            stamp = history.get('Timestamp')
+            items.append({
+                'alarm': name,
+                'at': stamp.isoformat() if stamp else None,
+                'summary': history.get('HistorySummary') or '',
+            })
+    items.sort(key=lambda i: i['at'] or '', reverse=True)
+    return items[:limit]
+
+
+def topic_subscription_status(credentials: dict, region: str, topic_arn: str) -> str | None:
+    """'confirmed' | 'pending' | None (no subscriptions) for an SNS topic's
+    email subscriptions — Step 7 uses 'pending' to remind the user to click the
+    confirmation link AWS emailed them. Raises AwsAccessDenied on a permissions
+    gap; None on other errors."""
+    sns = boto3.client(
+        'sns',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+    try:
+        subs = sns.list_subscriptions_by_topic(TopicArn=topic_arn).get('Subscriptions') or []
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('sns:ListSubscriptionsByTopic') from exc
+        return None
+    if not subs:
+        return None
+    pending = any(s.get('SubscriptionArn') == 'PendingConfirmation' for s in subs)
+    return 'pending' if pending else 'confirmed'
+
+
+def get_cloudwatch_metric_series(credentials: dict, region: str, queries: dict[str, tuple],
+                                 minutes: int = 60, period: int = 300) -> dict[str, list[dict]]:
+    """Time series for several metrics in ONE GetMetricData call. ``queries`` maps
+    a result key to ``(namespace, metric_name, dimensions, stat)``. Returns
+    ``{key: [{'t': iso, 'v': float}, ...]}`` oldest-first; keys with no data map
+    to []. Raises AwsAccessDenied when the role can't read metrics at all
+    (bootstrap roles created before the cloudwatch:GetMetricData grant); returns
+    {} on other ClientErrors."""
+    from datetime import datetime, timedelta, timezone
+
+    cloudwatch = _cloudwatch_client(credentials, region)
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(minutes=minutes)
+    ids = {f'q{i}': key for i, key in enumerate(queries)}
+    try:
+        response = cloudwatch.get_metric_data(
+            MetricDataQueries=[
+                {
+                    'Id': qid,
+                    'MetricStat': {
+                        'Metric': {
+                            'Namespace': queries[key][0],
+                            'MetricName': queries[key][1],
+                            'Dimensions': queries[key][2],
+                        },
+                        'Period': period,
+                        'Stat': queries[key][3],
+                    },
+                    'ReturnData': True,
+                }
+                for qid, key in ids.items()
+            ],
+            StartTime=start,
+            EndTime=end,
+            ScanBy='TimestampAscending',
+        )
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('cloudwatch:GetMetricData') from exc
+        return {}
+    series: dict[str, list[dict]] = {key: [] for key in queries}
+    for result in response.get('MetricDataResults') or []:
+        key = ids.get(result.get('Id'))
+        if key is None:
+            continue
+        series[key] = [
+            {'t': ts.isoformat(), 'v': value}
+            for ts, value in zip(result.get('Timestamps') or [], result.get('Values') or [])
+        ]
+    return series
+
+

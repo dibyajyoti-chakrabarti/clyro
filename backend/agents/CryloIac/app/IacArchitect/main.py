@@ -75,6 +75,11 @@ AUTHORING RULES (from the build spec):
       the spec doesn't imply the app calls. Never put `Resource: "*"` on
       secretsmanager/s3/sqs/sns actions — always scope to the ARN of the resource you
       created in this same template.
+    * Reference a role's ARN with `!GetAtt <Role>.Arn`, NEVER `!Ref <Role>`. `!Ref` on an
+      `AWS::IAM::Role` returns the role NAME, not its ARN, so `ExecutionRoleArn` /
+      `TaskRoleArn` (and any `*Arn` / `Role:` field expecting an ARN) silently receive a
+      bare name where an ARN is required. This is a recurring first-draft mistake — get it
+      right up front so it never reaches a validation round.
     * Every `Resource:`/`Principal:` ARN you write in an IAM policy statement must use
       `${AWS::AccountId}`/`${AWS::Region}` pseudo-parameters, NEVER a literal 12-digit
       account number or literal region string — an IAM grant is always describing "this
@@ -118,6 +123,12 @@ AUTHORING RULES (from the build spec):
       ROLLBACK_FAILED with the cache and its security group still running and billing.
       Snapshot deletes the replication group (after taking a final snapshot) exactly
       like RDS, so rollback/teardown can actually complete.
+    * RDS DBInstance MUST set `DBName` to the exact database your DATABASE_URL
+      connects to — the path segment of the URL. e.g. for
+      `…@${DbInstance.Endpoint.Address}:5432/appdb` set `DBName: appdb`. PostgreSQL
+      RDS creates NO user database when DBName is omitted (only the internal
+      `postgres` db), so the app and `manage.py migrate` both die with
+      `FATAL: database "appdb" does not exist` the instant they connect.
 - naming: three prefixes are provided — use the right one per resource type, they are
   NOT interchangeable:
     * `naming_prefix` — the default. Use it for everything not listed below.
@@ -238,22 +249,34 @@ CloudFormation knowledge. If you get one wrong, validate_cloudformation_template
 reports it (usually with the valid options) and you fix it. Do not stall waiting to
 "look something up" for ordinary schema questions; author confidently, then validate.
 
-VALIDATION — INITIAL GENERATION ONLY (mode=generate). Drive cfn-lint ERRORS to ZERO
-before you return; the stop condition is "zero errors", NOT a fixed number of rounds.
-1. Call validate_cloudformation_template. Fix EVERY error (E-rule) it reports — use the
-   valid options in each message to correct property names/types/values. Warnings (W)
-   and info are ACCEPTABLE: do NOT fix them and do NOT loop on them.
-2. Re-validate after fixing, and repeat: keep fixing E-errors and re-validating until
-   validate_cloudformation_template reports ZERO errors. Stop the instant it is clean —
-   do not keep going to polish warnings. Hard ceiling: at most 4 validation rounds. If
-   errors still remain at the ceiling (e.g. a property you cannot resolve), return your
-   best template — the backend runs a final bounded corrective pass on top of you.
-3. Call check_cloudformation_template_compliance once. Fix only clearly critical
+VALIDATION — INITIAL GENERATION ONLY (mode=generate). Drive cfn-lint ERRORS toward ZERO
+before you return. Each validate call makes you emit the ENTIRE template again, so treat
+rounds as expensive and minimize them: fix ALL reported errors in a single pass, never
+one error per round.
+1. Call validate_cloudformation_template. Fix EVERY error (E-rule) it reports AT ONCE —
+   use the valid options in each message to correct property names/types/values.
+   Warnings (W) and info are ACCEPTABLE: do NOT fix them and do NOT loop on them.
+2. Re-validate ONCE to confirm your fixes landed; if errors remain, fix them all in one
+   more pass. Hard ceiling: at most 2 validation rounds. Do NOT enter a third round
+   re-emitting the whole template to chase a last stubborn error — the backend runs a
+   fast DIFF-BASED corrective pass on your output (it clears remaining cfn-lint errors
+   with small targeted edits, far cheaper than you re-emitting everything). Returning a
+   near-clean template for it to finish is correct, not a failure.
+3. Call check_cloudformation_template_compliance EXACTLY ONCE. Fix only clearly critical
    security issues (public exposure, unencrypted data at rest, wildcard IAM). Findings
    that conflict with the build spec (e.g. Multi-AZ off when the spec says single-AZ,
-   optional replication / object-lock) are EXPECTED — leave them.
-The template you RETURN must have ZERO cfn-lint errors whenever you can reach it;
-warnings are fine. Prefer a valid, spec-aligned template over a "perfect" one.
+   optional replication / object-lock) are EXPECTED — leave them. Do NOT re-run
+   compliance and do NOT re-emit the template to re-check generic findings; it is advisory
+   here, and burning turns reasoning about generic rules that conflict with the spec is
+   wasted work.
+The backend also applies deterministic finishing passes after you (e.g. normalizing the
+health-check path, ensuring BOTH DeletionPolicy and UpdateReplacePolicy on stateful
+resources, pinning the ECR image repository). Author everything correctly per the rules
+above — but do NOT spend an extra full re-emit round perfecting one of these mechanical
+details; return and let the finishing pass handle the nit.
+The template you RETURN should have zero cfn-lint errors whenever you can reach it within
+these rounds; a small residue for the backend's diff pass is acceptable. Prefer a valid,
+spec-aligned template over a "perfect" one.
 {_REFINE_RULES}
 {_OUTPUT_FORMAT}
 """
@@ -358,11 +381,12 @@ if mcp_client:
 _models: dict[str, Any] = {}
 
 
-def _get_model(model_id: str):
-    # Cache one client per resolved model id so warm runtimes reuse them across calls.
-    if model_id not in _models:
-        _models[model_id] = load_model(model_id)
-    return _models[model_id]
+def _get_model(model_id: str, thinking: bool = False):
+    # Cache one client per (model id, thinking) so warm runtimes reuse them across calls.
+    key = (model_id, thinking)
+    if key not in _models:
+        _models[key] = load_model(model_id, thinking=thinking)
+    return _models[key]
 
 
 # Model families that handle the Converse tool-call sequence strands emits, so they run
@@ -379,14 +403,15 @@ def _supports_tool_use(model_id: str) -> bool:
     return any(fam in mid for fam in _TOOLFUL_FAMILIES)
 
 
-def build_agent(model_id: str) -> Agent:
+def build_agent(model_id: str, thinking: bool = False) -> Agent:
     # Fresh agent per call — the runtime may stay warm across unrelated projects, so a
-    # reused Agent would leak template/history between requests.
+    # reused Agent would leak template/history between requests. ``thinking`` streams
+    # Claude reasoning for the Step-4 'Thinking…' UX (Anthropic-only; see load_model).
     if _supports_tool_use(model_id):
-        return Agent(model=_get_model(model_id), system_prompt=SYSTEM_PROMPT, tools=_tools)
+        return Agent(model=_get_model(model_id, thinking), system_prompt=SYSTEM_PROMPT, tools=_tools)
     # Nova and other non-Claude models: no MCP tools, simplified system prompt.
     # cfn-lint still runs server-side on every response.
-    return Agent(model=_get_model(model_id), system_prompt=SYSTEM_PROMPT_NO_TOOLS, tools=[])
+    return Agent(model=_get_model(model_id, thinking), system_prompt=SYSTEM_PROMPT_NO_TOOLS, tools=[])
 
 
 def _format_history(history: list) -> str:
@@ -440,6 +465,12 @@ def _build_user_message(payload: dict[str, Any]) -> str:
 async def invoke(payload, context):
     payload = _normalize_payload(payload)
     mode = payload.get("mode", "generate")
+    # A warm-up ping (fired on canvas finalize, just before Step-4 Generate) only
+    # needs the runtime container hot — yield immediately, before building the agent
+    # or making any LLM/tool call, so warming costs essentially nothing.
+    if mode == "warmup":
+        yield json.dumps({"warmed": True})
+        return
     # The caller picks the model per slot (generate / chat) and sends its key;
     # fall back to the mode default if absent or unknown.
     default_key = DEFAULT_REFINE if mode == "refine" else DEFAULT_GENERATE
@@ -447,7 +478,9 @@ async def invoke(payload, context):
     log.info("IacArchitect invoked (mode=%s, model=%s)", mode, model_id)
 
     try:
-        agent = build_agent(model_id)
+        # Extended thinking only on generate (Claude models) — refine stays fast, and
+        # the 'Thinking…' UX is generate-only. load_model gates to Anthropic ids.
+        agent = build_agent(model_id, thinking=(mode == "generate"))
         user_message = _build_user_message(payload)
 
         # Stream the model, only emitting the parsed result at the end. A generate can
@@ -463,6 +496,7 @@ async def invoke(payload, context):
         # "ValueError: <Token ...> was created in a different Context" on every tool call.
         # Keeping the stream on a single context fixes that.
         full_text = ""
+        last_tool = None  # dedupe tool-use events so we emit one per distinct tool
         queue: asyncio.Queue = asyncio.Queue()
         _DONE = object()
 
@@ -497,6 +531,23 @@ async def invoke(payload, context):
                     return
                 if "data" in item and isinstance(item["data"], str):
                     full_text += item["data"]
+                    # Forward each delta so the backend can stream the template into
+                    # the Step-4 editor as it's authored (B2). Backward-compatible:
+                    # the blocking consumer keeps only the LAST event (the final
+                    # result below), so these intermediate deltas are ignored there.
+                    yield json.dumps({"data": item["data"]})
+                # Emit the name of each tool the agent starts calling (validate /
+                # compliance) so the backend can show a real phase label (B2 L2).
+                tool_use = item.get("current_tool_use") if isinstance(item, dict) else None
+                if isinstance(tool_use, dict) and tool_use.get("name") and tool_use["name"] != last_tool:
+                    last_tool = tool_use["name"]
+                    yield json.dumps({"tool": last_tool})
+                # Forward Claude's extended-thinking (and MiniMax's native) reasoning
+                # deltas so the backend can show a live 'Thinking…' stream before the
+                # template starts appearing. Separate from `data` — not part of the
+                # template — so it never pollutes full_text / the final output.
+                if isinstance(item, dict) and item.get("reasoning") and isinstance(item.get("reasoningText"), str):
+                    yield json.dumps({"reasoning": item["reasoningText"]})
         finally:
             for _t in (pump, getter):
                 if _t is not None and not _t.done():

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Box, Cloud, Folder, NotebookText, Rocket } from 'lucide-react'
+import { Activity, ArrowLeft, ArrowRight, Box, Cloud, FileCode, Folder, NotebookText, Rocket } from 'lucide-react'
 import Button from '../../components/ui/Button'
 import WizardNavbar from '../../components/wizard/WizardNavbar'
 import { api } from '../../api'
@@ -11,6 +11,8 @@ import StepTwo from './ProjectWizard/step2/StepTwo'
 import StepThree from './ProjectWizard/step3/StepThree'
 import StepFour from './ProjectWizard/step4/StepFour'
 import StepFive from './ProjectWizard/step5/StepFive'
+import StepSix from './ProjectWizard/step6/StepSix'
+import StepSeven from './ProjectWizard/step7/StepSeven'
 import { stepConfig } from './ProjectWizard/constants/stepConfig'
 import { STATUS_STEP } from './ProjectWizard/constants/wizardStatuses'
 
@@ -29,16 +31,17 @@ export default function ProjectWizard() {
     repo: null,
     intent: {},
     scanResult: null,
+    connection: null,
     canvas: null,
     provision: null,
   })
   const [step1CanContinue, setStep1CanContinue] = useState(false)
   const [step2CanContinue, setStep2CanContinue] = useState(false)
-  const [step3Finalized, setStep3Finalized] = useState(false)
-  const [step3ShowBanner, setStep3ShowBanner] = useState(false)
-  const [step3InputPrefill, setStep3InputPrefill] = useState('')
-  const [step3Metrics, setStep3Metrics] = useState({ serviceCount: 0, estimatedMonthlyCost: 0 })
-  const [step4CanContinue, setStep4CanContinue] = useState(false)
+  const [step3CanContinue, setStep3CanContinue] = useState(false)
+  const [step4Finalized, setStep4Finalized] = useState(false)
+  const [step4ShowBanner, setStep4ShowBanner] = useState(false)
+  const [step4InputPrefill, setStep4InputPrefill] = useState('')
+  const [step4Metrics, setStep4Metrics] = useState({ serviceCount: 0, estimatedMonthlyCost: 0 })
 
   useEffect(() => {
     if (isNew || !id) {
@@ -48,7 +51,7 @@ export default function ProjectWizard() {
     setLoading(true)
 
     api.getWizardState(id)
-      .then(({ project, scan, intent }) => {
+      .then(({ project, scan, intent, connection }) => {
         const intentAnswers = intent ? {
           description: intent.description,
           scale: intent.scale,
@@ -66,6 +69,12 @@ export default function ProjectWizard() {
             : null,
           scanResult: scan || null,
           intent: intentAnswers,
+          // Step 2 (Connect your AWS account) resumes into role-connect vs.
+          // already-verified based on this — without it a refresh mid-connect
+          // would re-prompt the CloudFormation role stack. The user's self-reported
+          // account type is also read from here (connection.account_type), not from
+          // intent — Step 2 now owns that capture, right before verification.
+          connection: connection || null,
           canvas: null,
           provision: null,
         })
@@ -98,11 +107,11 @@ export default function ProjectWizard() {
     }
 
     if (currentStep === 3) {
-      return step3Finalized
+      return step3CanContinue
     }
 
     if (currentStep === 4) {
-      return step4CanContinue
+      return step4Finalized
     }
 
     return true
@@ -113,14 +122,14 @@ export default function ProjectWizard() {
   }
 
   const handleContinue = async () => {
-    if (step === 3 && !step3Finalized) {
+    if (step === 4 && !step4Finalized) {
       try {
         if (projectId) await api.finalizeCanvas(projectId)
       } catch {
         // surface non-blocking; finalize can be retried
       }
-      setStep3Finalized(true)
-      setStep3ShowBanner(true)
+      setStep4Finalized(true)
+      setStep4ShowBanner(true)
       return
     }
 
@@ -130,21 +139,19 @@ export default function ProjectWizard() {
 
     setProjectData((prev) => ({ ...prev }))
 
-    if (step === 5) {
+    if (step === 7) {
       navigate('/app/dashboard')
       return
     }
 
-    setStep((prev) => Math.min(5, prev + 1))
+    setStep((prev) => Math.min(7, prev + 1))
   }
 
-  const continueLabel = step === 3
-    ? (step3Finalized ? 'Continue to step 4' : 'Finalize')
-    : step === 4
-      ? 'Provision'
-      : step === 5
-        ? 'Go to dashboard'
-        : 'Continue'
+  const continueLabel = step === 4
+    ? (step4Finalized ? 'Continue to step 5' : 'Finalize')
+    : step === 7
+      ? 'Go to dashboard'
+      : 'Continue'
 
   const totalSteps = stepConfig.length
   const completedSteps = new Set(stepConfig.filter(({ number }) => number < step).map(({ number }) => number))
@@ -153,10 +160,12 @@ export default function ProjectWizard() {
 
   const stepIcons = {
     1: Folder,
-    2: NotebookText,
-    3: Box,
-    4: Cloud,
-    5: Rocket,
+    2: Cloud,
+    3: NotebookText,
+    4: Box,
+    5: FileCode,
+    6: Rocket,
+    7: Activity,
   }
 
   return (
@@ -206,20 +215,21 @@ export default function ProjectWizard() {
 
           <section
             className={`box-border flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-[rgba(255,196,0,0.35)] shadow-[0_30px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,196,0,0.08),0_0_18px_rgba(255,196,0,0.06)] ${
-              step === 3 || step === 4 ? 'p-0' : 'px-[64px] pb-[32px] pt-[72px]'
+              step === 4 || step === 5 ? 'p-0' : 'px-[64px] pb-[32px] pt-[72px]'
             }`}
             style={{
               backgroundImage:
                 'radial-gradient(circle at 100% 0%, rgba(232,184,75,0.08), transparent 28%), radial-gradient(circle at 50% 0%, rgba(255,255,255,0.025), transparent 24%), linear-gradient(180deg,#0d0d0d,#070707)',
             }}
           >
-            <div className={`box-border flex min-h-0 flex-1 flex-col ${step === 3 || step === 4 ? 'items-stretch' : 'items-center'}`}>
+            <div className={`box-border flex min-h-0 flex-1 flex-col ${step === 4 || step === 5 ? 'items-stretch' : 'items-center'}`}>
                 {step === 1 ? (
                   <StepOne
                     projectId={projectId}
                     projectData={projectData}
                     setProjectData={setProjectData}
                     setStep1CanContinue={setStep1CanContinue}
+                    onComplete={() => setStep((prev) => Math.min(7, prev + 1))}
                   />
                 ) : null}
 
@@ -229,36 +239,57 @@ export default function ProjectWizard() {
                     projectData={projectData}
                     setProjectData={setProjectData}
                     setStep2CanContinue={setStep2CanContinue}
-                    onComplete={() => setStep((prev) => Math.min(5, prev + 1))}
                   />
                 ) : null}
 
                 {step === 3 ? (
                   <StepThree
                     projectId={projectId}
-                    step3InputPrefill={step3InputPrefill}
-                    setStep3InputPrefill={setStep3InputPrefill}
-                    step3ShowBanner={step3ShowBanner}
-                    onDismissStep3Banner={() => setStep3ShowBanner(false)}
-                    onMetricsChange={setStep3Metrics}
+                    projectData={projectData}
+                    setProjectData={setProjectData}
+                    setStep3CanContinue={setStep3CanContinue}
+                    onComplete={() => setStep((prev) => Math.min(7, prev + 1))}
                   />
                 ) : null}
 
                 {step === 4 ? (
                   <StepFour
                     projectId={projectId}
-                    setStep4CanContinue={setStep4CanContinue}
-                    onAdvanceToStepFive={() => {
-                      setStep(5)
-                    }}
+                    projectData={projectData}
+                    step4InputPrefill={step4InputPrefill}
+                    setStep4InputPrefill={setStep4InputPrefill}
+                    step4ShowBanner={step4ShowBanner}
+                    onDismissStep4Banner={() => setStep4ShowBanner(false)}
+                    onMetricsChange={setStep4Metrics}
                   />
                 ) : null}
 
-                {step === 5 ? <StepFive /> : null}
+                {step === 5 ? (
+                  <StepFive
+                    projectId={projectId}
+                    projectData={projectData}
+                    setProjectData={setProjectData}
+                    onBackToCanvas={() => setStep(4)}
+                    onAdvanceToStepSix={() => setStep(6)}
+                  />
+                ) : null}
+
+                {step === 6 ? (
+                  <StepSix
+                    projectId={projectId}
+                    projectData={projectData}
+                    setProjectData={setProjectData}
+                    onBackToIac={() => setStep(5)}
+                    onAdvanceToStepSeven={() => setStep(7)}
+                  />
+                ) : null}
+
+                {step === 7 ? <StepSeven projectId={projectId} /> : null}
             </div>
 
-            {/* Step 4 and 2 manage their own navigation; step 3 uses Finalize inline */}
-            {step !== 4 && step !== 2 && (
+            {/* Steps 1, 3, 5, 6 manage their own navigation (Step 1 advances itself once
+                secrets are staged, via onComplete); step 4 uses Finalize inline */}
+            {step !== 1 && step !== 3 && step !== 5 && step !== 6 && (
               <div className='mt-auto flex w-full items-end justify-between pt-8'>
                 {step > 1 ? (
                   <Button
@@ -272,21 +303,24 @@ export default function ProjectWizard() {
                 ) : (
                   <div />
                 )}
-                {step === 3 ? (
+                {step === 4 ? (
                   <Button
                     variant='primary'
                     onClick={handleContinue}
-                    disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
+                    disabled={!canAdvance(step) && !(step === 4 && !step4Finalized)}
                     className='h-12 rounded-[18px] px-5 transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(255,196,0,0.18)]'
                   >
-                    Finalize
+                    {/* Use continueLabel: after the first click finalizes, this becomes
+                        "Continue to step 5" instead of a stuck "Finalize" that gave no
+                        signal the second click advances (the "click Finalize twice" bug). */}
+                    {continueLabel}
                     <ArrowRight className='h-4 w-4' />
                   </Button>
                 ) : (
                   <Button
                     variant='primary'
                     onClick={handleContinue}
-                    disabled={!canAdvance(step) && !(step === 3 && !step3Finalized)}
+                    disabled={!canAdvance(step) && !(step === 4 && !step4Finalized)}
                     className='mb-[20px] mr-[24px] h-[64px] w-[200px] rounded-[18px]'
                   >
                     {continueLabel}

@@ -1,0 +1,9 @@
+# Infra Security Audit
+
+## 1. `ClyroProvisioningRole`'s inline policy grants `Resource: '*'` for most action groups — deliberate, worth a periodic second look
+
+`backend/cfn-templates/bootstrap.yaml` defines the cross-account role a user grants Clyro to provision in their own AWS account. Its inline `ClyroProvisioningPolicy` scopes IAM/Secrets Manager/S3/SQS/Logs/CodeBuild/CloudFormation actions to `clyro-*`-prefixed resource names (e.g. `arn:aws:codebuild:*:${AWS::AccountId}:project/clyro-*`, `arn:aws:sqs:*:${AWS::AccountId}:clyro-*`, `arn:aws:cloudformation:*:${AWS::AccountId}:stack/clyro-*/*`), but networking/ECS/RDS/ElastiCache/CloudWatch-style actions are granted `Resource: '*'`, with an inline comment explaining why (those are create/describe-style AWS APIs that don't take a resource ARN at request time, so `'*'` is often the only syntactically valid option, not a scoping choice). This is a reasonable, already-documented tradeoff, not a drive-by bug — listed here as a standing item worth an occasional independent security review (e.g. via `iam-policy-simulator` or AWS Access Analyzer) as the policy grows, rather than something to change now.
+
+## 2. Verify the actual runtime least-privilege of the ECS task role separately from the provisioning role
+
+This audit only reviewed `ClyroProvisioningRole` (what Clyro itself assumes to provision). The generated CloudFormation template also creates task-execution and task IAM roles for the customer's own running application (per `cfn_generator.py`) — those weren't in scope for this session's research pass and are worth a dedicated review: do generated task roles get anything broader than the specific S3/SQS/Secrets Manager resources that specific project actually needs, or are they templated per-project the way the provisioning role is scoped.

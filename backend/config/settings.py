@@ -72,10 +72,53 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_TRACK_STARTED = True
+
+# Production has no ElastiCache/Redis — the broker is SQS instead (see
+# infrastructure/workloads/celery_worker.tf), authenticated via the Lambda's/
+# ECS task's own IAM role (no static keys). `_run()` persists results onto
+# AgentJob rows directly, not through Celery's own result backend, so the SQS
+# transport not supporting one is a non-issue.
+if CELERY_BROKER_URL.startswith('sqs://'):
+    CELERY_BROKER_TRANSPORT_OPTIONS = {
+        'queue_name_prefix': env('CELERY_SQS_QUEUE_PREFIX', default=''),
+        'region': env('AWS_REGION', default='ap-south-1'),
+    }
 # Agent calls can legitimately run for several minutes (IacArchitect's worst-case
 # lint-fix + security-fix rounds) — don't let Celery's own visibility/ack timeout
 # race the work itself.
 CELERY_TASK_TIME_LIMIT = 900
+
+# Proactive AWS-state reconciliation (app.provisioning.reconcile) — catches dead
+# AWSAccountConnections and stuck 'deleting' Deployments on a schedule instead of
+# only reactively, the next time the user hits _assume(). Runs on whatever
+# process invokes `celery -A config beat` (a sidecar process on the same Celery
+# worker service in prod — see infrastructure/modules/celery_worker/).
+CELERY_BEAT_SCHEDULE = {
+    "reconcile-aws-state": {
+        "task": "app.tasks.run_reconcile_sweep_task",
+        "schedule": 900.0,  # 15 minutes
+    },
+    # Step 7 history: one HealthSnapshot per live project per minute
+    # (app.provisioning.monitoring) — powers uptime % and the 24h status strip.
+    "collect-health-snapshots": {
+        "task": "app.tasks.run_health_snapshot_task",
+        "schedule": 60.0,
+    },
+    # Step 7 logs: archive each live service's CloudWatch events into the
+    # stack's LogArchiveBucket in 5-minute JSONL slots (idempotent keys, so the
+    # cadence matching the slot size is safe).
+    "archive-service-logs": {
+        "task": "app.tasks.run_log_archive_task",
+        "schedule": 300.0,
+    },
+}
+
+# Production has no Redis (see the SQS note above), so the cache is deliberately
+# per-process LocMem — only used for short-TTL snapshots (the Step 7 health poll)
+# that absorb rapid re-polls/multiple tabs and don't need cross-process coherence.
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -138,11 +181,42 @@ REASONING_RUNTIME_ARN = env('REASONING_RUNTIME_ARN', default='')
 REPORECON_RUNTIME_ARN = env('REPORECON_RUNTIME_ARN', default='')
 
 # ── Step 4 (IaC generation) ─────────────────────────────────────────────────
-# Deployed IacArchitect runtime that authors / refines the CloudFormation
-# template from the build spec. Required to generate or refine a template;
-# the standalone validate endpoint runs cfn-lint in-process and needs no ARN.
+# Deployed IacArchitect runtime used to *refine* the CloudFormation template
+# from natural-language edits (and as a rare fallback). The initial template
+# is authored deterministically by `cfn_generator`, not this runtime. Required
+# to refine a template; the standalone validate endpoint runs cfn-lint
+# in-process and needs no ARN.
 IAC_RUNTIME_ARN = env('IAC_RUNTIME_ARN', default='')
+
+# Fire a best-effort warm-up ping to the IaC runtime when the canvas is finalized,
+# so the container is hot before Step-4 Generate (cold-start is ~14s of overhead).
+# ON by default: the agent is deployed with the mode='warmup' short-circuit so
+# the ping is a cheap no-op that just keeps the container warm.
+IAC_WARMUP_ENABLED = env.bool('IAC_WARMUP_ENABLED', default=True)
 
 # AgentCore Memory id for persisting the canvas chat (so it survives a refresh).
 # When empty, chat persistence no-ops and the UI runs without it.
 AGENTCORE_MEMORY_ID = env('AGENTCORE_MEMORY_ID', default='')
+
+# ── Production security hardening ───────────────────────────────────────────
+# Django's insecure defaults are fine for local HTTP dev but must not ship to
+# production behind API Gateway. Gated on ENVIRONMENT so local/.env.local
+# behavior is unchanged.
+IS_PRODUCTION = environment == 'production'
+
+CSRF_TRUSTED_ORIGINS = env.list(
+    'CSRF_TRUSTED_ORIGINS', default=['https://clyro.cloud', 'https://www.clyro.cloud']
+)
+SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=IS_PRODUCTION)
+SESSION_COOKIE_SECURE = IS_PRODUCTION
+CSRF_COOKIE_SECURE = IS_PRODUCTION
+SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000 if IS_PRODUCTION else 0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = IS_PRODUCTION
+SECURE_HSTS_PRELOAD = IS_PRODUCTION
+X_FRAME_OPTIONS = 'DENY'
+
+# API Gateway (apigatewayv2, AWS_PROXY integration) terminates TLS and forwards
+# the original scheme via X-Forwarded-Proto — without this, Django sees every
+# request as plain HTTP (Lambda is invoked over an internal channel, not real
+# HTTP) and SECURE_SSL_REDIRECT would redirect-loop every request.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

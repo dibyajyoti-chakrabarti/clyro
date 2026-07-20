@@ -9,10 +9,11 @@ operates on. No LLM authors the canvas YAML — it is built here, so the canvas
 schema is owned in one place (design principle #5: deterministic where possible).
 
 The output reproduces the canonical design-doc canvas for the reference
-``invoiceapp`` inputs (six nodes, ~$127/mo). Object storage (S3 for file uploads)
-is intentionally *not* a node — the reference canvas treats it as a backend
-capability that drives env-vars/IAM, not a deployable node; the user can still add
-an explicit ``storage`` node later via the canvas conversation.
+``invoiceapp`` inputs (six nodes, ~$127/mo), which has no detected object storage.
+When Step 1 detection *does* find S3 usage (``infrastructure.storage.detected``),
+a dedicated ``storage`` node is added here so the user can see and price it on
+the canvas — before this, the AWS_S3_BUCKET_NAME wiring silently worked via
+``cfn_generator``'s env-var detection alone, with no corresponding canvas node.
 """
 
 from __future__ import annotations
@@ -63,6 +64,16 @@ def build_canvas_from_detection(detected: dict[str, Any], intent: dict[str, Any]
     database = _detected(infra, "database")
     cache = _detected(infra, "cache")
     queue = _detected(infra, "queue")
+    storage = _detected(infra, "storage")
+
+    # The real broker choice, when the detection contract reports one (added
+    # alongside the deterministic RepoRecon detector) — a Celery worker alone
+    # does not imply SQS; Redis is just as valid a broker and is already
+    # represented by the `cache` node. Falls back to the bare `queue.detected`
+    # flag for specs from before this field existed.
+    worker_broker = worker.get("broker") if worker else None
+    if worker_broker == "redis":
+        queue = {}
 
     nodes: list[dict[str, Any]] = []
 
@@ -121,6 +132,13 @@ def build_canvas_from_detection(detected: dict[str, Any], intent: dict[str, Any]
             "type": "queue",
             "aws_service": "sqs",
         })
+    if storage:
+        nodes.append({
+            "id": "storage",
+            "label": "App Storage",
+            "type": "storage",
+            "aws_service": "s3",
+        })
 
     # Detected nodes map to real services found in the codebase, so they are
     # locked: the user can change a node's service type but not remove a node the
@@ -140,6 +158,7 @@ def build_canvas_from_detection(detected: dict[str, Any], intent: dict[str, Any]
         ("worker", "queue", "consumes"),
         ("worker", "db", "reads/writes"),
         ("worker", "cache", "caching"),
+        ("backend", "storage", "reads/writes"),
     ]
     connections = [
         {"from": frm, "to": to, "label": label}

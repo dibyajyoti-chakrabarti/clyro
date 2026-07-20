@@ -1,25 +1,31 @@
-export const STATUS_STEP = {
-  created: 1, repo_connected: 1, scanning: 1, scan_complete: 2,
-  intent_collected: 3, canvas_draft: 3, canvas_finalized: 4,
-  // A failed deployment is a Step-4-scoped problem (the retry UI lives there,
-  // in ProvisionLog.jsx) — bouncing all the way back to Step 1 on reload would
-  // silently discard the user's repo connection, finalized architecture, AWS
-  // connection, and validated template, none of which need redoing.
-  provisioning: 4, live: 5, failed: 4,
-}
-
 export const STATUS_ORDER = [
-  'created', 'repo_connected', 'scanning', 'scan_complete',
+  'created', 'repo_connected', 'secrets_staged', 'scanning', 'scan_complete',
+  'aws_connect_pending', 'aws_connected', 'aws_verified', 'aws_mismatch',
   'intent_collected', 'canvas_draft', 'canvas_finalized',
-  'provisioning', 'live',
+  'iac_generated', 'iac_validated',
+  'provisioning', 'failed', 'live',
 ]
 
+export const STATUS_STEP = {
+  created: 1, repo_connected: 1, scanning: 1, scan_complete: 1, secrets_staged: 1,
+  aws_connect_pending: 2, aws_connected: 2, aws_verified: 2, aws_mismatch: 2,
+  intent_collected: 3,
+  canvas_draft: 4, canvas_finalized: 4,
+  iac_generated: 5, iac_validated: 5,
+  provisioning: 6, failed: 6,
+  live: 7,
+}
+
+// Derives completed steps from STATUS_STEP rather than a hardcoded STATUS_ORDER
+// threshold: every step below the current status's step is done. Not imported
+// anywhere live today (StepProgress/ProgressBar compute completedSteps from the
+// current `step` number instead), but kept in this shape in case something
+// starts using it.
 export function getCompletedSteps(status) {
-  const idx = STATUS_ORDER.indexOf(status)
+  const currentStep = STATUS_STEP[status] ?? 1
   const done = new Set()
-  if (idx >= 3) done.add(1)
-  if (idx >= 4) done.add(2)
-  if (idx >= 6) done.add(3)
-  if (idx >= 7) done.add(4)
+  for (let s = 1; s < currentStep; s += 1) {
+    done.add(s)
+  }
   return done
 }

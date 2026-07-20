@@ -16,6 +16,9 @@ import ProjectWizard from '../pages/app/ProjectWizard'
 import Settings from '../pages/app/Settings'
 import ArchitectureCanvas from '../pages/app/ArchitectureCanvas'
 import GithubCallback from '../pages/app/GithubCallback'
+import AdminLogin from '../pages/admin/AdminLogin'
+import AdminDashboard from '../pages/admin/AdminDashboard'
+import { getAdminToken } from '../api/admin'
 
 function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth()
@@ -23,6 +26,14 @@ function ProtectedRoute() {
   if (isLoading) return null
 
   if (!isAuthenticated) return <Navigate to='/login' replace />
+
+  return <Outlet />
+}
+
+function AdminProtectedRoute() {
+  // Simple presence check — the token itself is validated server-side on every
+  // admin request; a 401 there clears it and the dashboard bounces back here.
+  if (!getAdminToken()) return <Navigate to='/admin/login' replace />
 
   return <Outlet />
 }
@@ -83,6 +94,11 @@ export default function AppRoutes() {
           <Route path='/app/projects/:id' element={<ProjectWizard />} />
           <Route path='/app/projects/:id/canvas' element={<ArchitectureCanvas />} />
         </Route>
+      </Route>
+
+      <Route path='/admin/login' element={<AdminLogin />} />
+      <Route element={<AdminProtectedRoute />}>
+        <Route path='/admin' element={<AdminDashboard />} />
       </Route>
 
       <Route path='*' element={<Navigate to='/' replace />} />

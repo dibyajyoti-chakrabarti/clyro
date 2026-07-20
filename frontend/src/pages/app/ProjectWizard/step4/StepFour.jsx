@@ -1,568 +1,263 @@
-import { useEffect, useRef, useState } from 'react'
-import { api, pollJob } from '../../../../api'
-import { WizardCard, WizardPanel } from '../../../../components/wizard/WizardPanel'
-import AwsConnectCard from './AwsConnectCard'
-import DeploymentSuccess from './DeploymentSuccess'
-import EnvVarsPanel from './EnvVarsPanel'
-import IacEditor from './IacEditor'
-import ProvisionLog from './ProvisionLog'
-import ReviewArchitecture from './ReviewArchitecture'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { Database, Globe, Layers, Package, Server, Settings2, Zap } from 'lucide-react'
+import CanvasSurface from './canvas/CanvasSurface'
+import CanvasNode from './canvas/CanvasNode'
+import NodePopup from './canvas/NodePopup'
+import ChatSidebar from './chat/ChatSidebar'
+import ChatBubble from './chat/ChatBubble'
+import CostPanel from './sidebar/CostPanel'
+import useCanvasAgent from '../hooks/useCanvasAgent'
 
-function StepFourPanel({ projectId, setStep4CanContinue, onAdvanceToStepFive }) {
-  const [phase, setPhase] = useState('aws_connect')
-  const [hydrating, setHydrating] = useState(true)
+function StepFourPanel({
+  projectId,
+  projectData,
+  setStep4InputPrefill,
+  step4InputPrefill,
+  step4ShowBanner,
+  onDismissStep4Banner,
+  onMetricsChange,
+}) {
+  const surfaceRef = useRef(null)
+  const panState = useRef(null)
+  const [activeDrawer, setActiveDrawer] = useState(null)
+  const [zoom, setZoom] = useState(1.0)
+  const zoomIn = useCallback(() => setZoom(z => Math.min(2.0, +(z + 0.1).toFixed(1))), [])
+  const zoomOut = useCallback(() => setZoom(z => Math.max(0.4, +(z - 0.1).toFixed(1))), [])
 
-  // aws_connect phase state
-  const [cfnConsoleUrl, setCfnConsoleUrl] = useState(null)
-  const [urlLoading, setUrlLoading] = useState(false)
-  const [stackOpened, setStackOpened] = useState(false)
-  const [arnInput, setArnInput] = useState('')
-  const [verifying, setVerifying] = useState(false)
-  const [verifyError, setVerifyError] = useState(null)
-  const [roleConnected, setRoleConnected] = useState(false)
+  const {
+    canvasNodes,
+    canvasConnections,
+    canvasCost,
+    totalCost,
+    assumptions,
+    selectedNode,
+    setSelectedNode,
+    selected,
+    surfaceBounds,
+    nodePositions,
+    setNodePositions,
+    chatHistory,
+    agentLoading,
+    pendingOp,
+    chatInput,
+    setChatInput,
+    chatInputRef,
+    chatEndRef,
+    clearConversation,
+    confirmProposal,
+    dismissProposal,
+    handleSend,
+    handleAskAbout,
+  } = useCanvasAgent({ projectId, setStep4InputPrefill, step4InputPrefill })
 
-  // env_vars phase state
-  const [envVarsLoading, setEnvVarsLoading] = useState(false)
-  const [userSecretVars, setUserSecretVars] = useState([])
-  const [generatedVars, setGeneratedVars] = useState([])
-  const [secretValues, setSecretValues] = useState({})
-  const [showSecrets, setShowSecrets] = useState({})
-  const [extraVars, setExtraVars] = useState([])
-  const [savingEnvVars, setSavingEnvVars] = useState(false)
-  const [saveError, setSaveError] = useState(null)
+  const iconByType = {
+    service: Server,
+    static: Globe,
+    database: Database,
+    cache: Zap,
+    worker: Settings2,
+    queue: Layers,
+    storage: Package,
+  }
 
-  // iac phase state
-  const [iacTemplate, setIacTemplate] = useState('')
-  const [iacValidation, setIacValidation] = useState(null)
-  const [iacFindings, setIacFindings] = useState([])
-  const [iacGenerating, setIacGenerating] = useState(false)
-  const [iacRefining, setIacRefining] = useState(false)
-  const [iacValidating, setIacValidating] = useState(false)
-  const [iacError, setIacError] = useState(null)
-  const [iacReady, setIacReady] = useState(false)
-  const [refineInput, setRefineInput] = useState('')
-  const [refineHistory, setRefineHistory] = useState([])
-  // Model choice: generate (initial template) and chat (refine turns).
-  // Generate defaults to null so the user must pick before generating.
-  const [generateModel, setGenerateModel] = useState(null)
-  const [chatModel, setChatModel] = useState('haiku-4-5')
-  const iacGenStartedRef = useRef(false)
-
-  // provisioning phase state
-  const [provisioningLog, setProvisioningLog] = useState([])
-  const [deployStatus, setDeployStatus] = useState(null)
-  const [deployError, setDeployError] = useState(null)
-  const [deployCorrecting, setDeployCorrecting] = useState(false)
-  const [stackOutputs, setStackOutputs] = useState([])
-  const deployPollRef = useRef(null)
-  const provisionJobIdRef = useRef(null)
-
-  // infra lifecycle (pause / resume / delete) state
-  const [infraActionLoading, setInfraActionLoading] = useState(false)
-  const [infraActionError, setInfraActionError] = useState(null)
-
-  // shared
-  const [showTemplate, setShowTemplate] = useState(false)
-  const [copiedKey, setCopiedKey] = useState('')
+  const accentByType = {
+    service: 'border-l-blue-500',
+    static: 'border-l-purple-500',
+    database: 'border-l-green-500',
+    cache: 'border-l-red-500',
+    worker: 'border-l-orange-500',
+    queue: 'border-l-yellow-500',
+    storage: 'border-l-teal-500',
+  }
 
   useEffect(() => {
-    setStep4CanContinue(phase === 'success')
-  }, [phase, setStep4CanContinue])
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setActiveDrawer(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
-  // Hydrate the Step-4 phase + template from the backend on mount so a refresh
-  // resumes where the user left off: it must not re-prompt the role stack, and
-  // must not regenerate (and thereby lose) an already-authored template. getIac
-  // 400s until AWS is connected, so a successful response implies a connection;
-  // a non-empty template means generation already happened.
   useEffect(() => {
-    if (!projectId) return
-    let cancelled = false
-    const hydrate = async () => {
-      try {
-        const data = await api.getIac(projectId)
-        if (cancelled) return
-        setRoleConnected(true)
-        if (data.template) {
-          setIacTemplate(data.template)
-          setIacValidation(data.validation || null)
-          setIacFindings(data.security_findings || [])
-          setIacReady(data.status === 'iac_ready')
+    if (!onMetricsChange) return
+    onMetricsChange({ serviceCount: canvasNodes.length, estimatedMonthlyCost: totalCost })
+  }, [canvasNodes.length, onMetricsChange, totalCost])
 
-          // A submitted/live/build-failed deployment must resume into the
-          // provisioning/success screen, not fall back to the IaC editor —
-          // found live: a fresh page load always showed the editor even when
-          // the deployment had already reached e.g. build_failed, silently
-          // discarding the "Retry build" screen the user needed to see.
-          let deployData = null
-          try {
-            deployData = await api.getDeployStatus(projectId)
-          } catch { /* no submitted deployment yet — fall through to iac */ }
-          if (!cancelled && deployData && deployData.status && deployData.status !== 'iac_ready') {
-            setProvisioningLog(deployData.log || [])
-            setDeployStatus(deployData.status)
-            setStackOutputs(deployData.outputs || [])
-            if (deployData.error) setDeployError(deployData.error)
-            if (deployData.status === 'complete') {
-              setPhase('success')
-            } else {
-              setPhase('provisioning')
-              if (['submitting', 'in_progress', 'building'].includes(deployData.status)) {
-                startDeployPoll()
-              }
-            }
-          } else if (!cancelled) {
-            setPhase('iac')
-          }
-        } else {
-          // Connected but nothing authored yet — skip to iac (pre-generate screen)
-          // only if the secrets were already saved; otherwise resume at env_vars.
-          let envSaved = false
-          try {
-            const env = await api.getEnvVars(projectId)
-            const secrets = env.user_secret || []
-            envSaved = secrets.length > 0 && secrets.every((v) => v.secrets_manager_arn)
-          } catch { /* fall through to env_vars */ }
-          if (!cancelled) setPhase(envSaved ? 'iac' : 'env_vars')
-        }
-      } catch {
-        if (!cancelled) setPhase('aws_connect')  // AWS not connected yet
-      } finally {
-        if (!cancelled) setHydrating(false)
-      }
-    }
-    hydrate()
-    return () => { cancelled = true }
-  }, [projectId])
-
-  // Fetch the CloudFormation console URL only when the user actually needs the
-  // connect step — avoids minting a spurious pending connection on every refresh
-  // once the account is already connected.
-  useEffect(() => {
-    if (hydrating || phase !== 'aws_connect' || !projectId || roleConnected || cfnConsoleUrl) return
-    setUrlLoading(true)
-    api.initAwsConnection(projectId)
-      .then((data) => setCfnConsoleUrl(data.cfn_console_url))
-      .catch(() => {})
-      .finally(() => setUrlLoading(false))
-  }, [hydrating, phase, projectId, roleConnected, cfnConsoleUrl])
-
-  // Fetch env vars when entering env_vars phase
-  useEffect(() => {
-    if (phase !== 'env_vars' || !projectId) return
-    setEnvVarsLoading(true)
-    api.getEnvVars(projectId)
-      .then((data) => {
-        setUserSecretVars(data.user_secret || [])
-        setGeneratedVars(data.generated || [])
-      })
-      .catch(() => {})
-      .finally(() => setEnvVarsLoading(false))
-  }, [phase, projectId])
-
-  const allSecretsFilled = userSecretVars.length === 0 || userSecretVars.every(
-    (field) => (secretValues[field.key_name] || '').trim() !== ''
-  )
-
-  const handleOpenStack = () => {
-    if (cfnConsoleUrl) {
-      window.open(cfnConsoleUrl, '_blank', 'noopener,noreferrer')
-      setStackOpened(true)
-    }
+  const startPan = (event) => {
+    if (event.target.closest('button')) return
+    const el = surfaceRef.current
+    if (!el) return
+    panState.current = { x: event.clientX, y: event.clientY, left: el.scrollLeft, top: el.scrollTop }
   }
 
-  const handleVerify = async () => {
-    setVerifying(true)
-    setVerifyError(null)
-    try {
-      await api.verifyAwsConnection(projectId, { role_arn: arnInput.trim(), region: 'us-east-1' })
-      setRoleConnected(true)
-    } catch (err) {
-      setVerifyError(err.data?.error || 'Verification failed — check the role ARN and try again.')
-    } finally {
-      setVerifying(false)
-    }
+  const movePan = (event) => {
+    const el = surfaceRef.current
+    if (!panState.current || !el) return
+    el.scrollLeft = panState.current.left - (event.clientX - panState.current.x)
+    el.scrollTop = panState.current.top - (event.clientY - panState.current.y)
   }
 
-  const handleSaveEnvVars = async () => {
-    setSavingEnvVars(true)
-    setSaveError(null)
-    try {
-      await api.saveEnvVars(projectId, { values: secretValues, extra_vars: extraVars })
-      setPhase('iac')
-    } catch (err) {
-      setSaveError(err.data?.error || 'Failed to save secrets — please try again.')
-    } finally {
-      setSavingEnvVars(false)
-    }
+  const endPan = () => {
+    panState.current = null
   }
 
-  const runGenerate = async () => {
-    setIacGenerating(true)
-    setIacError(null)
-    try {
-      const { job_id: jobId } = await api.generateIac(projectId, { model: generateModel })
-      const data = await pollJob(projectId, jobId)
-      if (!data.template) {
-        setIacError('Generation returned an empty template — please try again.')
-      } else {
-        setIacTemplate(data.template)
-        setIacValidation(data.validation || null)
-        setIacFindings(data.security_findings || [])
-        setIacReady(data.status === 'iac_ready')
-        if (data.message) {
-          setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message }])
-        }
-      }
-    } catch (err) {
-      setIacError(err.data?.error || 'Failed to generate the template.')
-    } finally {
-      setIacGenerating(false)
-    }
+  const openDrawer = (drawer) => {
+    setActiveDrawer((current) => (current === drawer ? null : drawer))
   }
 
-  // Reset the gen-started guard when leaving the iac phase so a back-and-forward
-  // returns to the pre-generate screen rather than auto-firing again.
-  useEffect(() => {
-    if (phase !== 'iac') iacGenStartedRef.current = false
-  }, [phase])
+  const openChatDrawer = () => openDrawer('chat')
 
-  const handleRefine = async () => {
-    const instruction = refineInput.trim()
-    if (!instruction || iacRefining) return
-    setIacRefining(true)
-    setIacError(null)
-    setRefineHistory((prev) => [...prev, { role: 'user', text: instruction }])
-    setRefineInput('')
-    try {
-      // Send the current editor content so the agent refines what the user sees
-      // (manual edits included), not a stale server copy.
-      const { job_id: jobId } = await api.refineIac(projectId, { instruction, history: refineHistory, template: iacTemplate, model: chatModel })
-      const data = await pollJob(projectId, jobId)
-      if (data.outcome === 'answer') {
-        // A question — the agent answered without touching the template.
-        setIacFindings(data.security_findings || [])
-        setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || '' }])
-      } else {
-        setIacTemplate(data.template || '')
-        setIacValidation(data.validation || null)
-        setIacFindings(data.security_findings || [])
-        setIacReady(data.status === 'iac_ready')
-        setRefineHistory((prev) => [...prev, { role: 'assistant', text: data.message || 'Updated the template.' }])
-      }
-    } catch (err) {
-      setIacError(err.data?.error || 'Failed to refine the template.')
-    } finally {
-      setIacRefining(false)
-    }
+  const drawerMotion = (drawer) => {
+    const isOpen = activeDrawer === drawer
+    return isOpen
+      ? 'translate-x-0 opacity-100 transition-[transform,opacity] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)]'
+      : 'pointer-events-none translate-x-6 opacity-0 transition-[transform,opacity] duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)]'
   }
 
-  const handleValidate = async () => {
-    setIacValidating(true)
-    setIacError(null)
-    try {
-      const data = await api.validateIac(projectId, { template: iacTemplate })
-      setIacValidation(data.validation || null)
-      setIacFindings(data.security_findings || [])
-      setIacReady(data.status === 'iac_ready')
-    } catch (err) {
-      setIacError(err.data?.error || 'Validation failed — please try again.')
-    } finally {
-      setIacValidating(false)
-    }
-  }
+  const suggestedActions = [
+    'Reduce monthly cost',
+    'Explain this architecture',
+    'Scale for 100k users',
+    'Replace Redis with SQS',
+    'Compare Redis vs SQS',
+  ]
 
-  const handleCopy = async (key, value) => {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopiedKey(key)
-      setTimeout(() => setCopiedKey(''), 300)
-    } catch {
-      setCopiedKey('')
-    }
-  }
-
-  // ── Provisioning (Step 4.5): submit + poll the live CFN feed ──────────────
-  const stopDeployPoll = () => {
-    if (deployPollRef.current) {
-      clearInterval(deployPollRef.current)
-      deployPollRef.current = null
-    }
-  }
-
-  const pollDeployOnce = async () => {
-    try {
-      const data = await api.getDeployStatus(projectId)
-      setProvisioningLog(data.log || [])
-      setDeployStatus(data.status)
-      setStackOutputs(data.outputs || [])
-      if (data.error) setDeployError(data.error)
-
-      if (data.status === 'complete') {
-        stopDeployPoll()
-        setPhase('success')
-        return
-      }
-
-      // The infrastructure itself came up clean, but nothing has built the
-      // customer's code into it yet — keep polling (same job_id, same
-      // endpoint) through the build phase; ProvisionLog.jsx shows a distinct
-      // "Building your application…" state for this, not the success screen.
-      if (data.status === 'build_failed') {
-        setDeployCorrecting(false)
-        stopDeployPoll()
-        return
-      }
-
-      // A raw 'failed'/'rolled_back' CFN status isn't necessarily terminal —
-      // the backend's provision_with_feedback job may still be mid one-round
-      // auto-correction (real AWS error -> refine -> retry). Only stop polling
-      // once the SUPERVISING JOB itself reaches a terminal state; that's the
-      // actual authority on whether this attempt is really done.
-      if (data.status === 'failed' || data.status === 'rolled_back') {
-        if (!provisionJobIdRef.current) {
-          stopDeployPoll()  // no job to consult (shouldn't happen) — stop safely
-          return
-        }
-        const job = await api.getJobStatus(projectId, provisionJobIdRef.current)
-        if (job.status === 'running' || job.status === 'pending') {
-          setDeployCorrecting(true)  // still mid auto-correction — keep polling
-          return
-        }
-        setDeployCorrecting(false)
-        stopDeployPoll()
-        if (job.status === 'failed') setDeployError(job.error || deployError)
-      } else {
-        setDeployCorrecting(false)
-      }
-    } catch (err) {
-      setDeployError(err.data?.error || null)  // transient — keep polling
-    }
-  }
-
-  const startDeployPoll = () => {
-    stopDeployPoll()
-    pollDeployOnce()
-    deployPollRef.current = setInterval(pollDeployOnce, 4000)
-  }
-
-  const handleProvision = async () => {
-    setDeployError(null)
-    setDeployCorrecting(false)
-    setProvisioningLog([])
-    setStackOutputs([])
-    setDeployStatus('submitting')
-    setPhase('provisioning')
-    try {
-      const { job_id: jobId } = await api.startDeploy(projectId)
-      provisionJobIdRef.current = jobId
-      startDeployPoll()
-    } catch (err) {
-      setDeployError(err.data?.error || 'Failed to start provisioning.')
-      setDeployStatus('failed')
-    }
-  }
-
-  const handleRetryBuild = async () => {
-    // Deliberately does NOT call handleProvision — the CFN stack is already
-    // CREATE_COMPLETE and must not be resubmitted, only the build step needs
-    // to run again (deploy_retry_build on the backend, not deploy_start).
-    setDeployError(null)
-    setPhase('provisioning')
-    try {
-      const { job_id: jobId } = await api.retryBuild(projectId)
-      provisionJobIdRef.current = jobId
-      startDeployPoll()
-    } catch (err) {
-      setDeployError(err.data?.error || 'Failed to retry the build.')
-    }
-  }
-
-  // Stop polling if the panel unmounts mid-deploy.
-  useEffect(() => () => stopDeployPoll(), [])
-
-  // ── Infra lifecycle: pause (reversible scale-to-zero) / resume / delete ────
-  const handlePause = async () => {
-    setInfraActionError(null)
-    setInfraActionLoading(true)
-    try {
-      const data = await api.pauseDeploy(projectId)
-      setDeployStatus(data.status)
-    } catch (err) {
-      setInfraActionError(err.data?.error || 'Failed to pause infrastructure.')
-    } finally {
-      setInfraActionLoading(false)
-    }
-  }
-
-  const handleResume = async () => {
-    setInfraActionError(null)
-    setInfraActionLoading(true)
-    try {
-      const data = await api.resumeDeploy(projectId)
-      setDeployStatus(data.status)
-    } catch (err) {
-      setInfraActionError(err.data?.error || 'Failed to resume infrastructure.')
-    } finally {
-      setInfraActionLoading(false)
-    }
-  }
-
-  const handleTeardown = async () => {
-    if (!window.confirm('This permanently deletes all provisioned infrastructure for this project. This cannot be undone. Continue?')) {
-      return
-    }
-    setInfraActionError(null)
-    setInfraActionLoading(true)
-    try {
-      const data = await api.teardownDeploy(projectId)
-      setDeployStatus(data.status)
-      startDeployPoll()
-    } catch (err) {
-      setInfraActionError(err.data?.error || 'Failed to delete infrastructure.')
-    } finally {
-      setInfraActionLoading(false)
-    }
-  }
-
-  if (hydrating) {
-    return (
-      <div className='flex flex-1 flex-col items-center justify-center p-8'>
-        <WizardCard width='lg' className='text-center'>
-          <span className='mx-auto block h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin' />
-          <p className='mt-4 text-sm text-text-muted'>Loading your progress…</p>
-        </WizardCard>
-      </div>
-    )
-  }
-
-  // Non-IaC phases get their own padded container since the outer section has p-0.
-  // The IaC editor is full-bleed and manages its own layout.
-  if (phase === 'aws_connect') {
-    return (
-      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
-        <AwsConnectCard
-          cfnConsoleUrl={cfnConsoleUrl}
-          urlLoading={urlLoading}
-          stackOpened={stackOpened}
-          arnInput={arnInput}
-          setArnInput={setArnInput}
-          verifying={verifying}
-          verifyError={verifyError}
-          roleConnected={roleConnected}
-          onOpenStack={handleOpenStack}
-          onVerify={handleVerify}
-          onContinue={() => setPhase('env_vars')}
-        />
-      </div>
-    )
-  }
-
-  if (phase === 'env_vars') {
-    return (
-      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
-        <EnvVarsPanel
-          envVarsLoading={envVarsLoading}
-          userSecretVars={userSecretVars}
-          generatedVars={generatedVars}
-          secretValues={secretValues}
-          showSecrets={showSecrets}
-          extraVars={extraVars}
-          allSecretsFilled={allSecretsFilled}
-          savingEnvVars={savingEnvVars}
-          saveError={saveError}
-          onSecretValueChange={(keyName, value) => setSecretValues((prev) => ({ ...prev, [keyName]: value }))}
-          onToggleSecretVisibility={(keyName) => setShowSecrets((prev) => ({ ...prev, [keyName]: !prev[keyName] }))}
-          onAddVariable={() => setExtraVars((prev) => [...prev, { key: '', value: '' }])}
-          onExtraVariableChange={(index, field, value) => {
-            const next = [...extraVars]
-            next[index] = { ...next[index], [field]: value }
-            setExtraVars(next)
-          }}
-          onContinue={handleSaveEnvVars}
-        />
-      </div>
-    )
-  }
-
-  if (phase === 'iac') {
-    return (
-      <IacEditor
-        template={iacTemplate}
-        onTemplateChange={(v) => { setIacTemplate(v); setIacReady(false); setIacFindings([]) }}
-        validation={iacValidation}
-        findings={iacFindings}
-        generating={iacGenerating}
-        refining={iacRefining}
-        validating={iacValidating}
-        error={iacError}
-        ready={iacReady}
-        onValidate={handleValidate}
-        onRetryGenerate={runGenerate}
-        refineInput={refineInput}
-        onRefineInputChange={setRefineInput}
-        onRefine={handleRefine}
-        refineHistory={refineHistory}
-        generateModel={generateModel}
-        setGenerateModel={setGenerateModel}
-        chatModel={chatModel}
-        setChatModel={setChatModel}
-        onBack={() => setPhase('env_vars')}
-        onContinue={() => setPhase('review')}
-      />
-    )
-  }
-
-  if (phase === 'review') {
-    return (
-      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
-        <ReviewArchitecture
-          showTemplate={showTemplate}
-          cfTemplate={iacTemplate}
-          onToggleTemplate={() => setShowTemplate((prev) => !prev)}
-          onEditArchitecture={() => setPhase('iac')}
-          onProvision={handleProvision}
-        />
-      </div>
-    )
-  }
-
-  if (phase === 'provisioning') {
-    return (
-      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
-        <ProvisionLog
-          provisioningLog={provisioningLog}
-          deployStatus={deployStatus}
-          deployError={deployError}
-          deployCorrecting={deployCorrecting}
-          onRetry={handleProvision}
-          onRetryBuild={handleRetryBuild}
-          onBack={() => setPhase('review')}
-          onCancel={handleTeardown}
-          cancelLoading={infraActionLoading}
-          cancelError={infraActionError}
-        />
-      </div>
-    )
-  }
-
-  // success phase
   return (
-    <div className='flex flex-1 flex-col overflow-y-auto p-8'>
-      <DeploymentSuccess
-        stackOutputs={stackOutputs}
-        copiedKey={copiedKey}
-        onCopy={handleCopy}
-        onGoToDashboard={() => {
-          setStep4CanContinue(true)
-          onAdvanceToStepFive()
-        }}
-        deployStatus={deployStatus}
-        infraActionLoading={infraActionLoading}
-        infraActionError={infraActionError}
-        onPause={handlePause}
-        onResume={handleResume}
-        onTeardown={handleTeardown}
-      />
+    <div className='relative flex h-full min-h-0 w-full flex-col gap-8'>
+      <div className='relative min-h-[520px] min-w-0 flex-1 overflow-hidden rounded-[28px] border border-[rgba(255,196,0,0.22)] bg-background shadow-[0_0_0_1px_rgba(255,196,0,0.05),0_0_18px_rgba(255,196,0,0.04)]'>
+        <CanvasSurface
+          surfaceRef={surfaceRef}
+          startPan={startPan}
+          movePan={movePan}
+          endPan={endPan}
+          setSelectedNode={setSelectedNode}
+          step4ShowBanner={step4ShowBanner}
+          onDismissStep4Banner={onDismissStep4Banner}
+          surfaceBounds={surfaceBounds}
+          canvasNodes={canvasNodes}
+          canvasConnections={canvasConnections}
+          nodePositions={nodePositions}
+          accentByType={accentByType}
+          iconByType={iconByType}
+          selectedNode={selectedNode}
+          selected={selected}
+          chatInputRef={chatInputRef}
+          CanvasNode={CanvasNode}
+          NodePopup={NodePopup}
+          setChatInput={setChatInput}
+          zoom={zoom}
+          openChatDrawer={openChatDrawer}
+          handleAskAbout={handleAskAbout}
+        />
+
+        <div className='pointer-events-none absolute bottom-8 left-8 z-30'>
+          <div className='pointer-events-auto overflow-hidden rounded-[22px] border border-border bg-surface/90 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-md'>
+            <button
+              type='button'
+              className='grid h-10 w-10 place-items-center text-lg font-light text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
+              onClick={zoomIn}
+              aria-label='Zoom in'
+            >
+              +
+            </button>
+            <div className='select-none border-y border-border py-0.5 text-center text-[10px] text-text-muted'>
+              {Math.round(zoom * 100)}%
+            </div>
+            <button
+              type='button'
+              className='grid h-10 w-10 place-items-center text-lg font-light text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
+              onClick={zoomOut}
+              aria-label='Zoom out'
+            >
+              −
+            </button>
+          </div>
+        </div>
+
+        <div className='pointer-events-none absolute bottom-8 right-8 z-30 flex flex-col items-end'>
+          <div className='pointer-events-auto overflow-hidden rounded-[22px] border border-border bg-surface/90 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-md transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-accent hover:shadow-[0_24px_48px_rgba(0,0,0,0.32)]'>
+            <button
+              type='button'
+              className='grid h-12 w-12 place-items-center border-b border-border text-xl text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
+              onClick={() => openDrawer('chat')}
+              aria-label='Open chat drawer'
+            >
+              ✨
+            </button>
+            <button
+              type='button'
+              className='grid h-12 w-12 place-items-center text-sm font-semibold text-text-primary transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:bg-white/[0.04] hover:text-accent'
+              onClick={() => openDrawer('cost')}
+              aria-label='Open cost drawer'
+            >
+              $
+            </button>
+          </div>
+        </div>
+
+        {activeDrawer ? (
+          <button
+            type='button'
+            aria-label='Close drawer backdrop'
+            className='absolute inset-0 z-30 cursor-default bg-black/35 backdrop-blur-[4px]'
+            onClick={() => setActiveDrawer(null)}
+          />
+        ) : null}
+
+        <div
+          className={`absolute inset-y-0 right-0 z-40 h-full min-h-0 w-full max-w-[420px] p-4 ${drawerMotion('chat')}`}
+          aria-hidden={activeDrawer !== 'chat'}
+        >
+          {chatHistory.length === 0 ? (
+            <div className='mb-4 rounded-[20px] border border-border bg-background/60 p-4'>
+              <p className='text-sm font-medium text-text-primary'>Suggested Actions</p>
+              <div className='mt-3 flex flex-wrap gap-2'>
+                {suggestedActions.map((action) => (
+                  <button
+                    key={action}
+                    type='button'
+                    className='rounded-full border border-border bg-surface px-3 py-2 text-xs text-text-muted transition duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] hover:border-accent hover:text-text-primary'
+                    onClick={() => {
+                      setChatInput(action)
+                      if (chatInputRef.current) chatInputRef.current.focus()
+                    }}
+                  >
+                    {action}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <ChatSidebar
+            chatHistory={chatHistory}
+            agentLoading={agentLoading}
+            pendingOp={pendingOp}
+            chatInput={chatInput}
+            setChatInput={setChatInput}
+            chatInputRef={chatInputRef}
+            chatEndRef={chatEndRef}
+            clearConversation={clearConversation}
+            confirmProposal={confirmProposal}
+            dismissProposal={dismissProposal}
+            handleSend={handleSend}
+            onClose={() => setActiveDrawer(null)}
+            ChatBubble={ChatBubble}
+          />
+        </div>
+
+        <div
+          className={`absolute inset-y-0 right-0 z-40 h-full min-h-0 w-full max-w-[420px] p-4 ${drawerMotion('cost')}`}
+          aria-hidden={activeDrawer !== 'cost'}
+        >
+          <CostPanel
+            canvasCost={canvasCost}
+            totalCost={totalCost}
+            assumptions={assumptions}
+            environment={projectData?.intent?.environment}
+            onClose={() => setActiveDrawer(null)}
+          />
+        </div>
+      </div>
     </div>
   )
 }

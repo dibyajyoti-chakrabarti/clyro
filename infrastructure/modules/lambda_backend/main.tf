@@ -40,6 +40,15 @@ resource "aws_lambda_function" "backend" {
       COGNITO_USER_POOL_ID = var.cognito_user_pool_id
       CLYRO_AWS_ACCOUNT_ID = var.account_id
 
+      # Publish side of the Celery/SQS broker — infrastructure/workloads/
+      # celery_worker.tf creates the queue + the ECS worker/beat that consume
+      # it. Must match that file's queue_name_prefix exactly, or this Lambda
+      # publishes to a different SQS queue name than the one it's IAM-scoped
+      # to reach (queue_name_prefix + Celery's default queue name "celery").
+      CELERY_BROKER_URL      = "sqs://"
+      CELERY_RESULT_BACKEND  = "cache+memory://"
+      CELERY_SQS_QUEUE_PREFIX = "${local.prefix}-"
+
       # Django settings reads a single DATABASE_URL (django-environ), not
       # discrete DB_* vars.
       DATABASE_URL = "postgres://${var.db_username}:${urlencode(data.aws_secretsmanager_secret_version.db_password.secret_string)}@${var.db_host}:${var.db_port}/${var.db_name}"

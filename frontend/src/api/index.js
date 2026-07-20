@@ -27,16 +27,28 @@ async function request(method, path, body) {
   return data
 }
 
+function deployLogsParams({ service, level, range, q } = {}) {
+  const qs = new URLSearchParams()
+  if (service) qs.set('service', service)
+  if (level && level !== 'all') qs.set('level', level)
+  if (range && range !== '1h') qs.set('range', range)
+  if (q) qs.set('q', q)
+  return qs
+}
+
 // Poll a submitted AgentJob until it reaches a terminal state (done/failed).
 // Shared by scan, Step-3 chat, and IaC generate/refine — all of which now
 // return {job_id} immediately instead of blocking on the agent call.
-export async function pollJob(projectId, jobId, { intervalMs = 3000 } = {}) {
+export async function pollJob(projectId, jobId, { intervalMs = 3000, onProgress } = {}) {
   for (;;) {
     const data = await api.getJobStatus(projectId, jobId)
     if (data.status === 'done') return data.result
     if (data.status === 'failed') {
       throw Object.assign(new Error(data.error || 'Job failed'), { data })
     }
+    // Live progress while running (B2): {phase, partial_template}. Best-effort —
+    // a stale/absent progress is simply skipped.
+    if (onProgress && data.progress) onProgress(data.progress)
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 }
@@ -51,6 +63,7 @@ export const api = {
   createProject: (name) => request('POST', '/api/projects/', { name }),
   getProject: (id) => request('GET', `/api/projects/${id}/`),
   listProjects: () => request('GET', '/api/projects/'),
+  deleteProject: (id) => request('DELETE', `/api/projects/${id}/`),
   connectRepo: (id, payload) => request('POST', `/api/projects/${id}/connect-repo/`, payload),
   triggerScan: (id) => request('POST', `/api/projects/${id}/scan/`),
   saveIntent: (id, payload) => request('POST', `/api/projects/${id}/intent/`, payload),
@@ -71,10 +84,14 @@ export const api = {
     request('POST', `/api/projects/${id}/canvas/versions/${version}/revert/`),
   finalizeCanvas: (id) => request('POST', `/api/projects/${id}/canvas/finalize/`),
 
-  // Step 4 — AWS connection & env vars
+  // Step 2 — AWS connection
   initAwsConnection: (id) => request('POST', `/api/projects/${id}/aws-connection/`),
   verifyAwsConnection: (id, payload) => request('POST', `/api/projects/${id}/aws-connection/verify/`, payload),
+
+  // Env vars — staged in Step 1 (no AWS connection required yet, values held
+  // pending), written for real in Step 6 (requires a connected AWS account).
   getEnvVars: (id) => request('GET', `/api/projects/${id}/env-vars/`),
+  stageEnvVars: (id, payload) => request('POST', `/api/projects/${id}/env-vars/stage/`, payload),
   saveEnvVars: (id, payload) => request('POST', `/api/projects/${id}/env-vars/save/`, payload),
 
   // Step 4 — IaC (CloudFormation) generation / refine / validate
@@ -85,10 +102,30 @@ export const api = {
 
   // Step 4.5 — provisioning (submit template + live feed)
   startDeploy: (id) => request('POST', `/api/projects/${id}/deploy/`),
-  getDeployStatus: (id) => request('GET', `/api/projects/${id}/deploy/status/`),
+  getDeployStatus: (id, since) => request('GET', `/api/projects/${id}/deploy/status/${since !== undefined && since !== null ? `?since=${since}` : ''}`),
+  getDeployHealth: (id) => request('GET', `/api/projects/${id}/deploy/health/`),
+  getDeployHistory: (id) => request('GET', `/api/projects/${id}/deploy/history/`),
+  getDeployAlarms: (id) => request('GET', `/api/projects/${id}/deploy/alarms/`),
+  getDeployLogs: (id, { service, level, range, q } = {}) => {
+    const qs = deployLogsParams({ service, level, range, q })
+    return request('GET', `/api/projects/${id}/deploy/logs/${qs.size > 0 ? `?${qs}` : ''}`)
+  },
+  // Returns a Blob — downloads need the bearer header, so a plain <a href>
+  // can't be used; the caller turns the blob into an object URL and clicks it.
+  downloadDeployLogs: async (id, { service, level, range, q } = {}) => {
+    const qs = deployLogsParams({ service, level, range, q })
+    const token = await getToken()
+    const res = await fetch(
+      `${BASE_URL}/api/projects/${id}/deploy/logs/download/${qs.size > 0 ? `?${qs}` : ''}`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    )
+    if (!res.ok) throw new Error('Log download failed')
+    return res.blob()
+  },
   pauseDeploy: (id) => request('POST', `/api/projects/${id}/deploy/pause/`),
   resumeDeploy: (id) => request('POST', `/api/projects/${id}/deploy/resume/`),
   teardownDeploy: (id) => request('POST', `/api/projects/${id}/deploy/teardown/`),
+  recreateDeploy: (id) => request('POST', `/api/projects/${id}/deploy/recreate/`),
   retryBuild: (id) => request('POST', `/api/projects/${id}/deploy/retry-build/`),
 
   // GitHub

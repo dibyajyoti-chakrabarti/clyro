@@ -29,6 +29,10 @@ frontend/dist/
 # Misc
 .DS_Store
 *.log
+.playwright-mcp/
+
+# Celery beat's local schedule state (runtime artifact, not source)
+backend/celerybeat-schedule*
 
 # Terraform — provider cache and state (state lives in S3 remote backend)
 **/.terraform/

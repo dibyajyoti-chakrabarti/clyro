@@ -2,17 +2,29 @@ import { useEffect, useRef } from 'react'
 import Editor, { loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 import { configureMonacoYaml } from 'monaco-yaml'
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker'
-import YamlWorker from 'monaco-yaml/yaml.worker?worker'
+// Importing monaco-editor/monaco-yaml's worker entry points directly from their
+// package path with Vite's ?worker suffix breaks the worker's foreign-module RPC
+// registration (findDocumentSymbols/getFoldingRanges come back "Missing
+// requestHandler or method") — a documented Vite pitfall for both packages. The
+// fix is the indirection below: import each from a local wrapper file instead of
+// the package path directly.
+import EditorWorker from '../../monaco/editor.worker.js?worker'
+import YamlWorker from '../../monaco/yaml.worker.js?worker'
 
 // Wire the Monaco web workers for Vite. monaco-yaml runs the schema/diagnostics
 // language service in the 'yaml' worker; everything else uses the base editor
 // worker. This must be set before any editor mounts.
 if (!window.MonacoEnvironment) {
   window.MonacoEnvironment = {
-    getWorker(_workerId, label) {
-      if (label === 'yaml') return new YamlWorker()
-      return new EditorWorker()
+    getWorker(_moduleId, label) {
+      switch (label) {
+        case 'editorWorkerService':
+          return new EditorWorker()
+        case 'yaml':
+          return new YamlWorker()
+        default:
+          throw new Error(`Unknown Monaco worker label: ${label}`)
+      }
     },
   }
 }
@@ -102,6 +114,8 @@ export default function CfnEditor({ value, onChange, markers = [], readOnly = fa
         fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace",
         fontLigatures: true,
         lineNumbers: 'on',
+        links: false,
+        folding: false,
         scrollBeyondLastLine: false,
         automaticLayout: true,
         tabSize: 2,
