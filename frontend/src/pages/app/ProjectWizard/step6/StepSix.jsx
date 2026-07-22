@@ -4,6 +4,7 @@ import ConfirmDialog from '../../../../components/ui/ConfirmDialog'
 import { WizardCard } from '../../../../components/wizard/WizardPanel'
 import DeploymentSuccess from './DeploymentSuccess'
 import ProvisionLog from './ProvisionLog'
+import ProvisioningBackground from './ProvisioningBackground'
 import ReviewArchitecture from './ReviewArchitecture'
 import SecretsWrite from './SecretsWrite'
 
@@ -347,24 +348,31 @@ function StepSixPanel({ projectId, onBackToIac, onAdvanceToStepSeven }) {
 
   if (phase === 'provisioning') {
     return (
-      <div className='flex flex-1 flex-col overflow-y-auto p-8'>
-        <ProvisionLog
-          provisioningLog={provisioningLog}
-          deployStatus={deployStatus}
-          deployError={deployError}
-          deployCorrecting={deployCorrecting}
-          onRetry={handleProvision}
-          onRetryBuild={handleRetryBuild}
-          onBack={() => setPhase('review')}
-          onCancel={handleTeardown}
-          cancelLoading={infraActionLoading}
-          cancelError={infraActionError}
-          canRecreate={canRecreate}
-          onRecreate={handleRecreate}
-        />
-        {teardownDialog}
-        {recreateDialog}
-      </div>
+      <>
+        {/* Sibling of (not nested inside) the scrollable content wrapper below,
+            so its `absolute inset-0` resolves against the Step 6 section — the
+            entire right-side panel — rather than being clipped to this inner,
+            padded, overflow-y-auto wrapper. */}
+        <ProvisioningBackground />
+        <div className='relative z-10 flex flex-1 flex-col overflow-y-auto p-8'>
+          <ProvisionLog
+            provisioningLog={provisioningLog}
+            deployStatus={deployStatus}
+            deployError={deployError}
+            deployCorrecting={deployCorrecting}
+            onRetry={handleProvision}
+            onRetryBuild={handleRetryBuild}
+            onBack={() => setPhase('review')}
+            onCancel={handleTeardown}
+            cancelLoading={infraActionLoading}
+            cancelError={infraActionError}
+            canRecreate={canRecreate}
+            onRecreate={handleRecreate}
+          />
+          {teardownDialog}
+          {recreateDialog}
+        </div>
+      </>
     )
   }
 

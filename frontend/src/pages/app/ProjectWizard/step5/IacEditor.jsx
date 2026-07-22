@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Check, CheckCheck, ChevronDown, Copy, Database, FileCode2, Quote, RefreshCw, RotateCcw, Settings, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Check, CheckCheck, CheckCircle2, ChevronDown, Copy, Database, FileCode2, Quote, RefreshCw, RotateCcw, Settings, Sparkles, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Button from '../../../../components/ui/Button'
 import CfnEditor from '../../../../components/wizard/CfnEditor'
@@ -187,6 +187,35 @@ export default function IacEditor({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [refineHistory, refining])
 
+  // ── Validation success banner ───────────────────────────────────────────────
+  // Purely presentational: watches the existing validation result for the
+  // moment a Validate click resolves clean, and shows a transient strip.
+  // Does not affect validation logic, state, or the Continue gate.
+
+  const [bannerVisible, setBannerVisible] = useState(false)
+  const [bannerShown, setBannerShown] = useState(false)
+  const wasValidatingRef = useRef(false)
+
+  useEffect(() => {
+    const justFinished = wasValidatingRef.current && !validating
+    wasValidatingRef.current = validating
+    if (justFinished && isValid && blockers.length === 0) {
+      setBannerVisible(true)
+    }
+  }, [validating, isValid, blockers.length])
+
+  useEffect(() => {
+    if (!bannerVisible) return undefined
+    const raf = requestAnimationFrame(() => setBannerShown(true))
+    const hideTimer = setTimeout(() => setBannerShown(false), 4500)
+    const unmountTimer = setTimeout(() => setBannerVisible(false), 4900)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(hideTimer)
+      clearTimeout(unmountTimer)
+    }
+  }, [bannerVisible])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -299,6 +328,20 @@ export default function IacEditor({
                 )}
               </button>
             </div>
+
+            {/* Validation success strip — transient, presentational only */}
+            {bannerVisible && (
+              <div className='px-4 pt-3'>
+                <div
+                  className={`flex h-12 items-center gap-2.5 rounded-[10px] border border-emerald-400/25 bg-emerald-950/40 px-4 shadow-[0_0_24px_rgba(16,185,129,0.10)] transition-all duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] ${
+                    bannerShown ? 'translate-y-0 opacity-100' : '-translate-y-2.5 opacity-0'
+                  }`}
+                >
+                  <CheckCircle2 className='h-4 w-4 shrink-0 text-emerald-400' />
+                  <span className='text-sm font-medium text-white'>Template validated successfully. Infrastructure is ready for provisioning.</span>
+                </div>
+              </div>
+            )}
 
             {/* Monaco editor */}
             <div className='relative min-h-0 flex-1'>

@@ -298,30 +298,29 @@ function AwsConnectCard({
           <div style={{
             border: `1px solid ${GOLD_15}`,
             borderRadius: 20,
-            padding: '24px 28px',
+            padding: '28px 28px 24px',
             background: 'rgba(255, 255, 255, 0.015)',
           }}>
-            {/* "How it works" heading */}
-            <div style={{ fontSize: 13, fontWeight: 600, color: GOLD, marginBottom: 16 }}>
+            {/* Top section: heading + 3-step explainer */}
+            <div style={{ fontSize: 20, fontWeight: 700, color: GOLD, marginBottom: 40, textAlign: 'center' }}>
               How it works
             </div>
 
-            {/* Horizontal steps row */}
-            <div style={{ display: 'flex', gap: 24, marginBottom: 20, flexWrap: 'wrap' }}>
+            <div className='grid grid-cols-1 gap-8 sm:grid-cols-3 sm:gap-6'>
               {[
                 <>Wait for the stack status to show <strong style={{ color: '#fff' }}>CREATE_COMPLETE</strong> (≈30s)</>,
                 <>Click the <strong style={{ color: '#fff' }}>Outputs</strong> tab in the CloudFormation console</>,
                 <>Copy the value next to <strong style={{ color: '#fff' }}>RoleArn</strong> — it starts with <code style={{ fontSize: 11, background: WHITE_05, padding: '1px 4px', borderRadius: 3 }}>arn:aws:iam::</code></>,
               ].map((text, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flex: 1, minWidth: 220 }}>
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12 }}>
                   <div style={{
-                    width: 28,
-                    height: 28,
+                    width: 32,
+                    height: 32,
                     borderRadius: '50%',
                     background: GOLD_10,
                     border: '1px solid rgba(212, 160, 23, 0.4)',
                     color: GOLD,
-                    fontSize: 13,
+                    fontSize: 14,
                     fontWeight: 700,
                     display: 'flex',
                     alignItems: 'center',
@@ -330,20 +329,23 @@ function AwsConnectCard({
                   }}>
                     {i + 1}
                   </div>
-                  <span style={{ fontSize: 13, lineHeight: 1.5, color: 'rgba(255, 255, 255, 0.75)' }}>{text}</span>
+                  <span style={{ fontSize: 13, lineHeight: 1.6, color: 'rgba(255, 255, 255, 0.75)', maxWidth: 220 }}>{text}</span>
                 </div>
               ))}
             </div>
 
-            {/* Input + Verify row */}
-            <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+            {/* Open vertical spacing before the ARN input — no divider */}
+            <div style={{ height: 44 }} />
+
+            {/* Bottom section: Input + Verify row */}
+            <div className='flex flex-col gap-3 sm:flex-row sm:items-center'>
               <input
                 type='text'
                 placeholder='arn:aws:iam::123456789012:role/clyro-provisioning-…'
                 value={arnInput}
                 onChange={(e) => setArnInput(e.target.value)}
+                className='w-full sm:flex-1'
                 style={{
-                  flex: 1,
                   padding: '12px 16px',
                   background: WHITE_03,
                   border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -359,6 +361,7 @@ function AwsConnectCard({
               <button
                 disabled={!arnInput.trim() || verifying}
                 onClick={onVerify}
+                className='w-full sm:w-auto'
                 style={{
                   padding: '12px 24px',
                   borderRadius: 8,
@@ -371,6 +374,7 @@ function AwsConnectCard({
                   opacity: !arnInput.trim() || verifying ? 0.5 : 1,
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: 8,
                   whiteSpace: 'nowrap',
                 }}

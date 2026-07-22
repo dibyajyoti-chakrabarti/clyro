@@ -216,7 +216,7 @@ export default function ProjectWizard() {
           <section
             className={`box-border flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-[rgba(255,196,0,0.35)] shadow-[0_30px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,196,0,0.08),0_0_18px_rgba(255,196,0,0.06)] ${
               step === 4 || step === 5 ? 'p-0' : 'px-[64px] pb-[28px] pt-[28px]'
-            }`}
+            } ${step === 6 ? 'relative' : ''}`}
             style={{
               backgroundImage:
                 'radial-gradient(circle at 100% 0%, rgba(232,184,75,0.08), transparent 28%), radial-gradient(circle at 50% 0%, rgba(255,255,255,0.025), transparent 24%), linear-gradient(180deg,#0d0d0d,#070707)',
