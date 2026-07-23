@@ -21,7 +21,7 @@ env:
   # `terraform apply` (module.frontend_admin) — copy the id from
   # `terraform output frontend_admin_cloudfront_distribution_id` and paste it
   # here before the first run of this workflow.
-  CF_DISTRIBUTION_ID: REPLACE_AFTER_TERRAFORM_APPLY
+  CF_DISTRIBUTION_ID: EC6SJAL1KDQGC
   VITE_API_BASE_URL: https://api.clyro.cloud
 
 jobs:
