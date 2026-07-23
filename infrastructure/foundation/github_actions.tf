@@ -49,6 +49,8 @@ data "aws_iam_policy_document" "github_actions_frontend" {
     resources = [
       "arn:aws:s3:::${var.project}-${var.environment}-frontend",
       "arn:aws:s3:::${var.project}-${var.environment}-frontend/*",
+      "arn:aws:s3:::${var.project}-${var.environment}-frontend-admin",
+      "arn:aws:s3:::${var.project}-${var.environment}-frontend-admin/*",
     ]
   }
 

@@ -10,10 +10,10 @@ import {
   Trash2,
   Users,
 } from 'lucide-react'
-import Button from '../../components/ui/Button'
-import Input from '../../components/ui/Input'
-import { adminApi } from '../../api/admin'
-import clyroLogo from '../../assets/logos/Clyro_logo.png'
+import Button from '../components/ui/Button'
+import Input from '../components/ui/Input'
+import { adminApi } from '../api/admin'
+import clyroLogo from '../assets/Clyro_logo.png'
 
 function StatCard({ icon: Icon, label, value }) {
   return (
@@ -43,7 +43,7 @@ export default function AdminDashboard() {
 
   const bounceToLogin = useCallback(() => {
     adminApi.logout()
-    navigate('/admin/login', { replace: true })
+    navigate('/login', { replace: true })
   }, [navigate])
 
   const refresh = useCallback(async () => {
@@ -109,7 +109,7 @@ export default function AdminDashboard() {
 
   const handleLogout = () => {
     adminApi.logout()
-    navigate('/admin/login', { replace: true })
+    navigate('/login', { replace: true })
   }
 
   return (

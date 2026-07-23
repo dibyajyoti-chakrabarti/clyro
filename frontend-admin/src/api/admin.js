@@ -1,6 +1,6 @@
 // Admin panel API client. Uses its own HS256 token (issued by /api/admin/login/)
-// kept in sessionStorage — completely separate from the Cognito session the
-// main app runs on, so an admin login never touches user auth state.
+// kept in sessionStorage — a fully separate origin/app from the main Cognito-
+// backed frontend, so there is no user session to collide with here.
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const TOKEN_KEY = 'clyro_admin_token'
@@ -29,7 +29,7 @@ async function request(method, path, body) {
   if (res.status === 204) return null
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    // Expired/invalid token: drop it so the route guard bounces to /admin/login.
+    // Expired/invalid token: drop it so the route guard bounces to /login.
     if (res.status === 401 && token) clearAdminToken()
     throw Object.assign(new Error(data.error || data.detail || 'Request failed'), {
       status: res.status,

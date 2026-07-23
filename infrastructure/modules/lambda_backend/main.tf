@@ -35,7 +35,7 @@ resource "aws_lambda_function" "backend" {
       ENVIRONMENT          = "production"
       DEBUG                = "False"
       ALLOWED_HOSTS        = "api.${var.domain}"
-      CORS_ALLOWED_ORIGINS = "https://${var.domain},https://www.${var.domain}"
+      CORS_ALLOWED_ORIGINS = "https://${var.domain},https://www.${var.domain},https://admin.${var.domain}"
       COGNITO_REGION       = var.aws_region
       COGNITO_USER_POOL_ID = var.cognito_user_pool_id
       CLYRO_AWS_ACCOUNT_ID = var.account_id

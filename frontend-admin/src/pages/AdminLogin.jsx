@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { ShieldCheck } from 'lucide-react'
-import Button from '../../components/ui/Button'
-import Input from '../../components/ui/Input'
-import { adminApi, getAdminToken } from '../../api/admin'
-import clyroLogo from '../../assets/logos/Clyro_logo.png'
+import Button from '../components/ui/Button'
+import Input from '../components/ui/Input'
+import { adminApi, getAdminToken } from '../api/admin'
+import clyroLogo from '../assets/Clyro_logo.png'
 
 export default function AdminLogin() {
   const navigate = useNavigate()
@@ -14,7 +14,7 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false)
 
   if (getAdminToken()) {
-    return <Navigate to='/admin' replace />
+    return <Navigate to='/' replace />
   }
 
   const handleLogin = async (e) => {
@@ -23,7 +23,7 @@ export default function AdminLogin() {
     setError(null)
     try {
       await adminApi.login(username.trim(), password)
-      navigate('/admin', { replace: true })
+      navigate('/', { replace: true })
     } catch (err) {
       setError(err.message)
     } finally {

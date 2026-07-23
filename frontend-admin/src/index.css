@@ -1,0 +1,70 @@
+@import '@fontsource/geist';
+@import 'tailwindcss';
+
+@theme {
+  --color-background: #111318;
+  --color-surface: #1c1e26;
+  --color-border: #2c2e38;
+  --color-accent: #f97316;
+  --color-accent-soft: #431407;
+  --color-text-primary: #eeeef0;
+  --color-text-muted: #6b7080;
+  --color-success: #22c55e;
+  --color-danger: #ef4444;
+}
+
+:root {
+  font-family: 'Geist', Inter, system-ui, -apple-system, sans-serif;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+body {
+  margin: 0;
+  background-color: #040404;
+  color: #f5f5f5;
+}
+
+::selection {
+  background: rgba(249, 115, 22, 0.22);
+  color: #eeeef0;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2c2e38;
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3c3e4a;
+}
