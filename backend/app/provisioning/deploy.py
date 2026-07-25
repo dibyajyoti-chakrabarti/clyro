@@ -1203,7 +1203,7 @@ def destroy(project: Project) -> dict[str, Any]:
 # projects: this destroys every stateful resource and must never touch a stack
 # that has served traffic.
 
-_DELETE_TIMEOUT_SECONDS = 900
+_DELETE_TIMEOUT_SECONDS = 1200
 _DELETE_POLL_SECONDS = 12
 
 
