@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../../../../api'
 import AwsConnectCard from './AwsConnectCard'
 
@@ -21,12 +21,24 @@ export default function AwsSetup({ projectId, initialAccountType, initiallyConne
   // Fetch the CloudFormation console URL only when the user actually needs the
   // connect step and isn't already connected — avoids minting a spurious pending
   // connection on every mount once the account is connected.
+  //
+  // initRequested guards the request itself, not just the result: cfnConsoleUrl
+  // is still null while the call is in flight, so StrictMode's double mount (and
+  // any remount before the response lands) otherwise fires this twice. Each call
+  // used to mint its own external id, leaving the project with two pending
+  // connections — the link shown here from one, the later verify checking the
+  // other. The backend now serializes this too; this just stops the second
+  // request being made at all.
+  const initRequested = useRef(false)
   useEffect(() => {
-    if (!projectId || roleConnected || cfnConsoleUrl) return
+    if (!projectId || roleConnected || cfnConsoleUrl || initRequested.current) return
+    initRequested.current = true
     setUrlLoading(true)
     api.initAwsConnection(projectId)
       .then((data) => setCfnConsoleUrl(data.cfn_console_url))
-      .catch(() => {})
+      // Release the guard on failure so a remount can retry — a failed call
+      // created no connection, so retrying can't duplicate one.
+      .catch(() => { initRequested.current = false })
       .finally(() => setUrlLoading(false))
   }, [projectId, roleConnected, cfnConsoleUrl])
 
