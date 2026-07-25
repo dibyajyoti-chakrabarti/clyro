@@ -84,16 +84,16 @@ function EnvVarsPanel({
     : 'mt-7 divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/[0.07] bg-background shadow-[0_1px_2px_rgba(0,0,0,0.2)_inset]'
 
   return (
-    <WizardPanel className={isStep1 ? 'w-full self-stretch' : ''}>
-      <div className={isStep1 ? 'mx-auto flex w-[93%] max-w-none flex-col gap-10' : 'mx-auto flex w-full max-w-4xl flex-col gap-8'}>
+    <WizardPanel>
+      <div className={isStep1 ? 'mx-auto flex w-full max-w-5xl flex-col gap-9' : 'mx-auto flex w-full max-w-4xl flex-col gap-8'}>
         {isStep1 ? (
-          <div className='flex flex-col-reverse items-center gap-8 py-4 sm:flex-row sm:items-center sm:justify-between sm:py-8'>
+          <div className='flex flex-col-reverse items-center gap-7 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-6'>
             <div>
               <h1 className='leading-[1.05] tracking-tight text-text-primary'>
-                <span className='block text-6xl font-extrabold sm:text-7xl md:text-8xl'>Tell us your</span>
-                <span className='mt-3 block text-6xl font-extrabold text-amber-400 sm:text-7xl md:text-8xl'>secrets</span>
+                <span className='block text-5xl font-extrabold sm:text-6xl md:text-7xl'>Tell us your</span>
+                <span className='mt-2 block text-5xl font-extrabold text-amber-400 sm:text-6xl md:text-7xl'>secrets</span>
               </h1>
-              <p className='mt-7 max-w-sm text-sm leading-relaxed text-text-muted'>
+              <p className='mt-6 max-w-sm text-sm leading-relaxed text-text-muted'>
                 Share the sensitive details your app needs.
                 <br />
                 We store them securely and use them only when required.
@@ -102,7 +102,7 @@ function EnvVarsPanel({
             <img
               src={secretsIllustration}
               alt=''
-              className='w-[320px] shrink-0 object-contain sm:mr-4 sm:w-[440px]'
+              className='w-[260px] shrink-0 object-contain sm:mr-4 sm:w-[360px]'
             />
           </div>
         ) : (
