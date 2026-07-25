@@ -98,6 +98,26 @@ CELERY_BEAT_SCHEDULE = {
         "task": "app.tasks.run_reconcile_sweep_task",
         "schedule": 900.0,  # 15 minutes
     },
+    # Step 7 history: one HealthSnapshot per live project per minute
+    # (app.provisioning.monitoring) — powers uptime % and the 24h status strip.
+    "collect-health-snapshots": {
+        "task": "app.tasks.run_health_snapshot_task",
+        "schedule": 60.0,
+    },
+    # Step 7 logs: archive each live service's CloudWatch events into the
+    # stack's LogArchiveBucket in 5-minute JSONL slots (idempotent keys, so the
+    # cadence matching the slot size is safe).
+    "archive-service-logs": {
+        "task": "app.tasks.run_log_archive_task",
+        "schedule": 300.0,
+    },
+}
+
+# Production has no Redis (see the SQS note above), so the cache is deliberately
+# per-process LocMem — only used for short-TTL snapshots (the Step 7 health poll)
+# that absorb rapid re-polls/multiple tabs and don't need cross-process coherence.
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
 }
 
 AUTH_PASSWORD_VALIDATORS = [

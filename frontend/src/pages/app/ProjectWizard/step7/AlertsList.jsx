@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 
 function AlertsList({ alerts }) {
   return (
@@ -16,17 +16,24 @@ function AlertsList({ alerts }) {
             No active alerts — everything looks healthy.
           </p>
         ) : (
-          alerts.map((alert) => (
-            <div key={alert.id} className='rounded-lg border border-amber-500/30 border-l-4 border-l-amber-400 bg-surface p-3'>
-              <div className='flex items-start gap-2'>
-                <AlertTriangle className='mt-0.5 h-4 w-4 text-amber-300' />
-                <div>
-                  <p className='text-sm font-medium text-text-primary'>{alert.plain_message}</p>
-                  <p className='mt-1 text-xs text-text-muted'>{alert.fired_at}</p>
+          alerts.map((alert) => {
+            const critical = alert.severity === 'critical'
+            const Icon = critical ? XCircle : AlertTriangle
+            return (
+              <div
+                key={alert.id}
+                className={`rounded-lg border border-l-4 bg-surface p-3 ${critical ? 'border-red-500/30 border-l-red-400' : 'border-amber-500/30 border-l-amber-400'}`}
+              >
+                <div className='flex items-start gap-2'>
+                  <Icon className={`mt-0.5 h-4 w-4 ${critical ? 'text-red-400' : 'text-amber-300'}`} />
+                  <div>
+                    <p className='text-sm font-medium text-text-primary'>{alert.plain_message}</p>
+                    <p className='mt-1 text-xs text-text-muted'>{alert.fired_at}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     </div>

@@ -1,6 +1,8 @@
 import logging
 import uuid
 from django.conf import settings
+from django.core.cache import cache
+from django.http import HttpResponse
 from django.utils import timezone
 from botocore.exceptions import ClientError
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -15,6 +17,7 @@ from .aws_client import assume_role, get_account_id, get_account_plan_type, writ
 from .cfn_bootstrap import generate_cfn_console_url
 from . import iac
 from . import deploy
+from . import monitoring
 
 _AUTH = [CognitoAuthentication]
 _PERMS = [IsAuthenticated]
@@ -500,6 +503,12 @@ def deploy_status(request, pk):
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+# Each health snapshot costs an AssumeRole plus several live AWS calls — cache it
+# briefly so multiple open tabs (or rapid re-polls) share one snapshot. Ownership
+# is enforced per-request before the cache is read, so there's no cross-user leak.
+_HEALTH_CACHE_SECONDS = 15
+
+
 @api_view(['GET'])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)
@@ -507,10 +516,81 @@ def deploy_health(request, pk):
     project, err = _get_project_or_404(request, pk)
     if err:
         return err
+    cache_key = f'deploy-health:{pk}'
+    data = cache.get(cache_key)
+    if data is None:
+        try:
+            data = deploy.health(project)
+        except deploy.DeployError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        cache.set(cache_key, data, _HEALTH_CACHE_SECONDS)
+    return Response(data)
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_history(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    return Response(monitoring.history(project))
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_alarms(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
     try:
-        return Response(deploy.health(project))
+        return Response(deploy.alarms(project))
     except deploy.DeployError as exc:
         return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_logs(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    service = request.query_params.get('service') or None
+    level = 'error' if request.query_params.get('level') == 'error' else 'all'
+    log_range = request.query_params.get('range')
+    if log_range not in deploy.LOG_RANGES:
+        log_range = '1h'
+    query = (request.query_params.get('q') or '').strip()[:200] or None
+    try:
+        return Response(deploy.logs(project, service=service, level=level,
+                                    log_range=log_range, query=query))
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def deploy_logs_download(request, pk):
+    project, err = _get_project_or_404(request, pk)
+    if err:
+        return err
+    service = request.query_params.get('service') or None
+    level = 'error' if request.query_params.get('level') == 'error' else 'all'
+    log_range = request.query_params.get('range')
+    if log_range not in deploy.LOG_RANGES:
+        log_range = '1h'
+    query = (request.query_params.get('q') or '').strip()[:200] or None
+    try:
+        result = deploy.export_logs(project, service=service, level=level,
+                                    log_range=log_range, query=query)
+    except deploy.DeployError as exc:
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+    response = HttpResponse(result['text'], content_type='text/plain; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="{result["filename"]}"'
+    return response
 
 
 @api_view(['POST'])

@@ -2,6 +2,13 @@ from django.urls import path
 
 from core.views import health_check
 
+from .admin_api import (
+    admin_login,
+    admin_me,
+    admin_overview,
+    admin_whitelist,
+    admin_whitelist_detail,
+)
 from .canvas.views import (
     canvas_agent,
     canvas_chat,
@@ -39,6 +46,10 @@ from .provisioning.views import (
     deploy_start,
     deploy_status,
     deploy_health,
+    deploy_history,
+    deploy_alarms,
+    deploy_logs,
+    deploy_logs_download,
     deploy_pause,
     deploy_resume,
     deploy_teardown,
@@ -77,11 +88,20 @@ urlpatterns = [
     path('projects/<uuid:pk>/deploy/', deploy_start),
     path('projects/<uuid:pk>/deploy/status/', deploy_status),
     path('projects/<uuid:pk>/deploy/health/', deploy_health),
+    path('projects/<uuid:pk>/deploy/history/', deploy_history),
+    path('projects/<uuid:pk>/deploy/alarms/', deploy_alarms),
+    path('projects/<uuid:pk>/deploy/logs/', deploy_logs),
+    path('projects/<uuid:pk>/deploy/logs/download/', deploy_logs_download),
     path('projects/<uuid:pk>/deploy/pause/', deploy_pause),
     path('projects/<uuid:pk>/deploy/resume/', deploy_resume),
     path('projects/<uuid:pk>/deploy/teardown/', deploy_teardown),
     path('projects/<uuid:pk>/deploy/recreate/', deploy_recreate),
     path('projects/<uuid:pk>/deploy/retry-build/', deploy_retry_build),
+    path('admin/login/', admin_login),
+    path('admin/me/', admin_me),
+    path('admin/overview/', admin_overview),
+    path('admin/whitelist/', admin_whitelist),
+    path('admin/whitelist/<uuid:pk>/', admin_whitelist_detail),
     path('github/installations/', github_installations),
     path('github/repos/', github_repos),
     path('github/branches/', github_branches),

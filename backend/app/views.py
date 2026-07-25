@@ -4,7 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
-from core.models import AgentJob, AWSAccountConnection, Deployment, GitHubInstallation, IntentRecord, Project, ScanResult
+from core.models import AgentJob, AWSAccountConnection, Deployment, EnvVarKey, GitHubInstallation, IntentRecord, Project, ScanResult, WhitelistedEmail
 from core.serializers import (
     GitHubInstallationSerializer, IntentRecordSerializer,
     ProjectSerializer, ScanResultSerializer, UserProfileSerializer,
@@ -34,6 +34,15 @@ def projects_list(request):
         qs = Project.objects.filter(user=request.user).order_by('-created_at')
         return Response(ProjectSerializer(qs, many=True).data)
 
+    if not WhitelistedEmail.allows(request.user.email):
+        return Response(
+            {
+                'error': 'Your email is not authorized to create projects yet. Contact the Clyro team for access.',
+                'code': 'not_whitelisted',
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     name = request.data.get('name', '').strip()
     if not name:
         return Response({'error': 'name is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -55,33 +64,42 @@ def project_detail(request, pk):
         return Response(ProjectSerializer(project).data)
 
     if request.method == 'DELETE':
-        # A deployment that has ever left PENDING may have real AWS resources —
-        # tear those down before the DB row disappears, so we never orphan a
-        # live stack with nothing left in Clyro to manage it. deploy.teardown()
-        # itself only kicks off stack deletion (poll() picks up completion), so
-        # the row isn't removed yet -- the client retries the delete once
-        # teardown has actually finished (mirrors the existing pause/resume/
-        # teardown polling convention used by the provisioning UI).
-        deployment = (Deployment.objects.filter(project=project)
-                      .exclude(status=Deployment.Status.DELETED)
-                      .order_by('-created_at').first())
-        if deployment and deployment.status != Deployment.Status.PENDING:
-            try:
-                deploy.teardown(project)
-            except deploy.DeployError as exc:
-                if 'no provisioned infrastructure' not in str(exc).lower():
-                    return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
-            else:
-                return Response(
-                    {'status': 'tearing_down',
-                     'detail': 'Infrastructure teardown started — delete again once it finishes.'},
-                    status=status.HTTP_202_ACCEPTED)
-        # Deployment.canvas_version/intent_record/aws_connection are PROTECT
-        # (so a live Deployment can't have its CanvasVersion/IntentRecord/
-        # AWSAccountConnection pulled out from under it) -- but PROTECT still
-        # blocks Project.delete()'s cascade to those same rows even though the
-        # protecting Deployment is *also* being cascade-deleted here. Delete
-        # deployments first so nothing is left protecting them.
+        # Idempotent: a second click / post-refresh retry re-attaches to the
+        # in-flight delete job instead of spawning a competing purge.
+        existing = AgentJob.objects.filter(
+            project=project, kind=AgentJob.Kind.DELETE,
+            status__in=[AgentJob.Status.PENDING, AgentJob.Status.RUNNING],
+        ).order_by('-created_at').first()
+        if existing:
+            return Response({'job_id': str(existing.id)}, status=status.HTTP_202_ACCEPTED)
+
+        # Anything real in the user's AWS account (a submitted stack, secrets
+        # Clyro wrote, or the ClyroBootstrap connector stack behind a verified
+        # connection) must be purged before the rows disappear — otherwise
+        # nothing is left in Clyro that can ever manage it. That purge is
+        # CFN-async and slow, so it runs as an AgentJob the client polls; the
+        # job (and every other row) is gone on success, so the poll ending in
+        # 404 is the completion signal.
+        has_aws_resources = (
+            Deployment.objects.filter(project=project)
+            .exclude(status__in=[Deployment.Status.PENDING, Deployment.Status.DELETED])
+            .exists()
+            or EnvVarKey.objects.filter(project=project, secrets_manager_arn__isnull=False).exists()
+            or AWSAccountConnection.objects.filter(project=project, connected_at__isnull=False).exists()
+        )
+        if has_aws_resources:
+            project.status = Project.Status.DELETING
+            project.save(update_fields=['status', 'updated_at'])
+            job = AgentJob.objects.create(project=project, kind=AgentJob.Kind.DELETE)
+            tasks.run_delete_project_task.delay(str(job.id), str(project.id))
+            return Response({'job_id': str(job.id)}, status=status.HTTP_202_ACCEPTED)
+
+        # Nothing in AWS — pure DB delete, synchronous. Deployment.canvas_version/
+        # intent_record/aws_connection are PROTECT (so a live Deployment can't have
+        # its CanvasVersion/IntentRecord/AWSAccountConnection pulled out from under
+        # it) -- but PROTECT still blocks Project.delete()'s cascade to those same
+        # rows even though the protecting Deployment is *also* being cascade-deleted
+        # here. Delete deployments first so nothing is left protecting them.
         project.deployments.all().delete()
         project.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

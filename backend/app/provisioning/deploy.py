@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from datetime import timedelta
 from typing import Any
 
 from botocore.exceptions import ClientError
@@ -20,9 +21,13 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from core.models import Deployment, DeploymentStackOutput, IntentRecord, Project, ProvisioningLogEntry
+from core.models import (
+    AWSAccountConnection, Deployment, DeploymentStackOutput, EnvVarKey,
+    IntentRecord, Project, ProvisioningLogEntry,
+)
 
 from . import aws_client, cfn_events, runtime_probe
+from .cfn_bootstrap import bootstrap_stack_name
 
 log = logging.getLogger(__name__)
 
@@ -477,15 +482,19 @@ def _service_is_serving(creds: dict, region: str, cluster: str, service: str,
     return True, ""
 
 
-def _stack_ecs_services(creds: dict, region: str, stack_name: str) -> list[tuple[str, str]]:
+def _ecs_services_from_resources(resources: list[dict]) -> list[tuple[str, str]]:
     services = []
-    for resource in aws_client.list_stack_resources(creds, region, stack_name):
+    for resource in resources:
         if resource["resource_type"] != "AWS::ECS::Service" or not resource["physical_id"]:
             continue
         parsed = aws_client.parse_ecs_service_arn(resource["physical_id"])
         if parsed:
             services.append(parsed)
     return services
+
+
+def _stack_ecs_services(creds: dict, region: str, stack_name: str) -> list[tuple[str, str]]:
+    return _ecs_services_from_resources(aws_client.list_stack_resources(creds, region, stack_name))
 
 
 def _lb_dimension_value(lb_arn: str) -> str | None:
@@ -510,13 +519,14 @@ def health(project: Project) -> dict[str, Any]:
     stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
 
     try:
-        services = _stack_ecs_services(creds, region, stack_name)
         resources = aws_client.list_stack_resources(creds, region, stack_name)
+        stack_info = aws_client.describe_stack(creds, region, stack_name)
     except ClientError:
-        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": []}
+        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "series": {}, "alerts": [], "warnings": []}
 
+    services = _ecs_services_from_resources(resources)
     if not services:
-        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "alerts": []}
+        return {"stack_status": "not_found", "health_items": [], "metrics": {}, "series": {}, "alerts": [], "warnings": []}
 
     lb_arn = next(
         (r["physical_id"] for r in resources
@@ -525,7 +535,8 @@ def health(project: Project) -> dict[str, Any]:
     )
 
     health_items: list[dict[str, Any]] = []
-    alerts: list[str] = []
+    alerts: list[dict[str, str]] = []
+    fired_at = timezone.now().isoformat()  # observation time — the poll noticed it now
     serving: tuple[str, str] | None = None  # (cluster, service) with a load balancer attached
 
     for cluster, service in services:
@@ -538,7 +549,11 @@ def health(project: Project) -> dict[str, Any]:
             "running": running, "desired": desired, "state": state,
         })
         if desired > 0 and running < desired:
-            alerts.append(f"{service}: {running}/{desired} tasks running")
+            alerts.append({
+                "message": f"{service}: {running}/{desired} tasks running",
+                "severity": "warning",
+                "fired_at": fired_at,
+            })
 
         for lb in detail.get("loadBalancers") or []:
             target_group_arn = lb.get("targetGroupArn")
@@ -548,35 +563,254 @@ def health(project: Project) -> dict[str, Any]:
             targets = aws_client.describe_target_health(creds, region, target_group_arn)
             unhealthy = [t for t in targets if t["state"] != "healthy"]
             if unhealthy:
-                alerts.append(f"{service}: {len(unhealthy)} unhealthy load balancer target(s)")
+                alerts.append({
+                    "message": f"{service}: {len(unhealthy)} unhealthy load balancer target(s)",
+                    "severity": "critical",
+                    "fired_at": fired_at,
+                })
 
     metrics = {"response_time_ms": None, "request_rate": None, "error_rate": None, "cpu_percent": None}
+    series: dict[str, list[dict]] = {key: [] for key in metrics}
+    warnings: list[str] = []
     lb_dimension = _lb_dimension_value(lb_arn) if lb_arn else None
+    queries: dict[str, tuple] = {}
     if lb_dimension:
         dims = [{"Name": "LoadBalancer", "Value": lb_dimension}]
-        response_time = aws_client.get_cloudwatch_metric(
-            creds, region, "AWS/ApplicationELB", "TargetResponseTime", dims, stat="Average")
-        metrics["response_time_ms"] = round(response_time * 1000, 1) if response_time is not None else None
-        request_count = aws_client.get_cloudwatch_metric(
-            creds, region, "AWS/ApplicationELB", "RequestCount", dims, stat="Sum")
-        metrics["request_rate"] = round(request_count / 5, 2) if request_count is not None else None
-        error_count = aws_client.get_cloudwatch_metric(
-            creds, region, "AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", dims, stat="Sum")
-        if error_count is not None and request_count:
-            metrics["error_rate"] = round(100 * error_count / request_count, 2)
-        elif error_count is not None:
-            metrics["error_rate"] = 0.0
-
+        queries["response_time"] = ("AWS/ApplicationELB", "TargetResponseTime", dims, "Average")
+        queries["requests"] = ("AWS/ApplicationELB", "RequestCount", dims, "Sum")
+        queries["errors_5xx"] = ("AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", dims, "Sum")
     if serving:
         cluster, service = serving
-        cpu = aws_client.get_cloudwatch_metric(
-            creds, region, "AWS/ECS", "CPUUtilization", [
-                {"Name": "ClusterName", "Value": cluster},
-                {"Name": "ServiceName", "Value": service},
-            ], stat="Average")
-        metrics["cpu_percent"] = round(cpu, 1) if cpu is not None else None
+        queries["cpu"] = ("AWS/ECS", "CPUUtilization", [
+            {"Name": "ClusterName", "Value": cluster},
+            {"Name": "ServiceName", "Value": service},
+        ], "Average")
 
-    return {"stack_status": "ok", "health_items": health_items, "metrics": metrics, "alerts": alerts}
+    if queries:
+        try:
+            raw = aws_client.get_cloudwatch_metric_series(creds, region, queries)
+        except aws_client.AwsAccessDenied:
+            raw = {}
+            warnings.append(
+                "Metrics are unavailable: your AWS role is missing cloudwatch:GetMetricData. "
+                "Update your Clyro bootstrap stack to restore metrics.")
+        series["response_time_ms"] = [
+            {"t": p["t"], "v": round(p["v"] * 1000, 1)} for p in raw.get("response_time", [])]
+        series["request_rate"] = [
+            {"t": p["t"], "v": round(p["v"] / 5, 2)} for p in raw.get("requests", [])]
+        requests_by_t = {p["t"]: p["v"] for p in raw.get("requests", [])}
+        series["error_rate"] = [
+            {"t": p["t"],
+             "v": round(100 * p["v"] / requests_by_t[p["t"]], 2) if requests_by_t.get(p["t"]) else 0.0}
+            for p in raw.get("errors_5xx", [])]
+        series["cpu_percent"] = [
+            {"t": p["t"], "v": round(p["v"], 1)} for p in raw.get("cpu", [])]
+        for key, points in series.items():
+            metrics[key] = points[-1]["v"] if points else None
+
+    return {
+        "stack_status": "ok",
+        "health_items": health_items,
+        "metrics": metrics,
+        "series": series,
+        "alerts": alerts,
+        "warnings": warnings,
+        "stack": {
+            "name": stack_info["stack_name"] or stack_name,
+            "status": stack_info["status"],
+            "last_updated": stack_info["last_updated_time"],
+        },
+    }
+
+
+_LOG_EVENT_LIMIT = 50
+_LOG_LOOKBACK_MINUTES = 60
+# CloudWatch filter syntax: '?' terms OR together — any common error marker matches.
+_LOG_ERROR_PATTERN = "?ERROR ?Error ?CRITICAL ?FATAL ?Exception ?Traceback"
+_LOG_ERROR_MARKERS = ("ERROR", "Error", "CRITICAL", "FATAL", "Exception", "Traceback")
+# Granularity options for the logs panel: the last hour is read live from
+# CloudWatch; anything longer comes from the stack's S3 log archive (value =
+# lookback hours), written by monitoring.archive_logs.
+LOG_RANGES = {"1h": None, "6h": 6, "24h": 24, "7d": 168}
+_ARCHIVE_EVENT_LIMIT = 200
+
+
+def logs(project: Project, service: str | None = None, level: str = "all",
+         log_range: str = "1h", query: str | None = None,
+         limit: int | None = None, max_objects: int | None = None) -> dict[str, Any]:
+    """Recent application log events for one ECS service in the live stack.
+    Log groups are read from the service's task definition (not guessed from
+    naming — the template is LLM-authored, so group names vary). ``query``
+    filters by substring (a quoted CloudWatch filter pattern on the live path,
+    a Python filter on the archive path). Same ``stack_status: "not_found"``
+    semantics as ``health()``."""
+    deployment = _active_deployment(project)
+    if deployment is None:
+        raise DeployError("No provisioned infrastructure to read logs from.")
+
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+
+    not_found = {"stack_status": "not_found", "service": None, "services": [],
+                 "level": level, "range": log_range, "query": query, "source": None,
+                 "truncated": False, "events": [], "warnings": []}
+    try:
+        resources = aws_client.list_stack_resources(creds, region, stack_name)
+    except ClientError:
+        return not_found
+    services = _ecs_services_from_resources(resources)
+    if not services:
+        return not_found
+
+    names = [svc for _, svc in services]
+    requested = service if service in names else names[0]
+    cluster = next(c for c, svc in services if svc == requested)
+
+    warnings: list[str] = []
+    hours = LOG_RANGES.get(log_range)
+    if hours:
+        # Lazy import: monitoring imports this module at load time.
+        from . import monitoring
+
+        bucket = next(
+            (r["physical_id"] for r in resources
+             if r["logical_id"] == "LogArchiveBucket" and r["physical_id"]),
+            None,
+        )
+        events: list[dict] = []
+        truncated = False
+        if not bucket:
+            warnings.append(
+                "This stack has no log archive bucket — ranges beyond the last "
+                "hour become available after the next re-provision.")
+        else:
+            try:
+                events, truncated = monitoring.read_archived_events(
+                    creds, region, bucket, requested, hours,
+                    level=level, query=query, limit=limit or _ARCHIVE_EVENT_LIMIT,
+                    max_objects=max_objects)
+            except aws_client.AwsAccessDenied as exc:
+                warnings.append(
+                    f"Archived logs are unavailable: your AWS role is missing {exc}. "
+                    "Update your Clyro bootstrap stack.")
+        return {"stack_status": "ok", "service": requested, "services": names,
+                "level": level, "range": log_range, "query": query, "source": "archive",
+                "truncated": truncated, "events": events, "warnings": warnings}
+
+    detail = aws_client.describe_ecs_service(creds, region, cluster, requested)
+    task_definition = detail.get("taskDefinition")
+    groups = (
+        aws_client.task_definition_log_groups(creds, region, task_definition)
+        if task_definition else []
+    )
+
+    start_ms = int((timezone.now() - timedelta(minutes=_LOG_LOOKBACK_MINUTES)).timestamp() * 1000)
+    # A quoted CloudWatch pattern matches a substring; it can't be combined with
+    # the OR-of-error-markers pattern, so with a query the level filter runs in
+    # Python on the fetched events instead.
+    if query:
+        pattern = f'"{query.replace(chr(34), "")}"'
+    elif level == "error":
+        pattern = _LOG_ERROR_PATTERN
+    else:
+        pattern = None
+    event_limit = limit or _LOG_EVENT_LIMIT
+    events = []
+    for group in groups:
+        try:
+            events.extend(aws_client.filter_log_events(
+                creds, region, group, start_ms,
+                filter_pattern=pattern, limit=event_limit,
+                max_pages=max(3, event_limit // 200 + 1)))
+        except aws_client.AwsAccessDenied:
+            warnings.append(
+                "Logs are unavailable: your AWS role is missing logs:FilterLogEvents. "
+                "Update your Clyro bootstrap stack to enable the logs panel.")
+            break
+
+    if query and level == "error":
+        events = [e for e in events
+                  if any(m in (e.get("message") or "") for m in _LOG_ERROR_MARKERS)]
+    events.sort(key=lambda e: e["timestamp"] or 0)
+    return {"stack_status": "ok", "service": requested, "services": names,
+            "level": level, "range": log_range, "query": query, "source": "cloudwatch",
+            "truncated": False, "events": events[-event_limit:], "warnings": warnings}
+
+
+def alarms(project: Project) -> dict[str, Any]:
+    """Real CloudWatch alarm states + 30-day history + the alert topic's email
+    subscription status for the stack. Alarm/topic names come from the stack's
+    own resources (not name-prefix guessing), so LLM-refined templates work
+    too. ``configured`` is False for stacks provisioned before the alarm set
+    existed — the UI turns that into a re-provision hint."""
+    deployment = _active_deployment(project)
+    if deployment is None:
+        raise DeployError("No provisioned infrastructure to check alarms for.")
+
+    creds, region = _assume(deployment)
+    stack_name = deployment.cloudformation_stack_name or _stack_name(deployment)
+    try:
+        resources = aws_client.list_stack_resources(creds, region, stack_name)
+    except ClientError:
+        return {"stack_status": "not_found", "configured": False, "alarms": [],
+                "history": [], "subscription": None, "warnings": []}
+
+    alarm_names = [r["physical_id"] for r in resources
+                   if r["resource_type"] == "AWS::CloudWatch::Alarm" and r["physical_id"]]
+    topic_arn = next(
+        (r["physical_id"] for r in resources
+         if r["resource_type"] == "AWS::SNS::Topic" and r["physical_id"]),
+        None,
+    )
+
+    warnings: list[str] = []
+    alarm_states: list[dict] = []
+    history: list[dict] = []
+    try:
+        alarm_states = aws_client.describe_alarms(creds, region, alarm_names)
+        history = aws_client.describe_alarm_history(creds, region, alarm_names)
+    except aws_client.AwsAccessDenied as exc:
+        warnings.append(
+            f"Alarm status is unavailable: your AWS role is missing {exc}. "
+            "Update your Clyro bootstrap stack.")
+
+    subscription = None
+    if topic_arn:
+        try:
+            subscription = aws_client.topic_subscription_status(creds, region, topic_arn)
+        except aws_client.AwsAccessDenied as exc:
+            warnings.append(
+                f"Email subscription status is unavailable: your AWS role is missing {exc}. "
+                "Update your Clyro bootstrap stack.")
+
+    return {"stack_status": "ok", "configured": bool(alarm_names),
+            "alarms": alarm_states, "history": history,
+            "subscription": subscription, "warnings": warnings}
+
+
+_EXPORT_EVENT_LIMIT = 50_000
+_EXPORT_MAX_OBJECTS = 2500  # > 2016, so a full 7 days of 5-minute slots fits
+
+
+def export_logs(project: Project, service: str | None = None, level: str = "all",
+                log_range: str = "1h", query: str | None = None) -> dict[str, Any]:
+    """The same events the logs panel shows, with download-sized caps, as plain
+    text lines ``iso-timestamp<TAB>stream<TAB>message``. Returns
+    ``{filename, text}``; a truncation notice becomes the file's first line."""
+    from datetime import datetime, timezone as utc_tz
+
+    data = logs(project, service=service, level=level, log_range=log_range,
+                query=query, limit=_EXPORT_EVENT_LIMIT, max_objects=_EXPORT_MAX_OBJECTS)
+    lines = []
+    if data.get("stack_status") == "not_found":
+        lines.append("# stack not found — no logs available")
+    if data.get("truncated"):
+        lines.append("# truncated: only the most recent events in this range are included")
+    for event in data.get("events") or []:
+        stamp = datetime.fromtimestamp((event.get("timestamp") or 0) / 1000, tz=utc_tz.utc).isoformat()
+        lines.append(f"{stamp}\t{event.get('stream', '')}\t{event.get('message', '')}")
+    filename = f"{data.get('service') or 'logs'}-{log_range}.txt"
+    return {"filename": filename, "text": "\n".join(lines) + "\n"}
 
 
 def scale_services_to_spec(project: Project) -> dict[str, Any]:
@@ -895,6 +1129,66 @@ def teardown(project: Project) -> dict[str, Any]:
     deployment.status = Deployment.Status.DELETING
     deployment.save(update_fields=["status", "updated_at"])
     return {"status": deployment.status}
+
+
+# ── Full AWS purge (project delete) ──────────────────────────────────────────
+
+def destroy(project: Project) -> dict[str, Any]:
+    """Everything project deletion must remove from the user's AWS account, in
+    dependency order: the app stack (waited on — CFN delete is async), then the
+    Secrets Manager secrets Clyro wrote directly (not stack resources, so
+    teardown alone orphans them), then the ClyroBootstrap connector stack.
+    The connector's IAM role is the credential every one of these calls runs
+    on, so its stack must go last — nothing is reachable after it.
+
+    A DeployError from teardown/_wait propagates: a stack that refuses to
+    delete must fail the delete job loudly rather than silently orphan a
+    running (billing) stack. An already-dead connection is the one exception —
+    there's nothing left we *can* reach, so purge is a no-op."""
+    deployment = _active_deployment(project)
+    if deployment is not None and deployment.status != Deployment.Status.DELETED:
+        try:
+            if deployment.status != Deployment.Status.DELETING:
+                teardown(project)
+                deployment.refresh_from_db()
+            _wait_stack_deleted(deployment)
+        except DeployError as exc:
+            if "no longer valid" not in str(exc):
+                raise
+            return {"purged": False, "reason": "aws_connection_dead"}
+        deployment.status = Deployment.Status.DELETED
+        deployment.save(update_fields=["status", "updated_at"])
+
+    conn = (AWSAccountConnection.objects
+            .filter(project=project, connected_at__isnull=False)
+            .order_by("-connected_at").first())
+    if conn is None:
+        return {"purged": False, "reason": "never_connected"}
+    try:
+        creds = aws_client.assume_role(
+            conn.iam_role_arn, conn.bootstrap_stack_id, session_name=f"Clyro-{project.pk}"
+        )
+    except ClientError:
+        return {"purged": False, "reason": "aws_connection_dead"}
+    region = conn.aws_region or "us-east-1"
+
+    # Best-effort per secret: one already-deleted secret must not strand the rest.
+    for var in EnvVarKey.objects.filter(project=project, secrets_manager_arn__isnull=False):
+        try:
+            aws_client.delete_secret(creds, region, var.secrets_manager_arn)
+        except ClientError:
+            log.warning("destroy: could not delete secret %s for project %s",
+                        var.secrets_manager_arn, project.pk)
+
+    # Best-effort: CFN deletes the role mid-delete, which can invalidate the very
+    # session driving the delete — a DELETE_FAILED connector stack holds only the
+    # IAM role and is trivially removed from the user's console.
+    try:
+        aws_client.delete_stack(creds, region, bootstrap_stack_name(project.name))
+    except ClientError:
+        log.warning("destroy: could not delete bootstrap stack for project %s", project.pk)
+
+    return {"purged": True}
 
 
 # ── Rebuild from scratch (user-confirmed) ────────────────────────────────────

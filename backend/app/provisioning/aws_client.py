@@ -6,6 +6,14 @@ from django.conf import settings
 
 log = logging.getLogger(__name__)
 
+_ACCESS_DENIED_CODES = ('AccessDenied', 'AccessDeniedException', 'UnauthorizedOperation')
+
+
+class AwsAccessDenied(Exception):
+    """The assumed customer role lacks an IAM action (bootstrap stacks created
+    before that grant existed) — callers surface this as a user-facing warning
+    instead of degrading silently."""
+
 
 def _get_clyro_session():
     # In production (DEBUG=False) the compute's attached IAM role provides
@@ -96,6 +104,20 @@ def write_secret(credentials: dict, region: str, secret_name: str, secret_value:
         raise
 
 
+def delete_secret(credentials: dict, region: str, secret_arn: str) -> None:
+    """Permanently delete a Clyro-written secret (project delete). Without
+    ForceDeleteWithoutRecovery the secret lingers ~30 days in a recovery window
+    and blocks a same-named secret if the user recreates the project."""
+    sm = boto3.client(
+        'secretsmanager',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+    sm.delete_secret(SecretId=secret_arn, ForceDeleteWithoutRecovery=True)
+
+
 # ── CloudFormation (Step 4.5 provisioning) ─────────────────────────────────────
 
 def _cfn_client(credentials: dict, region: str):
@@ -168,8 +190,9 @@ def find_stack(credentials: dict, region: str, stack_name: str) -> str | None:
 
 
 def describe_stack(credentials: dict, region: str, stack_name: str) -> dict:
-    """Return ``{status, reason, outputs}`` for a stack. ``outputs`` is a list of
-    ``{output_key, output_value, description}``."""
+    """Return ``{stack_name, status, reason, last_updated_time, outputs}`` for a
+    stack. ``outputs`` is a list of ``{output_key, output_value, description}``;
+    ``last_updated_time`` is an ISO string (CreationTime for never-updated stacks)."""
     cfn = _cfn_client(credentials, region)
     response = cfn.describe_stacks(StackName=stack_name)
     stack = response['Stacks'][0]
@@ -181,9 +204,12 @@ def describe_stack(credentials: dict, region: str, stack_name: str) -> dict:
         }
         for o in stack.get('Outputs', [])
     ]
+    last_updated = stack.get('LastUpdatedTime') or stack.get('CreationTime')
     return {
+        'stack_name': stack.get('StackName'),
         'status': stack['StackStatus'],
         'reason': stack.get('StackStatusReason'),
+        'last_updated_time': last_updated.isoformat() if last_updated else None,
         'outputs': outputs,
     }
 
@@ -434,6 +460,40 @@ def start_codebuild(credentials: dict, region: str, project_name: str, source_lo
     return response['build']['id']
 
 
+def list_s3_keys(credentials: dict, region: str, bucket: str, prefix: str,
+                 max_keys: int = 5000) -> list[str]:
+    """Every object key under ``prefix``, lexicographically ascending (which for
+    the log archive's time-encoded keys means chronological). Returns [] for a
+    missing bucket; raises AwsAccessDenied when the role lacks s3:ListBucket."""
+    s3 = _s3_client(credentials, region)
+    keys: list[str] = []
+    try:
+        paginator = s3.get_paginator('list_objects_v2')
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            keys.extend(obj['Key'] for obj in page.get('Contents', []))
+            if len(keys) >= max_keys:
+                break
+    except ClientError as exc:
+        code = exc.response.get('Error', {}).get('Code', '')
+        if code in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('s3:ListBucket') from exc
+        return []
+    return keys[:max_keys]
+
+
+def get_s3_object(credentials: dict, region: str, bucket: str, key: str) -> bytes:
+    """One object's body, or b'' if the key vanished between list and get.
+    Raises AwsAccessDenied when the role lacks s3:GetObject."""
+    s3 = _s3_client(credentials, region)
+    try:
+        return s3.get_object(Bucket=bucket, Key=key)['Body'].read()
+    except ClientError as exc:
+        code = exc.response.get('Error', {}).get('Code', '')
+        if code in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('s3:GetObject') from exc
+        return b''
+
+
 def empty_s3_bucket(credentials: dict, region: str, bucket: str) -> None:
     """Delete every object (and, for a versioned bucket, every version and
     delete marker) in a bucket the stack is about to delete. CloudFormation
@@ -642,6 +702,45 @@ def tail_log_group(credentials: dict, region: str, log_group: str, limit: int = 
     return [e.get('message', '').rstrip() for e in events]
 
 
+def filter_log_events(credentials: dict, region: str, log_group: str, start_time_ms: int,
+                      end_time_ms: int | None = None, filter_pattern: str | None = None,
+                      limit: int = 50, max_pages: int = 3) -> list[dict]:
+    """The last ``limit`` events across ALL streams of a log group since
+    ``start_time_ms`` (epoch ms, optionally bounded by ``end_time_ms`` — the log
+    archiver uses that to read one closed slot), oldest first, as
+    ``{timestamp, stream, message}``. Returns [] for a missing group (same
+    reasoning as tail_log_group); raises AwsAccessDenied when the role lacks
+    logs:FilterLogEvents (bootstrap roles created before that grant) so the
+    caller can tell the user."""
+    logs = _logs_client(credentials, region)
+    events: list[dict] = []
+    kwargs: dict = {'logGroupName': log_group, 'startTime': start_time_ms, 'limit': 200}
+    if end_time_ms is not None:
+        kwargs['endTime'] = end_time_ms
+    if filter_pattern:
+        kwargs['filterPattern'] = filter_pattern
+    try:
+        for _ in range(max_pages):
+            response = logs.filter_log_events(**kwargs)
+            events.extend(response.get('events') or [])
+            token = response.get('nextToken')
+            if not token:
+                break
+            kwargs['nextToken'] = token
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('logs:FilterLogEvents') from exc
+        return []
+    return [
+        {
+            'timestamp': e.get('timestamp'),
+            'stream': e.get('logStreamName', ''),
+            'message': (e.get('message') or '').rstrip()[:500],
+        }
+        for e in events[-limit:]
+    ]
+
+
 def _cloudwatch_client(credentials: dict, region: str):
     return boto3.client(
         'cloudwatch',
@@ -652,35 +751,137 @@ def _cloudwatch_client(credentials: dict, region: str):
     )
 
 
-def get_cloudwatch_metric(credentials: dict, region: str, namespace: str, metric_name: str,
-                          dimensions: list[dict], stat: str = 'Average', minutes: int = 5) -> float | None:
-    """Latest datapoint for one metric over the last ``minutes``, or None if there's
-    no data yet or the role can't read it (bootstrap roles created before the
-    cloudwatch:GetMetricData grant was added — degrade gracefully rather than 500)."""
+def describe_alarms(credentials: dict, region: str, alarm_names: list[str]) -> list[dict]:
+    """Current state for the given alarms as ``{name, description, state,
+    reason, updated}``. Raises AwsAccessDenied on a permissions gap; [] on
+    other errors (e.g. alarms deleted out-of-band)."""
+    if not alarm_names:
+        return []
+    cloudwatch = _cloudwatch_client(credentials, region)
+    try:
+        response = cloudwatch.describe_alarms(AlarmNames=alarm_names[:100], MaxRecords=100)
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('cloudwatch:DescribeAlarms') from exc
+        return []
+    alarms = []
+    for item in response.get('MetricAlarms') or []:
+        updated = item.get('StateUpdatedTimestamp')
+        alarms.append({
+            'name': item.get('AlarmName', ''),
+            'description': item.get('AlarmDescription') or '',
+            'state': item.get('StateValue', ''),
+            'reason': item.get('StateReason') or '',
+            'updated': updated.isoformat() if updated else None,
+        })
+    return alarms
+
+
+def describe_alarm_history(credentials: dict, region: str, alarm_names: list[str],
+                           days: int = 30, limit: int = 50) -> list[dict]:
+    """State transitions for the given alarms over the past ``days``, newest
+    first, as ``{alarm, at, summary}``. Raises AwsAccessDenied on a permissions
+    gap; skips alarms that error individually."""
+    from datetime import datetime, timedelta, timezone
+
+    cloudwatch = _cloudwatch_client(credentials, region)
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=days)
+    items: list[dict] = []
+    for name in alarm_names[:20]:
+        try:
+            response = cloudwatch.describe_alarm_history(
+                AlarmName=name, HistoryItemType='StateUpdate',
+                StartDate=start, EndDate=end, MaxRecords=100,
+                ScanBy='TimestampDescending')
+        except ClientError as exc:
+            if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+                raise AwsAccessDenied('cloudwatch:DescribeAlarmHistory') from exc
+            continue
+        for history in response.get('AlarmHistoryItems') or []:
+            stamp = history.get('Timestamp')
+            items.append({
+                'alarm': name,
+                'at': stamp.isoformat() if stamp else None,
+                'summary': history.get('HistorySummary') or '',
+            })
+    items.sort(key=lambda i: i['at'] or '', reverse=True)
+    return items[:limit]
+
+
+def topic_subscription_status(credentials: dict, region: str, topic_arn: str) -> str | None:
+    """'confirmed' | 'pending' | None (no subscriptions) for an SNS topic's
+    email subscriptions — Step 7 uses 'pending' to remind the user to click the
+    confirmation link AWS emailed them. Raises AwsAccessDenied on a permissions
+    gap; None on other errors."""
+    sns = boto3.client(
+        'sns',
+        region_name=region,
+        aws_access_key_id=credentials['AccessKeyId'],
+        aws_secret_access_key=credentials['SecretAccessKey'],
+        aws_session_token=credentials['SessionToken'],
+    )
+    try:
+        subs = sns.list_subscriptions_by_topic(TopicArn=topic_arn).get('Subscriptions') or []
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('sns:ListSubscriptionsByTopic') from exc
+        return None
+    if not subs:
+        return None
+    pending = any(s.get('SubscriptionArn') == 'PendingConfirmation' for s in subs)
+    return 'pending' if pending else 'confirmed'
+
+
+def get_cloudwatch_metric_series(credentials: dict, region: str, queries: dict[str, tuple],
+                                 minutes: int = 60, period: int = 300) -> dict[str, list[dict]]:
+    """Time series for several metrics in ONE GetMetricData call. ``queries`` maps
+    a result key to ``(namespace, metric_name, dimensions, stat)``. Returns
+    ``{key: [{'t': iso, 'v': float}, ...]}`` oldest-first; keys with no data map
+    to []. Raises AwsAccessDenied when the role can't read metrics at all
+    (bootstrap roles created before the cloudwatch:GetMetricData grant); returns
+    {} on other ClientErrors."""
     from datetime import datetime, timedelta, timezone
 
     cloudwatch = _cloudwatch_client(credentials, region)
     end = datetime.now(timezone.utc)
     start = end - timedelta(minutes=minutes)
+    ids = {f'q{i}': key for i, key in enumerate(queries)}
     try:
         response = cloudwatch.get_metric_data(
-            MetricDataQueries=[{
-                'Id': 'm1',
-                'MetricStat': {
-                    'Metric': {
-                        'Namespace': namespace,
-                        'MetricName': metric_name,
-                        'Dimensions': dimensions,
+            MetricDataQueries=[
+                {
+                    'Id': qid,
+                    'MetricStat': {
+                        'Metric': {
+                            'Namespace': queries[key][0],
+                            'MetricName': queries[key][1],
+                            'Dimensions': queries[key][2],
+                        },
+                        'Period': period,
+                        'Stat': queries[key][3],
                     },
-                    'Period': minutes * 60,
-                    'Stat': stat,
-                },
-                'ReturnData': True,
-            }],
+                    'ReturnData': True,
+                }
+                for qid, key in ids.items()
+            ],
             StartTime=start,
             EndTime=end,
+            ScanBy='TimestampAscending',
         )
-    except ClientError:
-        return None
-    values = (response.get('MetricDataResults') or [{}])[0].get('Values') or []
-    return values[0] if values else None
+    except ClientError as exc:
+        if exc.response.get('Error', {}).get('Code', '') in _ACCESS_DENIED_CODES:
+            raise AwsAccessDenied('cloudwatch:GetMetricData') from exc
+        return {}
+    series: dict[str, list[dict]] = {key: [] for key in queries}
+    for result in response.get('MetricDataResults') or []:
+        key = ids.get(result.get('Id'))
+        if key is None:
+            continue
+        series[key] = [
+            {'t': ts.isoformat(), 'v': value}
+            for ts, value in zip(result.get('Timestamps') or [], result.get('Values') or [])
+        ]
+    return series
+
+

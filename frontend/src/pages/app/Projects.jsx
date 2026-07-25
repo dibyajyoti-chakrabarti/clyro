@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { api } from '../../api'
+import useProjectDeletion from '../../hooks/useProjectDeletion'
 import ProjectsHeader from '../../components/projects/ProjectsHeader'
 import ProjectsToolbar from '../../components/projects/ProjectsToolbar'
 import ProjectCard from '../../components/projects/ProjectCard'
@@ -11,27 +12,18 @@ export default function Projects() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('All')
   const [sort, setSort] = useState('Newest')
+  const { deletingIds, confirmDelete, resumeDeletions } = useProjectDeletion(setProjects)
 
   useEffect(() => {
     api.listProjects()
-      .then(setProjects)
+      .then((list) => {
+        setProjects(list)
+        resumeDeletions(list)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this project? This cannot be undone.')) return
-    try {
-      const res = await api.deleteProject(id)
-      if (res && res.status === 'tearing_down') {
-        window.alert('Infrastructure teardown started — delete again once it finishes to remove the project.')
-        return
-      }
-      setProjects((prev) => prev.filter((project) => project.id !== id))
-    } catch (err) {
-      window.alert(err.message || 'Failed to delete project')
-    }
-  }
 
   const filtered = useMemo(() => {
     const query = search.toLowerCase()
@@ -85,7 +77,12 @@ export default function Projects() {
       ) : (
         <div className='space-y-3'>
           {filtered.map((project) => (
-            <ProjectCard key={project.id} project={project} onDelete={handleDelete} />
+            <ProjectCard
+              key={project.id}
+              project={project}
+              onDelete={confirmDelete}
+              deleting={deletingIds.has(project.id) || project.status === 'deleting'}
+            />
           ))}
         </div>
       )}

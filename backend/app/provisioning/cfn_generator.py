@@ -304,6 +304,114 @@ def _add_security_groups(resources: dict[str, Any], spec: dict[str, Any]) -> dic
     return sg_by_node
 
 
+def _add_alerting(resources: dict[str, Any], spec: dict[str, Any]) -> None:
+    """SNS topic + email subscription + the deterministic alarm set, so the
+    owner is emailed when the app breaks even with nobody watching Step 7:
+    5XX spike (per ALB), unhealthy targets (per target group), CPU high (per
+    ECS service). Alarm/topic names use iam_scoped_prefix — the bootstrap
+    role's SNS grant is scoped to clyro-* topics. The email subscription must
+    be confirmed by the recipient (AWS sends a confirmation link)."""
+    iam_prefix = spec.get("iam_scoped_prefix") or "clyro-app"
+    resources["AlertTopic"] = {
+        "Type": "AWS::SNS::Topic",
+        "Properties": {"TopicName": f"{iam_prefix}-alerts"},
+    }
+    email = spec.get("alert_email")
+    if email:
+        resources["AlertEmailSubscription"] = {
+            "Type": "AWS::SNS::Subscription",
+            "Properties": {
+                "Protocol": "email",
+                "Endpoint": email,
+                "TopicArn": _ref("AlertTopic"),
+            },
+        }
+
+    def alarm(name: str, description: str, namespace: str, metric: str,
+              dimensions: list[dict[str, Any]], stat: str, threshold: float,
+              periods: int, period: int = 300) -> dict[str, Any]:
+        return {
+            "Type": "AWS::CloudWatch::Alarm",
+            "Properties": {
+                "AlarmName": f"{iam_prefix}-{name}",
+                "AlarmDescription": description,
+                "Namespace": namespace,
+                "MetricName": metric,
+                "Dimensions": dimensions,
+                "Statistic": stat,
+                "Period": period,
+                "EvaluationPeriods": periods,
+                "Threshold": threshold,
+                "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+                "TreatMissingData": "notBreaching",
+                "AlarmActions": [_ref("AlertTopic")],
+                "OKActions": [_ref("AlertTopic")],
+            },
+        }
+
+    if "ApplicationLoadBalancer" in resources:
+        alb_dim = {"Name": "LoadBalancer",
+                   "Value": _getatt("ApplicationLoadBalancer", "LoadBalancerFullName")}
+        resources["Alb5xxAlarm"] = alarm(
+            "alb-5xx-spike", "10+ server errors in 5 minutes",
+            "AWS/ApplicationELB", "HTTPCode_Target_5XX_Count",
+            [alb_dim], "Sum", 10, 1)
+        for logical_id, resource in list(resources.items()):
+            if resource.get("Type") != "AWS::ElasticLoadBalancingV2::TargetGroup":
+                continue
+            resources[f"{logical_id}UnhealthyAlarm"] = alarm(
+                f"{logical_id.lower()}-unhealthy-hosts",
+                "A load balancer target failed its health check",
+                "AWS/ApplicationELB", "UnHealthyHostCount",
+                [{"Name": "TargetGroup", "Value": _getatt(logical_id, "TargetGroupFullName")},
+                 alb_dim],
+                "Maximum", 1, 2, period=60)
+
+    for logical_id, resource in list(resources.items()):
+        if resource.get("Type") != "AWS::ECS::Service":
+            continue
+        resources[f"{logical_id}CpuAlarm"] = alarm(
+            f"{logical_id.lower()}-cpu-high",
+            "Service CPU above 85% for 10 minutes",
+            "AWS/ECS", "CPUUtilization",
+            [{"Name": "ClusterName", "Value": _ref("EcsCluster")},
+             {"Name": "ServiceName", "Value": _getatt(logical_id, "Name")}],
+            "Average", 85, 2)
+
+
+def _add_log_archive_bucket(resources: dict[str, Any], spec: dict[str, Any]) -> None:
+    """Every stack gets a log-archive bucket: Clyro's beat task copies each
+    service's CloudWatch log events here in 5-minute JSONL slots, which is what
+    the Step 7 logs panel reads for ranges beyond the last hour (CloudWatch
+    retention in this template is only 14 days, and FilterLogEvents over long
+    ranges is slow and expensive). Objects expire after 30 days."""
+    iam_prefix = spec.get("iam_scoped_prefix") or "clyro-app"
+    resources["LogArchiveBucket"] = {
+        "Type": "AWS::S3::Bucket",
+        "Properties": {
+            "BucketName": _sub(f"{iam_prefix}-log-archive-${{AWS::AccountId}}"),
+            "PublicAccessBlockConfiguration": {
+                "BlockPublicAcls": True,
+                "BlockPublicPolicy": True,
+                "IgnorePublicAcls": True,
+                "RestrictPublicBuckets": True,
+            },
+            "BucketEncryption": {
+                "ServerSideEncryptionConfiguration": [{
+                    "ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}
+                }]
+            },
+            "LifecycleConfiguration": {
+                "Rules": [{
+                    "Id": "expire-archived-logs",
+                    "Status": "Enabled",
+                    "ExpirationInDays": 30,
+                }]
+            },
+        },
+    }
+
+
 def _add_s3_and_cloudfront(resources: dict[str, Any], spec: dict[str, Any]) -> str | None:
     iam_prefix = spec.get("iam_scoped_prefix") or "clyro-app"
     has_static = bool(_first_resource(spec, "static"))
@@ -823,11 +931,13 @@ def generate_template(spec: dict[str, Any]) -> str:
 
     _add_networking(resources, spec)
     sg_by_node = _add_security_groups(resources, spec)
+    _add_log_archive_bucket(resources, spec)
     app_bucket = _add_s3_and_cloudfront(resources, spec)
     _add_data_resources(resources, spec, sg_by_node)
     _add_queue(resources, spec)
     target_groups = _add_alb(resources, spec, sg_by_node)
     _add_ecs(resources, spec, sg_by_node, target_groups, app_bucket, db_name)
+    _add_alerting(resources, spec)
 
     if "ApplicationLoadBalancer" in resources:
         outputs["BackendURL"] = {
@@ -842,6 +952,8 @@ def generate_template(spec: dict[str, Any]) -> str:
         outputs["FrontendBucketName"] = {"Description": "Frontend bucket", "Value": _ref("FrontendBucket")}
     if "TaskQueue" in resources:
         outputs["TaskQueueURL"] = {"Description": "Task queue URL", "Value": _ref("TaskQueue")}
+    outputs["LogArchiveBucketName"] = {"Description": "Log archive bucket", "Value": _ref("LogArchiveBucket")}
+    outputs["AlertTopicArn"] = {"Description": "SNS alert topic", "Value": _ref("AlertTopic")}
     if "DbInstance" in resources:
         outputs["DatabaseEndpoint"] = {"Description": "Database endpoint", "Value": _getatt("DbInstance", "Endpoint.Address")}
     if "DomainCertificate" in resources:

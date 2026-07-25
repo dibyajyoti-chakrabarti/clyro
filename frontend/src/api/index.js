@@ -27,6 +27,15 @@ async function request(method, path, body) {
   return data
 }
 
+function deployLogsParams({ service, level, range, q } = {}) {
+  const qs = new URLSearchParams()
+  if (service) qs.set('service', service)
+  if (level && level !== 'all') qs.set('level', level)
+  if (range && range !== '1h') qs.set('range', range)
+  if (q) qs.set('q', q)
+  return qs
+}
+
 // Poll a submitted AgentJob until it reaches a terminal state (done/failed).
 // Shared by scan, Step-3 chat, and IaC generate/refine — all of which now
 // return {job_id} immediately instead of blocking on the agent call.
@@ -95,6 +104,24 @@ export const api = {
   startDeploy: (id) => request('POST', `/api/projects/${id}/deploy/`),
   getDeployStatus: (id, since) => request('GET', `/api/projects/${id}/deploy/status/${since !== undefined && since !== null ? `?since=${since}` : ''}`),
   getDeployHealth: (id) => request('GET', `/api/projects/${id}/deploy/health/`),
+  getDeployHistory: (id) => request('GET', `/api/projects/${id}/deploy/history/`),
+  getDeployAlarms: (id) => request('GET', `/api/projects/${id}/deploy/alarms/`),
+  getDeployLogs: (id, { service, level, range, q } = {}) => {
+    const qs = deployLogsParams({ service, level, range, q })
+    return request('GET', `/api/projects/${id}/deploy/logs/${qs.size > 0 ? `?${qs}` : ''}`)
+  },
+  // Returns a Blob — downloads need the bearer header, so a plain <a href>
+  // can't be used; the caller turns the blob into an object URL and clicks it.
+  downloadDeployLogs: async (id, { service, level, range, q } = {}) => {
+    const qs = deployLogsParams({ service, level, range, q })
+    const token = await getToken()
+    const res = await fetch(
+      `${BASE_URL}/api/projects/${id}/deploy/logs/download/${qs.size > 0 ? `?${qs}` : ''}`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    )
+    if (!res.ok) throw new Error('Log download failed')
+    return res.blob()
+  },
   pauseDeploy: (id) => request('POST', `/api/projects/${id}/deploy/pause/`),
   resumeDeploy: (id) => request('POST', `/api/projects/${id}/deploy/resume/`),
   teardownDeploy: (id) => request('POST', `/api/projects/${id}/deploy/teardown/`),

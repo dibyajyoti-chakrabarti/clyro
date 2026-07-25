@@ -1,5 +1,71 @@
 import uuid
+from django.contrib.auth import hashers
 from django.db import models
+
+
+class AdminUser(models.Model):
+    """Operator account for the custom /admin panel. Deliberately separate from
+    both the Cognito-backed User table and django.contrib.auth — admin
+    credentials are provisioned only via `manage.py create_admin`, never
+    self-service, and authenticate with an HS256 JWT (see app.admin_api)
+    instead of the Cognito RS256 flow."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    username = models.TextField(unique=True)
+    password_hash = models.TextField()
+    is_active = models.BooleanField(default=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def set_password(self, raw_password: str):
+        self.password_hash = hashers.make_password(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        return hashers.check_password(raw_password, self.password_hash)
+
+    # DRF / Django auth compatibility — same trick as User below
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    class Meta:
+        db_table = 'admin_users'
+
+    def __str__(self):
+        return self.username
+
+
+class WhitelistedEmail(models.Model):
+    """Gate on project creation: only emails on this list may create projects
+    (checked in projects_list POST). Managed from the admin panel."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(unique=True)  # always stored lowercased
+    note = models.TextField(null=True, blank=True)
+    added_by = models.ForeignKey(
+        AdminUser, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='whitelisted_emails'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def allows(cls, email: str) -> bool:
+        return cls.objects.filter(email=email.strip().lower()).exists()
+
+    class Meta:
+        db_table = 'whitelisted_emails'
+
+    def __str__(self):
+        return self.email
 
 
 class User(models.Model):
@@ -93,6 +159,9 @@ class Project(models.Model):
         LIVE = 'live'
         FAILED = 'failed'
         PAUSED = 'paused'
+        # Full delete in flight (run_delete_project_task): AWS purge then hard
+        # row delete — the row only holds this status until it disappears.
+        DELETING = 'deleting'
         DELETED = 'deleted'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -413,6 +482,28 @@ class DeploymentStackOutput(models.Model):
         return f"{self.output_key} = {self.output_value}"
 
 
+class HealthSnapshot(models.Model):
+    """One point-in-time record of a live project's health, written by the
+    collect-health-snapshots beat task once a minute. The Step 7 dashboard's
+    live poll only sees "now" — snapshots are what make uptime percentages and
+    history possible, including while nobody has the page open."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='health_snapshots')
+    stack_status = models.TextField()  # 'ok' | 'not_found'
+    healthy = models.BooleanField()  # stack found and every service at its desired count
+    health_items = models.JSONField(default=list)
+    metrics = models.JSONField(default=dict)
+    alerts = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'health_snapshots'
+        indexes = [models.Index(fields=['project', 'created_at'])]
+
+    def __str__(self):
+        return f"HealthSnapshot {self.project.name} @ {self.created_at} healthy={self.healthy}"
+
+
 class AgentJob(models.Model):
     """A single async invocation of one of the Bedrock AgentCore agents (scan,
     Step-3 chat, IaC generate/refine, provisioning-with-feedback), run via Celery
@@ -428,6 +519,7 @@ class AgentJob(models.Model):
         IAC_REFINE = 'iac_refine'
         PROVISION = 'provision'
         BUILD = 'build'
+        DELETE = 'delete'
 
     class Status(models.TextChoices):
         PENDING = 'pending'
