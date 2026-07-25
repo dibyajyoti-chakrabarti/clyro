@@ -2,6 +2,7 @@ import logging
 import uuid
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django.http import HttpResponse
 from django.utils import timezone
 from botocore.exceptions import ClientError
@@ -75,22 +76,40 @@ def aws_connection_init(request, pk):
 
     region = request.data.get('region', 'us-east-1')
 
-    # Reuse pending connection if one already exists without a verified role
-    existing = AWSAccountConnection.objects.filter(
-        project=project, connected_at__isnull=True
-    ).order_by('-created_at').first()
+    # Found live: the look-then-create below is check-then-act, and Step 2 fires
+    # this endpoint twice on mount (React StrictMode double-invokes the effect in
+    # dev; a double-click or a second tab does the same in prod). On a threaded
+    # server both requests ran the SELECT before either INSERT committed, so each
+    # minted its OWN external id and the project ended up with two pending
+    # connections. The browser then showed the CFN link from one row while
+    # aws_connection_verify read the other, and the user got a permanent
+    # "could not assume role" on a stack that was perfectly valid.
+    #
+    # Locking the project row serializes concurrent inits for the same project:
+    # the second request blocks here until the first commits, then sees its row
+    # and reuses the external id. READ COMMITTED alone is not enough — without
+    # the lock the second SELECT still wouldn't see the first's uncommitted row —
+    # and the partial unique constraint on AWSAccountConnection (one pending
+    # connection per project) backstops this at the database level.
+    with transaction.atomic():
+        Project.objects.select_for_update().get(pk=project.pk)
 
-    if existing:
-        external_id = existing.bootstrap_stack_id
-    else:
-        external_id = str(uuid.uuid4())
-        AWSAccountConnection.objects.create(
-            project=project,
-            aws_account_id='pending',
-            aws_region=region,
-            iam_role_arn='pending',
-            bootstrap_stack_id=external_id,
-        )
+        # Reuse pending connection if one already exists without a verified role
+        existing = AWSAccountConnection.objects.filter(
+            project=project, connected_at__isnull=True
+        ).order_by('-created_at').first()
+
+        if existing:
+            external_id = existing.bootstrap_stack_id
+        else:
+            external_id = str(uuid.uuid4())
+            AWSAccountConnection.objects.create(
+                project=project,
+                aws_account_id='pending',
+                aws_region=region,
+                iam_role_arn='pending',
+                bootstrap_stack_id=external_id,
+            )
 
     if project.status != Project.Status.AWS_CONNECT_PENDING:
         project.status = Project.Status.AWS_CONNECT_PENDING
@@ -116,15 +135,45 @@ def aws_connection_verify(request, pk):
     if not role_arn:
         return Response({'error': 'role_arn is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    connection = AWSAccountConnection.objects.filter(
-        project=project, connected_at__isnull=True
-    ).order_by('-created_at').first()
+    pending = list(
+        AWSAccountConnection.objects.filter(
+            project=project, connected_at__isnull=True
+        ).order_by('-created_at')
+    )
 
-    if not connection:
+    if not pending:
         return Response(
             {'error': 'No pending AWS connection found. Please start the connection flow again.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    # bootstrap.yaml names the role `clyro-provisioning-{ExternalId}`, so the
+    # pasted ARN carries the external id it was created with. Prefer the pending
+    # connection that ARN actually belongs to over blindly taking the newest row:
+    # projects that already accumulated duplicate pending rows (see the race
+    # described in aws_connection_init) still connect on the row whose stack the
+    # user really built, instead of failing forever against a row no stack matches.
+    role_name = role_arn.rsplit('/', 1)[-1]
+    connection = next(
+        (c for c in pending if c.bootstrap_stack_id and role_name == f'clyro-provisioning-{c.bootstrap_stack_id}'),
+        None,
+    )
+
+    if connection is None:
+        # A role Clyro itself minted, but for a DIFFERENT connection (another
+        # project, or a stack left over from a project that was recreated).
+        # Naming that explicitly beats letting STS return an opaque AccessDenied.
+        if role_name.startswith('clyro-provisioning-'):
+            log.warning(
+                'aws_connection_verify: ARN %s belongs to another connection; project %s expects one of %s',
+                role_arn, project.pk, [c.bootstrap_stack_id for c in pending],
+            )
+            return Response(
+                {'error': 'This role belongs to a different Clyro connection. '
+                          'Use the CloudFormation link above to create a stack for this project.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        connection = pending[0]
 
     external_id = connection.bootstrap_stack_id
     try:
@@ -133,6 +182,13 @@ def aws_connection_verify(request, pk):
     except ClientError as exc:
         code = exc.response['Error']['Code']
         if code in ('AccessDenied', 'AccessDeniedException'):
+            # The generic message below hides WHY STS refused (wrong external id,
+            # role deleted, trust policy naming the wrong account) — keep AWS's
+            # own wording in the logs so these are diagnosable after the fact.
+            log.warning(
+                'aws_connection_verify: assume_role denied for project %s (role %s, external_id %s): %s',
+                project.pk, role_arn, external_id, exc.response['Error']['Message'],
+            )
             return Response(
                 {'error': 'Could not assume role — check the ARN and that the stack created successfully, then try again.'},
                 status=status.HTTP_400_BAD_REQUEST,

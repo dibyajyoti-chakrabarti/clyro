@@ -3,6 +3,7 @@ from unittest.mock import patch
 from botocore.exceptions import ClientError
 from cfnlint import api as cfnlint_api
 from cfnlint.config import ManualArgs
+from django.db.utils import IntegrityError
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework import status
@@ -1075,3 +1076,90 @@ class DeployLifecycleTests(TestCase):
     def test_has_been_live_false_for_never_live_project(self):
         self._deployment(status=Deployment.Status.FAILED)
         self.assertFalse(deploy._has_been_live(self.project))
+
+
+class AwsConnectionInitDuplicateTests(TestCase):
+    """Found live: Step 2 fires aws_connection_init twice on mount (React
+    StrictMode double-invokes the effect in dev), and the endpoint's
+    look-then-create ran unserialized — the project ended up with two pending
+    connections holding two different external ids. The CFN link came from one
+    row, aws_connection_verify read the other, and the user got a permanent
+    "could not assume role" against a stack that was perfectly valid."""
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = User.objects.create(cognito_sub="sub-i", email="i@example.com", name="I")
+        self.project = Project.objects.create(user=self.user, name="newp1")
+
+    def _init(self):
+        request = self.factory.post(f'/api/projects/{self.project.pk}/aws-connection/', {})
+        force_authenticate(request, user=self.user)
+        return provisioning_views.aws_connection_init(request, self.project.pk)
+
+    def test_repeated_init_reuses_one_pending_connection(self):
+        first = self._init()
+        second = self._init()
+
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertEqual(first.data['external_id'], second.data['external_id'])
+        self.assertEqual(
+            AWSAccountConnection.objects.filter(project=self.project, connected_at__isnull=True).count(), 1,
+        )
+
+    def test_second_pending_connection_is_rejected_by_the_database(self):
+        # The lock in aws_connection_init is what prevents this in practice; the
+        # constraint is the backstop that stops any other caller reintroducing it.
+        self._init()
+        with self.assertRaises(IntegrityError):
+            AWSAccountConnection.objects.create(
+                project=self.project, aws_account_id='pending', iam_role_arn='pending',
+                bootstrap_stack_id='some-other-external-id',
+            )
+
+
+class AwsConnectionVerifyArnMatchTests(TestCase):
+    """The pasted ARN carries the external id its stack was built with
+    (bootstrap.yaml names the role clyro-provisioning-{ExternalId}), so verify
+    resolves the connection from the ARN rather than assuming the newest pending
+    row is the right one."""
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = User.objects.create(cognito_sub="sub-v", email="v@example.com", name="V")
+        self.project = Project.objects.create(user=self.user, name="newp1")
+
+    def _pending(self, external_id):
+        return AWSAccountConnection.objects.create(
+            project=self.project, aws_account_id='pending', iam_role_arn='pending',
+            bootstrap_stack_id=external_id,
+        )
+
+    def _verify(self, role_arn):
+        request = self.factory.post(
+            f'/api/projects/{self.project.pk}/aws-connection/verify/', {'role_arn': role_arn},
+        )
+        force_authenticate(request, user=self.user)
+        return provisioning_views.aws_connection_verify(request, self.project.pk)
+
+    @patch('app.provisioning.views.get_account_plan_type', return_value=None)
+    @patch('app.provisioning.views.get_account_id', return_value='123456789012')
+    @patch('app.provisioning.views.assume_role')
+    def test_verify_uses_the_external_id_the_arn_was_built_with(self, mock_assume, _id, _plan):
+        mock_assume.return_value = {'AccessKeyId': 'k', 'SecretAccessKey': 's', 'SessionToken': 't'}
+        self._pending('aaaaaaaa-0000-0000-0000-000000000000')
+
+        resp = self._verify('arn:aws:iam::123456789012:role/clyro-provisioning-aaaaaaaa-0000-0000-0000-000000000000')
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(mock_assume.call_args.args[1], 'aaaaaaaa-0000-0000-0000-000000000000')
+
+    @patch('app.provisioning.views.assume_role')
+    def test_arn_from_another_connection_is_named_rather_than_sent_to_sts(self, mock_assume):
+        self._pending('aaaaaaaa-0000-0000-0000-000000000000')
+
+        resp = self._verify('arn:aws:iam::123456789012:role/clyro-provisioning-bbbbbbbb-1111-1111-1111-111111111111')
+
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('different Clyro connection', resp.data['error'])
+        mock_assume.assert_not_called()

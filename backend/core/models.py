@@ -1,6 +1,7 @@
 import uuid
 from django.contrib.auth import hashers
 from django.db import models
+from django.db.models import Q
 
 
 class AdminUser(models.Model):
@@ -366,6 +367,19 @@ class AWSAccountConnection(models.Model):
     class Meta:
         db_table = 'aws_account_connections'
         indexes = [models.Index(fields=['project'])]
+        constraints = [
+            # A project may accumulate any number of CONNECTED rows over its life
+            # (reconnects, account changes), but only ever one in-flight pending
+            # one — two pending rows means two external ids, and the connect flow
+            # can then hand the user a CFN link built from one while verifying
+            # against the other. Enforced here rather than only in
+            # aws_connection_init's lock so no future caller can reintroduce it.
+            models.UniqueConstraint(
+                fields=['project'],
+                condition=Q(connected_at__isnull=True),
+                name='uniq_pending_connection_per_project',
+            ),
+        ]
 
     def __str__(self):
         return f"AWS {self.aws_account_id} for {self.project.name}"
