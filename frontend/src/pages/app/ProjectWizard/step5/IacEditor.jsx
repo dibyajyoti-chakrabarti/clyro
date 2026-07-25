@@ -68,7 +68,11 @@ function ModelSelect({ value, onChange, placeholder = 'Select model…', large =
   const handleOpen = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
-      setPos({ top: rect.bottom + window.scrollY + 4, left: rect.left + window.scrollX, minWidth: rect.width })
+      // Anchored to open upward: `top` marks the trigger's top edge (minus the
+      // gap), and the portal below applies translateY(-100%) so the menu's
+      // bottom sits there and it grows upward — avoids getting cut off when
+      // the trigger sits low in the "Ask Clyro" drawer.
+      setPos({ top: rect.top + window.scrollY - 4, left: rect.left + window.scrollX, minWidth: rect.width })
     }
     setOpen((v) => !v)
   }
@@ -88,7 +92,7 @@ function ModelSelect({ value, onChange, placeholder = 'Select model…', large =
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && createPortal(
-        <div ref={dropdownRef} style={{ position: 'absolute', zIndex: 99999, ...pos }}>
+        <div ref={dropdownRef} style={{ position: 'absolute', zIndex: 99999, transform: 'translateY(-100%)', ...pos }}>
           <div className='model-dropdown-scroll max-h-[280px] overflow-y-auto overscroll-contain rounded-xl border border-white/[0.09] bg-[#111] p-1 shadow-xl [scroll-behavior:smooth]'>
             {MODEL_OPTIONS.map((m) => (
               <button
@@ -329,22 +333,26 @@ export default function IacEditor({
               </button>
             </div>
 
-            {/* Validation success strip — transient, presentational only */}
-            {bannerVisible && (
-              <div className='px-4 pt-3'>
+            {/* Monaco editor */}
+            <div className='relative min-h-0 flex-1 overflow-hidden'>
+              {/* Validation success ribbon — transient, presentational only.
+                  Same attached-to-top-edge pattern/colors as Step 4's
+                  "Architecture finalized" ribbon (StepFour.jsx): absolute,
+                  inset-x-0 top-0, flush with no gap, clipped to the editor
+                  container's own corners via the overflow-hidden above. */}
+              {bannerVisible && (
                 <div
-                  className={`flex h-12 items-center gap-2.5 rounded-[10px] border border-emerald-400/25 bg-emerald-950/40 px-4 shadow-[0_0_24px_rgba(16,185,129,0.10)] transition-all duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] ${
+                  className={`pointer-events-none absolute inset-x-0 top-0 z-20 border-b border-[#1F7A4D] bg-[#0F2E22] px-4 py-3 transition-all duration-[420ms] ease-[cubic-bezier(.22,1,.36,1)] ${
                     bannerShown ? 'translate-y-0 opacity-100' : '-translate-y-2.5 opacity-0'
                   }`}
                 >
-                  <CheckCircle2 className='h-4 w-4 shrink-0 text-emerald-400' />
-                  <span className='text-sm font-medium text-white'>Template validated successfully. Infrastructure is ready for provisioning.</span>
+                  <div className='flex items-center gap-2.5'>
+                    <CheckCircle2 className='h-4 w-4 shrink-0 text-[#86EFAC]' />
+                    <span className='text-sm font-medium text-[#86EFAC]'>Template validated successfully. Infrastructure is ready for provisioning.</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Monaco editor */}
-            <div className='relative min-h-0 flex-1'>
               <CfnEditor
                 value={template}
                 onChange={onTemplateChange}
