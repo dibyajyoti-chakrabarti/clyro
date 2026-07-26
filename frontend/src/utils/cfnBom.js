@@ -51,8 +51,10 @@ function humanizeType(name) {
 
 /**
  * Build a bill of materials from a CloudFormation YAML template.
- * Returns { total, groups: [{ service, items: [{ type, label, count, names }] }] },
+ * Returns { total, groups: [{ service, namespace, items: [{ type, label, count, names }] }] },
  * or null when the template is missing or unparseable (callers hide the BOM).
+ * `namespace` is the raw CFN namespace token (e.g. "RDS", "EC2") the service label
+ * was derived from — callers use it to look up a per-service icon.
  */
 export function buildCfnBom(template) {
   if (!template) return null
@@ -85,7 +87,7 @@ export function buildCfnBom(template) {
     const namespace = parts.length === 3 ? parts[1] : parts[0]
     const service = SERVICE_LABELS[namespace] || namespace
     const label = humanizeType(parts[parts.length - 1])
-    const group = groups.get(service) || { service, items: [] }
+    const group = groups.get(service) || { service, namespace, items: [] }
     group.items.push({ ...entry, label })
     groups.set(service, group)
   }
