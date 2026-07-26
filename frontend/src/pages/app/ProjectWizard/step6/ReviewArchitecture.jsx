@@ -1,9 +1,10 @@
 import {
-  AlertTriangle, ArrowRight, Box, ChevronDown, Clock,
+  ArrowRight, Box, ChevronDown, Clock,
   CreditCard, LayoutGrid, MousePointerClick, Pencil,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import billIll from '../../../../assets/steps/step6/bill_ill.webp'
 import confirmProvisionIll from '../../../../assets/steps/step6/confirm_provision_ill.webp'
 import Button from '../../../../components/ui/Button'
 import { buildCfnBom } from '../../../../utils/cfnBom'
@@ -15,7 +16,9 @@ function StatCard({ icon: Icon, value, label }) {
       <Icon className='h-6 w-6 shrink-0 text-[#F5B942] lg:h-7 lg:w-7' />
       <div className='min-w-0'>
         <p className='truncate text-base font-semibold text-text-primary lg:text-lg'>{value}</p>
-        <p className='truncate text-xs text-text-muted lg:text-sm'>{label}</p>
+        {/* Not truncated: equal-width grid columns are narrower than these labels at
+            some widths, so they wrap instead of being clipped mid-word. */}
+        <p className='text-xs leading-snug text-text-muted lg:text-sm'>{label}</p>
       </div>
     </div>
   )
@@ -111,8 +114,10 @@ function ReviewArchitecture({ cfTemplate, onEditArchitecture, onProvision }) {
   return (
     <div className='mx-auto w-full max-w-6xl'>
       <div className='flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-center'>
-        <div>
-          <h1 className='text-[44px] font-bold leading-tight sm:text-[58px] lg:text-[68px]'>
+        <div className='min-w-0'>
+          {/* clamp() + nowrap keeps "Review & provision" on exactly one line at every
+              width — it scales down with the viewport instead of ever wrapping. */}
+          <h1 className='whitespace-nowrap text-[clamp(1.75rem,5vw,4.25rem)] font-bold leading-tight'>
             <span className='relative inline-block text-white'>
               Review &amp;
               <span className='absolute -bottom-2 left-0 h-1.5 w-full rounded-full bg-[#F5B942]' />
@@ -125,7 +130,9 @@ function ReviewArchitecture({ cfTemplate, onEditArchitecture, onProvision }) {
             Review the resources below and provision when you&apos;re ready.
           </p>
         </div>
-        <img src={confirmProvisionIll} alt='' className='hidden w-80 shrink-0 sm:block lg:w-[26rem]' />
+        {/* Not shrink-0: the illustration gives up width first so the heading never
+            has to compress or overflow. */}
+        <img src={confirmProvisionIll} alt='' className='hidden h-auto w-80 min-w-0 sm:block lg:w-[26rem]' />
       </div>
 
       <div className='mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'>
@@ -166,25 +173,25 @@ function ReviewArchitecture({ cfTemplate, onEditArchitecture, onProvision }) {
         )}
       </div>
 
-      <div className='mt-8'>
-        <p className='flex w-full items-start gap-2.5 rounded-lg border border-[#F5B942]/40 bg-[#F5B942]/[0.08] p-4 text-base text-[#F0DA92]'>
-          <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-[#F5B942]' />
-          This will create AWS resources in your account. You will be charged by AWS for these resources.
-        </p>
-        <div className='mt-6 flex items-center justify-between gap-4'>
-          <button
-            type='button'
-            className='inline-flex items-center gap-2 text-base text-text-muted transition-colors hover:text-text-primary'
+      <div className='mt-10'>
+        <img src={billIll} alt='' className='block h-auto w-full' />
+        {/* Below ~420px the two buttons can't sit side by side without overflowing,
+            so they stack full-width; above that it's the far-left / far-right row. */}
+        <div className='mt-10 flex flex-col gap-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between'>
+          <Button
+            variant='secondary'
+            size='lg'
             onClick={onEditArchitecture}
+            className='w-full !border-[#F5B942]/60 !bg-transparent !text-[#F5B942] hover:!border-[#F5B942] hover:!bg-[#F5B942]/10 hover:!text-[#F7C565] min-[420px]:w-auto'
           >
-            <Pencil className='h-4 w-4' />
+            <Pencil className='h-5 w-5' />
             Edit template
-          </button>
+          </Button>
           <Button
             variant='primary'
             size='lg'
             onClick={onProvision}
-            className='!border-[#F5B942]/70 !bg-none !bg-[#F5B942] !text-black hover:!bg-[#F7C565] active:!bg-[#E0A73A]'
+            className='w-full !border-[#F5B942]/70 !bg-none !bg-[#F5B942] !text-black hover:!bg-[#F7C565] active:!bg-[#E0A73A] min-[420px]:w-auto'
           >
             Provision
             <ArrowRight className='h-5 w-5' />
