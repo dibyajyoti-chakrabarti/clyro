@@ -24,7 +24,6 @@ function StepSixPanel({ projectId, onBackToIac, onAdvanceToStepSeven }) {
 
   // review phase state
   const [iacTemplate, setIacTemplate] = useState('')
-  const [showTemplate, setShowTemplate] = useState(false)
 
   // provisioning phase state
   const [provisioningLog, setProvisioningLog] = useState([])
@@ -328,9 +327,7 @@ function StepSixPanel({ projectId, onBackToIac, onAdvanceToStepSeven }) {
     return (
       <div className='flex flex-1 flex-col overflow-y-auto p-8'>
         <ReviewArchitecture
-          showTemplate={showTemplate}
           cfTemplate={iacTemplate}
-          onToggleTemplate={() => setShowTemplate((prev) => !prev)}
           onEditArchitecture={onBackToIac}
           onProvision={() => setPhase('secrets')}
         />

@@ -6,17 +6,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import confirmProvisionIll from '../../../../assets/steps/step6/confirm_provision_ill.webp'
 import Button from '../../../../components/ui/Button'
-import { ScallopedPanel } from '../../../../components/ui/ScallopedPanel'
 import { buildCfnBom } from '../../../../utils/cfnBom'
 import { DEFAULT_CHIP_CLASS, SERVICE_ICON_MAP } from './serviceIcons'
 
 function StatCard({ icon: Icon, value, label }) {
   return (
-    <div className='flex flex-1 items-center gap-3 rounded-xl border border-[#E9B949]/40 bg-white/[0.02] px-4 py-3'>
-      <Icon className='h-5 w-5 shrink-0 text-[#E9B949]' />
+    <div className='flex min-w-0 items-center gap-3.5 rounded-xl border border-[#F5B942]/30 bg-[#1a1d23] px-5 py-4 lg:gap-4 lg:px-6 lg:py-5'>
+      <Icon className='h-6 w-6 shrink-0 text-[#F5B942] lg:h-7 lg:w-7' />
       <div className='min-w-0'>
-        <p className='truncate text-sm font-semibold text-text-primary'>{value}</p>
-        <p className='truncate text-xs text-text-muted'>{label}</p>
+        <p className='truncate text-base font-semibold text-text-primary lg:text-lg'>{value}</p>
+        <p className='truncate text-xs text-text-muted lg:text-sm'>{label}</p>
       </div>
     </div>
   )
@@ -61,35 +60,37 @@ function ResourceCategoryCard({ group, open, onToggle, onClose }) {
     }
   }, [open, onClose])
 
+  const previewLabel = group.items[0]?.label
+
   return (
-    <div className='rounded-[9px] border border-white/[0.06] bg-[#1a1d23]'>
+    <div className='rounded-xl border border-white/[0.08] bg-[#1a1d23]'>
       <button
         ref={triggerRef}
         type='button'
         onClick={handleTriggerClick}
-        className='flex w-full items-center gap-2 px-2 py-2 text-left'
+        className='flex w-full items-center gap-3.5 px-4 py-3.5 text-left lg:gap-4 lg:px-5 lg:py-4'
       >
-        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] ${chipClass || DEFAULT_CHIP_CLASS}`}>
-          {Icon ? <img src={Icon} alt='' className='h-4 w-4' /> : <Box className='h-3.5 w-3.5' />}
+        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] lg:h-12 lg:w-12 ${chipClass || DEFAULT_CHIP_CLASS}`}>
+          {Icon ? <img src={Icon} alt='' className='h-7 w-7 lg:h-8 lg:w-8' /> : <Box className='h-6 w-6 lg:h-7 lg:w-7' />}
         </span>
         <span className='min-w-0 flex-1'>
-          <span className='block text-[12px] font-semibold leading-snug text-text-primary'>{group.service}</span>
-          <span className='block text-[10px] text-text-muted'>aws</span>
+          <span className='block text-sm font-semibold leading-snug text-white lg:text-[15px]'>{group.service}</span>
+          {previewLabel ? <span className='block truncate text-xs text-[#9CA3AF] lg:text-[13px]'>{previewLabel}</span> : null}
         </span>
-        <span className='flex shrink-0 items-center gap-1 text-text-muted'>
-          {count > 1 ? <span className='text-[11px]'>×{count}</span> : null}
-          <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        <span className='flex shrink-0 items-center gap-1.5 text-text-muted'>
+          {count > 1 ? <span className='text-xs lg:text-sm'>×{count}</span> : null}
+          <ChevronDown className={`h-4.5 w-4.5 text-[#F5B942] transition-transform duration-150 lg:h-5 lg:w-5 ${open ? 'rotate-180' : ''}`} />
         </span>
       </button>
       {open ? createPortal(
         <div
           ref={panelRef}
           style={{ position: 'fixed', top: panelPos.top, left: panelPos.left, width: panelPos.width, zIndex: 9999 }}
-          className='rounded-lg border border-[#E9B949]/40 bg-[#1a1d23] p-3 shadow-xl shadow-black/40'
+          className='rounded-lg border border-[#F5B942]/40 bg-[#1a1d23] p-3.5 shadow-xl shadow-black/40'
         >
-          <ul className='space-y-1.5'>
+          <ul className='space-y-2'>
             {group.items.map((item) => (
-              <li key={item.type} className='flex items-center justify-between gap-4 text-xs text-text-muted'>
+              <li key={item.type} className='flex items-center justify-between gap-4 text-sm text-text-muted'>
                 <span title={item.names.join(', ')} className='truncate'>{item.label}</span>
                 {item.count > 1 ? <span className='shrink-0'>×{item.count}</span> : null}
               </li>
@@ -102,7 +103,7 @@ function ResourceCategoryCard({ group, open, onToggle, onClose }) {
   )
 }
 
-function ReviewArchitecture({ showTemplate, cfTemplate, onToggleTemplate, onEditArchitecture, onProvision }) {
+function ReviewArchitecture({ cfTemplate, onEditArchitecture, onProvision }) {
   const bom = useMemo(() => buildCfnBom(cfTemplate), [cfTemplate])
   const categoryCount = bom?.groups.length ?? 0
   const [expandedCategory, setExpandedCategory] = useState(null)
@@ -111,23 +112,23 @@ function ReviewArchitecture({ showTemplate, cfTemplate, onToggleTemplate, onEdit
     <div className='mx-auto w-full max-w-6xl'>
       <div className='flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-center'>
         <div>
-          <h1 className='bg-gradient-to-r from-white via-[#FFD700] to-[#E9B949] bg-clip-text text-[40px] font-bold leading-tight text-transparent sm:text-[52px]'>
-            <span className='relative inline-block'>
-              Review
-              <span className='absolute -bottom-1.5 left-0 h-1 w-16 rounded-full bg-[#E9B949]' />
+          <h1 className='text-[44px] font-bold leading-tight sm:text-[58px] lg:text-[68px]'>
+            <span className='relative inline-block text-white'>
+              Review &amp;
+              <span className='absolute -bottom-2 left-0 h-1.5 w-full rounded-full bg-[#F5B942]' />
             </span>{' '}
-            &amp; provision
+            <span className='text-[#F5B942]'>provision</span>
           </h1>
-          <p className='mt-4 text-sm text-text-muted'>
+          <p className='mt-6 text-base text-text-muted lg:text-lg'>
             Here&apos;s everything Clyro will create in your AWS account.
             <br />
             Review the resources below and provision when you&apos;re ready.
           </p>
         </div>
-        <img src={confirmProvisionIll} alt='' className='hidden w-72 shrink-0 sm:block lg:w-80' />
+        <img src={confirmProvisionIll} alt='' className='hidden w-80 shrink-0 sm:block lg:w-[26rem]' />
       </div>
 
-      <div className='mt-8 flex flex-col gap-3 sm:flex-row'>
+      <div className='mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5'>
         <StatCard icon={Box} value={bom?.total ?? 0} label='AWS Resources' />
         <StatCard icon={LayoutGrid} value={categoryCount} label='Resource Categories' />
         <StatCard icon={MousePointerClick} value='0' label='Manual Actions' />
@@ -135,21 +136,21 @@ function ReviewArchitecture({ showTemplate, cfTemplate, onToggleTemplate, onEdit
         <StatCard icon={Clock} value='~10-15 min' label='Est. Time Taken' />
       </div>
 
-      <ScallopedPanel className='mt-6 w-full' contentClassName='p-5'>
-        <div className='flex items-center justify-between gap-3'>
-          <div className='flex items-center gap-2'>
-            <span className='flex h-7 w-7 items-center justify-center rounded-full bg-[#E9B949]/15'>
-              <Box className='h-3.5 w-3.5 text-[#E9B949]' />
+      <div className='mt-8 w-full rounded-2xl border border-[#F5B942]/30 bg-[#14171c] p-6 lg:p-8'>
+        <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-3'>
+          <div className='flex items-center gap-3'>
+            <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F5B942]/15 lg:h-11 lg:w-11'>
+              <Box className='h-5 w-5 text-[#F5B942] lg:h-[22px] lg:w-[22px]' />
             </span>
-            <h3 className='text-sm font-bold text-[#E9B949]'>What Clyro will create</h3>
+            <h3 className='text-base font-bold text-[#F5B942] sm:text-lg lg:text-xl'>What Clyro will create</h3>
           </div>
-          <span className='shrink-0 rounded-full border border-white/[0.08] px-2.5 py-1 text-xs text-text-muted'>
+          <span className='shrink-0 rounded-full border border-white/[0.08] px-3.5 py-1.5 text-sm text-text-muted'>
             {bom?.total ?? 0} AWS resources
           </span>
         </div>
 
         {bom ? (
-          <div className='mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3'>
+          <div className='mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5'>
             {bom.groups.map((group) => (
               <ResourceCategoryCard
                 key={group.service}
@@ -161,42 +162,32 @@ function ReviewArchitecture({ showTemplate, cfTemplate, onToggleTemplate, onEdit
             ))}
           </div>
         ) : (
-          <p className='mt-3 text-sm text-text-muted'>No resources found in the generated template.</p>
+          <p className='mt-6 text-base text-text-muted'>No resources found in the generated template.</p>
         )}
+      </div>
 
-        <div className='mt-5'>
-          <button type='button' className='text-sm font-medium text-[#E9B949] hover:underline' onClick={onToggleTemplate}>
-            {showTemplate ? 'Hide CloudFormation template' : 'View CloudFormation template'}
-          </button>
-          {showTemplate ? (
-            <pre className='mt-3 max-h-48 overflow-y-auto rounded-md border border-border bg-background p-3 text-xs text-text-muted'>
-              {cfTemplate}
-            </pre>
-          ) : null}
-        </div>
-      </ScallopedPanel>
-
-      <div className='mt-6 flex flex-col items-stretch justify-between gap-4 lg:flex-row lg:items-center'>
-        <p className='flex items-start gap-2 rounded-lg border border-[#E9B949]/40 bg-[#E9B949]/[0.08] p-3 text-sm text-[#F0DA92]'>
-          <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0 text-[#E9B949]' />
+      <div className='mt-8'>
+        <p className='flex w-full items-start gap-2.5 rounded-lg border border-[#F5B942]/40 bg-[#F5B942]/[0.08] p-4 text-base text-[#F0DA92]'>
+          <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-[#F5B942]' />
           This will create AWS resources in your account. You will be charged by AWS for these resources.
         </p>
-        <div className='flex shrink-0 items-center justify-end gap-4'>
+        <div className='mt-6 flex items-center justify-between gap-4'>
           <button
             type='button'
-            className='inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-text-primary'
+            className='inline-flex items-center gap-2 text-base text-text-muted transition-colors hover:text-text-primary'
             onClick={onEditArchitecture}
           >
-            <Pencil className='h-3.5 w-3.5' />
+            <Pencil className='h-4 w-4' />
             Edit template
           </button>
           <Button
             variant='primary'
+            size='lg'
             onClick={onProvision}
-            className='!border-[#F4D878]/70 !from-[#FFD700] !to-[#E9B949] !text-black hover:!from-[#FFE066] hover:!to-[#F4C430] active:!from-[#E9B949] active:!to-[#D4A83E]'
+            className='!border-[#F5B942]/70 !bg-none !bg-[#F5B942] !text-black hover:!bg-[#F7C565] active:!bg-[#E0A73A]'
           >
             Provision
-            <ArrowRight className='h-4 w-4' />
+            <ArrowRight className='h-5 w-5' />
           </Button>
         </div>
       </div>
