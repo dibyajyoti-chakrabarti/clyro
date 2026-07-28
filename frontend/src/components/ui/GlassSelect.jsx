@@ -2,7 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 
-export default function GlassSelect({ options = [], value, onChange, id }) {
+// Size tokens. `md` is the original form-control sizing (unchanged for existing
+// callers); `sm` matches the compact inline controls used in dashboard toolbars.
+const SIZES = {
+  md: { height: 48, padding: "0 16px", radius: 12, font: 14, menuRadius: 24, itemHeight: 48, itemRadius: 16 },
+  sm: { height: 30, padding: "0 10px", radius: 8, font: 13, menuRadius: 12, itemHeight: 32, itemRadius: 8 },
+};
+
+export default function GlassSelect({
+  options = [],
+  value,
+  onChange,
+  id,
+  size = "md",
+  ariaLabel,
+  placeholder = "Select region",
+  className = "",
+  style,
+}) {
+  const t = SIZES[size] ?? SIZES.md;
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState({});
   const containerRef = useRef(null);
@@ -60,7 +78,7 @@ export default function GlassSelect({ options = [], value, onChange, id }) {
               backdropFilter: "blur(24px)",
               WebkitBackdropFilter: "blur(24px)",
               border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "24px",
+              borderRadius: `${t.menuRadius}px`,
               padding: "8px",
               boxShadow: "0 24px 80px rgba(0,0,0,0.5)",
               animation: "dropIn 220ms cubic-bezier(.22,1,.36,1) forwards",
@@ -81,12 +99,12 @@ export default function GlassSelect({ options = [], value, onChange, id }) {
                     justifyContent: "space-between",
                     gap: "12px",
                     width: "100%",
-                    height: "48px",
-                    padding: "0 16px",
-                    borderRadius: "16px",
+                    height: `${t.itemHeight}px`,
+                    padding: t.padding,
+                    borderRadius: `${t.itemRadius}px`,
                     border: "none",
                     cursor: "pointer",
-                    fontSize: "14px",
+                    fontSize: `${t.font}px`,
                     textAlign: "left",
                     outline: "none",
                     background: isSelected
@@ -133,22 +151,27 @@ export default function GlassSelect({ options = [], value, onChange, id }) {
     : null;
 
   return (
-    <div ref={containerRef} style={{ position: "relative", flex: 1 }}>
+    <div
+      ref={containerRef}
+      className={className}
+      style={{ position: "relative", flex: size === "sm" ? "0 1 auto" : 1, ...style }}
+    >
       <button
         id={id}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-label={ariaLabel}
         onClick={handleOpen}
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: "12px",
-          height: "48px",
+          gap: size === "sm" ? "6px" : "12px",
+          height: `${t.height}px`,
           width: "100%",
-          padding: "0 16px",
-          borderRadius: "12px",
+          padding: t.padding,
+          borderRadius: `${t.radius}px`,
           border: open
             ? "1px solid rgba(251,191,36,0.4)"
             : "1px solid rgba(255,255,255,0.08)",
@@ -156,7 +179,7 @@ export default function GlassSelect({ options = [], value, onChange, id }) {
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           color: "#e5e7eb",
-          fontSize: "14px",
+          fontSize: `${t.font}px`,
           cursor: "pointer",
           outline: "none",
           boxShadow: open
@@ -172,10 +195,10 @@ export default function GlassSelect({ options = [], value, onChange, id }) {
             whiteSpace: "nowrap",
           }}
         >
-          {selected?.label ?? "Select region"}
+          {selected?.label ?? placeholder}
         </span>
         <ChevronDown
-          size={16}
+          size={size === "sm" ? 14 : 16}
           style={{
             flexShrink: 0,
             color: "#9ca3af",

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../../../api'
 import { cachedFetch } from '../../../../lib/apiCache'
+import MonitorCard from './MonitorCard'
+import RingGauge from './RingGauge'
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
@@ -13,7 +15,9 @@ function stripClasses(state) {
   return 'h-6 self-end bg-border/60'
 }
 
-function UptimeSection({ projectId }) {
+// Renders two sibling cards (uptime gauges + downtime timeline) off one fetch;
+// the caller places them directly in its grid row.
+function UptimeSection({ projectId, uptimeClassName = '', timelineClassName = '' }) {
   const [history, setHistory] = useState(null)
 
   useEffect(() => {
@@ -41,37 +45,47 @@ function UptimeSection({ projectId }) {
   ]
 
   return (
-    <div>
-      <h3 className='text-lg font-semibold'>Uptime</h3>
-      <div className='mt-3 grid gap-3 md:grid-cols-2'>
-        {tiles.map(([label, value]) => (
-          <div key={label} className='rounded-lg border border-border bg-surface p-3'>
-            <p className='text-xs text-text-muted'>{label}</p>
-            <p className='mt-2 text-2xl font-semibold'>{value != null ? `${value}%` : '—'}</p>
-          </div>
-        ))}
-      </div>
-      {history?.samples > 0 ? (
-        <div className='mt-3 rounded-lg border border-border bg-surface p-3'>
-          <div className='flex h-8 items-stretch gap-0.5'>
-            {(history.strip || []).map((bucket) => (
-              <div
-                key={bucket.t}
-                className={`min-w-0 flex-1 rounded-sm ${stripClasses(bucket.state)}`}
-                title={`${new Date(bucket.t).toLocaleString()} — ${
-                  bucket.state === 'down' ? 'downtime detected' : bucket.state === 'up' ? 'healthy' : 'no data'
-                }`}
-              />
-            ))}
-          </div>
-          <p className='mt-2 text-xs text-text-muted'>Past 24 hours, oldest to newest — each bar is 30 minutes. Full red bars mark downtime.</p>
+    <>
+      <MonitorCard title='Uptime' tint='amber' className={uptimeClassName}>
+        <div className='grid flex-1 grid-cols-2 items-start content-center gap-3'>
+          {tiles.map(([label, value]) => (
+            <RingGauge
+              key={label}
+              percent={value ?? null}
+              label={value != null ? `${value}%` : '—'}
+              caption={label}
+            />
+          ))}
         </div>
-      ) : (
-        <p className='mt-3 rounded-lg border border-dashed border-border bg-surface/40 px-4 py-4 text-center text-sm text-text-muted'>
-          No history yet — uptime starts recording once the health collector has run.
-        </p>
-      )}
-    </div>
+      </MonitorCard>
+
+      <MonitorCard title='Downtime timeline' className={timelineClassName}>
+        {history?.samples > 0 ? (
+          <div className='flex flex-1 flex-col justify-center'>
+            <div className='flex h-8 items-stretch gap-0.5'>
+              {(history.strip || []).map((bucket) => (
+                <div
+                  key={bucket.t}
+                  className={`min-w-0 flex-1 rounded-sm ${stripClasses(bucket.state)}`}
+                  title={`${new Date(bucket.t).toLocaleString()} — ${
+                    bucket.state === 'down' ? 'downtime detected' : bucket.state === 'up' ? 'healthy' : 'no data'
+                  }`}
+                />
+              ))}
+            </div>
+            <p className='mt-3 text-xs leading-relaxed text-text-muted'>
+              Past 24 hours, oldest to newest — each bar is 30 minutes.
+              <br />
+              Full red bars mark downtime.
+            </p>
+          </div>
+        ) : (
+          <p className='flex flex-1 items-center justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-4 text-center text-sm text-text-muted'>
+            No history yet — uptime starts recording once the health collector has run.
+          </p>
+        )}
+      </MonitorCard>
+    </>
   )
 }
 
