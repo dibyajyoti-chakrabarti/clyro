@@ -41,3 +41,8 @@ backend/celerybeat-schedule*
 *.tfstate.lock.info
 # Do NOT ignore .terraform.lock.hcl — it pins provider versions (like package-lock.json)
 # Do NOT ignore *.tfvars — they contain non-secret config (secrets passed via -var flags)
+
+# graphify (personal tooling — generated graph + machine-specific hook paths)
+graphify-out/
+.claude/
+CLAUDE.md
