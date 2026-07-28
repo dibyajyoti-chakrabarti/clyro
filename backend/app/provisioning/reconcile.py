@@ -26,9 +26,9 @@ from botocore.exceptions import ClientError
 from django.db.models import Q
 from django.utils import timezone
 
-from core.models import AWSAccountConnection, Deployment, Project, ProvisioningLogEntry
+from core.models import AWSAccountConnection, AgentJob, Deployment, Project, ProvisioningLogEntry
 
-from . import aws_client
+from . import aws_client, deploy
 
 log = logging.getLogger(__name__)
 
@@ -106,10 +106,28 @@ def _resolve_stuck_deletion(deployment: Deployment) -> bool:
     if stack_status is not None:
         return False  # genuinely still deleting — nothing to reconcile yet
 
+    project = deployment.project
+
+    # A full project delete (AgentJob(kind=DELETE) — any status, since a DONE
+    # one would already have cascaded the project row away) got cut off
+    # mid-flight, most likely by run_delete_project_task's own poll timeout.
+    # Flipping statuses alone would leave a permanent ghost: Project.DELETED's
+    # own contract is that the row disappears, not that it parks here forever
+    # with its secrets and connector stack never purged. Finish what the task
+    # started instead of just marking it resolved.
+    if AgentJob.objects.filter(project=project, kind=AgentJob.Kind.DELETE).exists():
+        try:
+            deploy.destroy(project)
+            project.deployments.all().delete()
+            project.delete()
+        except Exception:
+            log.exception("Reconcile: failed to finish full delete for project %s", project.pk)
+            return False
+        return True
+
     deployment.status = Deployment.Status.DELETED
     deployment.completed_at = timezone.now()
     deployment.save(update_fields=["status", "completed_at", "updated_at"])
-    project = deployment.project
     project.status = Project.Status.DELETED
     project.save(update_fields=["status", "updated_at"])
     return True
