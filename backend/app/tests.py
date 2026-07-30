@@ -14,7 +14,7 @@ from app.provisioning import aws_client as aws_client_module
 from app.provisioning import cfn_events, cfn_generator, deploy, iac
 from app.provisioning import views as provisioning_views
 from app.provisioning import reconcile
-from app.scanner import compliance, deterministic_detector
+from app.scanner import classify, clyro_md, compliance
 from canvas_core import canvas_builder, cost_engine
 from core.models import (
     AgentJob, AWSAccountConnection, CanvasVersion, Deployment, EnvVarKey,
@@ -502,129 +502,6 @@ class FreeTierCostEngineTests(SimpleTestCase):
         self.assertIn("Free tier not applied", estimate["assumptions"])
 
 
-class _FakeRepoGithubUtils:
-    """Stub for deterministic_detector's github_utils dependency — a fixed file
-    tree + content map, no real GitHub API calls."""
-
-    def __init__(self, tree: list[str], files: dict[str, str]):
-        self._tree = tree
-        self._files = files
-
-    def get_repo_tree(self, token, repo_full_name, branch):
-        return self._tree
-
-    def get_file_content(self, token, repo_full_name, path, branch):
-        return self._files.get(path)
-
-
-_DJANGO_REQUIREMENTS = "django==5.0\npsycopg2-binary==2.9\ncelery==5.5.2\ndjango-redis==5.4\nboto3==1.34\n"
-_DJANGO_SETTINGS = """
-DATABASES = {'default': env.db('DATABASE_URL')}
-CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://redis:6379/1')
-SECRET_KEY = os.environ.get('SECRET_KEY')
-DEBUG = os.environ.get('DEBUG')
-"""
-_REACT_PACKAGE_JSON = '{"dependencies": {"react": "^19.0.0", "react-dom": "^19.0.0"}}'
-
-
-class RepoReconDeterministicDetectorTests(SimpleTestCase):
-    def test_clean_django_react_celery_redis_repo_is_high_confidence(self):
-        gh = _FakeRepoGithubUtils(
-            tree=["requirements.txt", "manage.py", "settings.py", "frontend/package.json", "backend/Dockerfile"],
-            files={
-                "requirements.txt": _DJANGO_REQUIREMENTS,
-                "settings.py": _DJANGO_SETTINGS,
-                "frontend/package.json": _REACT_PACKAGE_JSON,
-            },
-        )
-        result = deterministic_detector.detect("tok", "acme/app", "main", github_utils=gh)
-        self.assertEqual(result["confidence"], "high")
-        self.assertEqual(result["status"], "complete")
-        resources = result["detected_resources"]
-        self.assertTrue(resources["services"]["backend"]["detected"])
-        self.assertEqual(resources["services"]["backend"]["framework"], "django")
-        self.assertTrue(resources["services"]["frontend"]["detected"])
-        self.assertTrue(resources["services"]["worker"]["detected"])
-        # The real broker is Redis — must not be defaulted to "sqs" just
-        # because a Celery worker exists (the bug audit item 9 flagged).
-        self.assertEqual(resources["services"]["worker"]["broker"], "redis")
-        self.assertTrue(resources["infrastructure"]["cache"]["detected"])
-        self.assertFalse(resources["infrastructure"]["queue"]["detected"])
-        keys = {v["key"] for v in result["env_vars"]}
-        self.assertIn("SECRET_KEY", keys)
-
-    def test_missing_requirements_is_a_confident_hard_block(self):
-        gh = _FakeRepoGithubUtils(tree=["manage.py", "frontend/package.json"], files={})
-        result = deterministic_detector.detect("tok", "acme/app", "main", github_utils=gh)
-        self.assertEqual(result["confidence"], "high")
-        self.assertEqual(result["status"], "hard_block")
-        self.assertEqual(result["block_reason"], "missing_requirements")
-
-    def test_non_django_backend_is_a_confident_hard_block(self):
-        gh = _FakeRepoGithubUtils(
-            tree=["requirements.txt", "manage.py"],
-            files={"requirements.txt": "flask==3.0\n"},
-        )
-        result = deterministic_detector.detect("tok", "acme/app", "main", github_utils=gh)
-        self.assertEqual(result["confidence"], "high")
-        self.assertEqual(result["status"], "hard_block")
-        self.assertEqual(result["block_reason"], "unsupported_framework")
-
-    def test_mysql_is_a_confident_hard_block(self):
-        gh = _FakeRepoGithubUtils(
-            tree=["requirements.txt", "manage.py"],
-            files={"requirements.txt": "django==5.0\nmysqlclient==2.2\n"},
-        )
-        result = deterministic_detector.detect("tok", "acme/app", "main", github_utils=gh)
-        self.assertEqual(result["block_reason"], "unsupported_database")
-
-    def test_ambiguous_layout_falls_back_to_low_confidence(self):
-        # package.json exists at repo root alongside a separate frontend/ dir
-        # with no package.json of its own — an unusual shape we don't model.
-        gh = _FakeRepoGithubUtils(
-            tree=["requirements.txt", "manage.py", "terraform/main.tf"],
-            files={"requirements.txt": _DJANGO_REQUIREMENTS},
-        )
-        result = deterministic_detector.detect("tok", "acme/app", "main", github_utils=gh)
-        self.assertEqual(result["confidence"], "low")
-
-    def test_finds_settings_under_a_custom_named_project_package(self):
-        # Found live against a real repo: a Django project named "taskboard"
-        # keeps its settings at backend/taskboard/settings/base.py — a fixed
-        # list of conventional paths (settings.py, config/settings.py, ...)
-        # never finds this, silently dropping every env var it would have found.
-        gh = _FakeRepoGithubUtils(
-            tree=[
-                "backend/requirements.txt", "backend/manage.py",
-                "backend/taskboard/settings/base.py", "frontend/package.json",
-            ],
-            files={
-                "backend/requirements.txt": "django==5.0\npsycopg2-binary==2.9\n",
-                "backend/taskboard/settings/base.py": (
-                    'DATABASES = {"default": dj_database_url.config(default=os.environ["DATABASE_URL"])}\n'
-                    'ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "").split(",")\n'
-                ),
-                "frontend/package.json": _REACT_PACKAGE_JSON,
-            },
-        )
-        result = deterministic_detector.detect("tok", "acme/app", "main", github_utils=gh)
-        self.assertEqual(result["confidence"], "high")
-        keys = {v["key"] for v in result["env_vars"]}
-        self.assertIn("DATABASE_URL", keys)
-        self.assertIn("ALLOWED_HOSTS", keys)
-
-    def test_sqs_broker_detected_when_no_redis_present(self):
-        requirements = "django==5.0\npsycopg2-binary==2.9\ncelery[sqs]==5.5.2\nboto3==1.34\n"
-        gh = _FakeRepoGithubUtils(
-            tree=["requirements.txt", "manage.py", "settings.py"],
-            files={"requirements.txt": requirements, "settings.py": "DATABASES = {}\n"},
-        )
-        result = deterministic_detector.detect("tok", "acme/app", "main", github_utils=gh)
-        worker = result["detected_resources"]["services"]["worker"]
-        self.assertEqual(worker["broker"], "sqs")
-        self.assertTrue(result["detected_resources"]["infrastructure"]["queue"]["detected"])
-
-
 def _detection_with(**infra_overrides):
     detected = {
         "services": {
@@ -690,16 +567,9 @@ class WarmupDispatchTests(TestCase):
         self.user = User.objects.create(cognito_sub="sub-w", email="w@example.com", name="W")
 
     @patch('app.views.tasks.run_warmup_task.delay')
-    def test_wizard_state_warms_reporecon_on_first_visit(self, mock_delay):
+    def test_wizard_state_does_not_warm_on_step_one(self, mock_delay):
+        """Step 1 has no agent left to warm — it ingests CLYRO.md from the repo."""
         project = Project.objects.create(user=self.user, name="taskboard")
-        request = self.factory.get(f'/api/projects/{project.id}/wizard-state/')
-        force_authenticate(request, user=self.user)
-        app_views.wizard_state(request, str(project.id))
-        mock_delay.assert_called_once_with(str(project.id), "REPORECON_RUNTIME_ARN")
-
-    @patch('app.views.tasks.run_warmup_task.delay')
-    def test_wizard_state_does_not_rewarm_after_scan(self, mock_delay):
-        project = Project.objects.create(user=self.user, name="taskboard", status=Project.Status.SCAN_COMPLETE)
         request = self.factory.get(f'/api/projects/{project.id}/wizard-state/')
         force_authenticate(request, user=self.user)
         app_views.wizard_state(request, str(project.id))
@@ -913,6 +783,30 @@ class ReconcileStuckDeletionTests(TestCase):
         self.assertEqual(counts["deployments_resolved"], 1)
         entry = ProvisioningLogEntry.objects.get(deployment=deployment)
         self.assertIn("reconnect your AWS account", entry.plain_message)
+
+    @patch('app.provisioning.reconcile.aws_client.delete_stack')
+    @patch('app.provisioning.reconcile.aws_client.find_stack')
+    @patch('app.provisioning.reconcile.aws_client.assume_role')
+    def test_finishes_full_purge_when_delete_job_was_cut_off(
+        self, mock_assume, mock_find_stack, mock_delete_stack,
+    ):
+        # A run_delete_project_task that timed out mid-teardown: the stack
+        # actually finished deleting in AWS, but the task's own poll gave up
+        # first and marked the AgentJob/project FAILED. Reconcile must finish
+        # the purge (project row gone), not just re-flag it as 'deleted'.
+        # reconcile.aws_client and deploy.aws_client are the same imported
+        # module object, so one set of patches covers both call sites.
+        mock_assume.return_value = {"AccessKeyId": "a", "SecretAccessKey": "b", "SessionToken": "c"}
+        mock_find_stack.return_value = None
+        deployment = self._stuck_deployment()
+        project_id = self.project.id
+        AgentJob.objects.create(project=self.project, kind=AgentJob.Kind.DELETE, status=AgentJob.Status.FAILED)
+
+        counts = reconcile.sweep()
+
+        self.assertEqual(counts["deployments_resolved"], 1)
+        self.assertFalse(Project.objects.filter(id=project_id).exists())
+        self.assertFalse(Deployment.objects.filter(id=deployment.id).exists())
 
 
 class DeployLifecycleTests(TestCase):

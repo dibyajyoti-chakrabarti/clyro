@@ -225,11 +225,11 @@ def run_delete_project_task(job_id: str, project_id: str):
 @shared_task
 def run_warmup_task(project_id: str, runtime_env_var: str = "IAC_RUNTIME_ARN"):
     # Warm a given AgentCore runtime so the next step's first real call doesn't
-    # pay its ~17s cold start. Originally IaC-only (fired on canvas finalize,
-    # right before Step-4/5 Generate); now also fired for RepoRecon (Step 1
-    # entry) and Reasoning (right after Step 2/3's intent save, before the
-    # canvas step). Best-effort — agentcore.warm_runtime swallows all errors,
-    # and no AgentJob is tracked (there's nothing for the user to watch).
+    # pay its ~17s cold start. Fired on canvas finalize (right before Step-4/5
+    # Generate) and after Step 2/3's intent save (before the canvas step).
+    # Step 1 no longer warms anything — it reads CLYRO.md from the repo.
+    # Best-effort — agentcore.warm_runtime swallows all errors, and no AgentJob
+    # is tracked (there's nothing for the user to watch).
     from app import agentcore
     agentcore.warm_runtime(runtime_env_var, f"warmup-{project_id}")
 

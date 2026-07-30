@@ -175,10 +175,8 @@ CLYRO_AWS_ACCOUNT_ID = env('CLYRO_AWS_ACCOUNT_ID')
 # empty (default), it runs the local canvas_core deterministic stub.
 REASONING_RUNTIME_ARN = env('REASONING_RUNTIME_ARN', default='')
 
-# ── Step 1 (Repo Recon) ─────────────────────────────────────────────────────
-# When set, the repo scan is delegated to the deployed RepoRecon runtime; when
-# empty (default), it runs the in-process scanner agent (local fallback).
-REPORECON_RUNTIME_ARN = env('REPORECON_RUNTIME_ARN', default='')
+# Step 1 has no runtime: the repo scan moved offline into the /clyro-scan skill,
+# and the platform ingests the CLYRO.md it commits (documentation/ch_20).
 
 # ── Step 4 (IaC generation) ─────────────────────────────────────────────────
 # Deployed IacArchitect runtime used to *refine* the CloudFormation template

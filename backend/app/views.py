@@ -226,12 +226,9 @@ def wizard_state(request, pk):
     except Project.DoesNotExist:
         return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Step 1 entry — warm RepoRecon now so the eventual Scan click skips the
-    # ~17s AgentCore cold start. Only fires once per project (CREATED is the
-    # very first status, before repo connect/scan) rather than on every poll.
-    if project.status == Project.Status.CREATED and getattr(settings, "IAC_WARMUP_ENABLED", False):
-        tasks.run_warmup_task.delay(str(project.id), "REPORECON_RUNTIME_ARN")
-
+    # Step 1 used to warm RepoRecon here to hide its ~17s AgentCore cold start.
+    # There is no agent to warm any more — Step 1 reads CLYRO.md straight from
+    # the repo, so entering the wizard costs nothing.
     scan = project.scan_results.filter(status='complete').order_by('-scan_timestamp').first()
     intent = project.intent_records.order_by('-created_at').first()
 
