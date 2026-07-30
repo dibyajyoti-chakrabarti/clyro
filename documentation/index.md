@@ -15,7 +15,7 @@ chapter you need.
 | 5 | [Backend, Celery & Agents](ch_5_backend_and_celery.md) | The Django REST API, async task workers, and AI agents |
 | 6 | [Infrastructure & Deployment](ch_6_infrastructure_and_deployment.md) | Terraform foundation vs workloads, how to deploy Clyro itself |
 | 7 | [Local Development](ch_7_local_development.md) | Docker Compose bring-up, ports, testing, and E2E setup |
-| 8 | [Wizard Step 1: Connect](ch_8_wizard_step_1_connect.md) | GitHub repository connection and metadata sync |
+| 8 | [Wizard Step 1: Connect & Contract](ch_8_wizard_step_1_connect.md) | GitHub connection and ingesting the repo's CLYRO.md contract |
 | 9 | [Wizard Step 2: Configure](ch_9_wizard_step_2_configure.md) | Environment variables and secret injection |
 | 10 | [Wizard Step 3: Canvas](ch_10_wizard_step_3_canvas.md) | Chatting with CryloCanvas to define the architecture spec |
 | 11 | [Wizard Step 4: Deploy](ch_11_wizard_step_4_deploy.md) | Reviewing the IaC and live provisioning |
