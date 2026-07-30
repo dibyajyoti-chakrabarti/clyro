@@ -87,6 +87,44 @@ def get_repo_tree(token: str, repo_full_name: str, branch: str) -> list[str]:
     return [item['path'] for item in data.get('tree', []) if item.get('type') == 'blob']
 
 
+def get_branch_head_sha(token: str, repo_full_name: str, branch: str) -> str | None:
+    """Current head commit sha of the branch, or None if it can't be read.
+
+    Used against the ``commit_sha`` recorded inside CLYRO.md to tell whether the
+    contract still describes the branch Clyro is about to deploy."""
+    resp = requests.get(
+        f'https://api.github.com/repos/{repo_full_name}/commits/{branch}',
+        headers={
+            'Authorization': f'Bearer {token}',
+            'Accept': 'application/vnd.github.v3+json',
+        },
+        timeout=10,
+    )
+    if resp.status_code >= 400:
+        return None
+    return resp.json().get('sha')
+
+
+def compare_changed_paths(token: str, repo_full_name: str, base: str, head: str) -> list[str] | None:
+    """File paths changed between two refs, or None if the comparison failed.
+
+    None and [] mean different things to the caller: [] is "nothing changed",
+    None is "we couldn't tell" — a force-push or a squashed history can leave the
+    contract's base sha unreachable, and that must not be reported as a clean
+    comparison."""
+    resp = requests.get(
+        f'https://api.github.com/repos/{repo_full_name}/compare/{base}...{head}',
+        headers={
+            'Authorization': f'Bearer {token}',
+            'Accept': 'application/vnd.github.v3+json',
+        },
+        timeout=15,
+    )
+    if resp.status_code >= 400:
+        return None
+    return [f['filename'] for f in resp.json().get('files', [])]
+
+
 def get_file_content(token: str, repo_full_name: str, path: str, branch: str) -> str | None:
     """A single file's text content, or None if it doesn't exist. Used by the
     cloud-compliance checks to inspect e.g. package.json/Dockerfile contents

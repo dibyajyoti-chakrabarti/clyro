@@ -1,9 +1,11 @@
 """Deterministic "Cloud Compliance" checks run right after a successful scan.
 
-These are static, rule-based checks over the repo's file tree/contents — not
-part of the RepoRecon agent (which does the actual framework/service
-detection and lives outside this repo, see runner.py). RepoRecon only ever
-detects a Django backend and/or a React frontend, so these checks are scoped
+These are static, rule-based checks over the repo's file tree/contents — the
+detection itself comes from the repo's CLYRO.md contract (see runner.py). They
+are deliberately recomputed here on every ingest rather than read out of that
+contract: CLYRO.md is committed and hand-editable, so a file edited to claim
+every check passes must not be able to walk a blocker into the build. Clyro only
+ever deploys a Django backend and/or a React frontend, so these checks are scoped
 to the realistic range of Django+React project shapes (monorepo vs
 single-service, workspace-committed lockfiles, multi-stage Docker builds,
 DB-less backends, Django's `models/` package form, etc.) — not other

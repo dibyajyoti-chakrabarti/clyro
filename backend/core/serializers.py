@@ -29,7 +29,10 @@ class ScanResultSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'status', 'block_reason', 'detected_resources', 'env_vars', 'draft_canvas_yaml',
             'scan_timestamp', 'compliance_findings', 'compliance_prompt',
+            'source', 'contract_meta', 'contract_drift',
         ]
+        # contract_raw is deliberately not exposed: it's untrusted text kept for
+        # audit only, and the parsed fields above carry everything the UI needs.
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

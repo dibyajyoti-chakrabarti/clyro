@@ -262,6 +262,11 @@ def env_vars_list(request, pk):
             'source_file': var.source_file,
             'secrets_manager_arn': var.secrets_manager_arn,
             'staged_value': var.staged_value,
+            # From CLYRO.md: 'agent_generatable' secrets are minted by Clyro and
+            # never asked for; 'third_party' ones get their acquire_url rendered
+            # next to the input so the user knows which console to open.
+            'hint': var.hint,
+            'acquire_url': var.acquire_url,
         }
 
     return Response({
