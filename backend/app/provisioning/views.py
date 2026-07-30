@@ -1,4 +1,5 @@
 import logging
+import secrets
 import uuid
 from django.conf import settings
 from django.core.cache import cache
@@ -374,6 +375,20 @@ def env_vars_save(request, pk):
                 classification=EnvVarKey.Classification.OPTIONAL, secrets_manager_arn__isnull=True,
             )
         ]
+
+    # CLYRO.md's `agent_generatable` hint means the value is entropy with no
+    # external authority — a Django SECRET_KEY only has to be secret, not to
+    # match anything. Mint those here rather than making the user invent a
+    # random string and paste it in. Never overrides a value the user did
+    # supply, and never regenerates one already in Secrets Manager: rotating a
+    # signing key mid-deploy would invalidate every session and token the app
+    # has issued.
+    for var in EnvVarKey.objects.filter(
+        project=project, is_active=True, hint='agent_generatable',
+        secrets_manager_arn__isnull=True,
+    ):
+        if not values.get(var.key_name):
+            values[var.key_name] = secrets.token_urlsafe(48)
 
     try:
         credentials = assume_role(

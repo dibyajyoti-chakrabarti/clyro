@@ -122,7 +122,10 @@ function EnvVarsPanel({
             <SectionIcon icon={KeyRound} tone='amber' legacy={!isStep1} />
             <div>
               <h3 className='text-lg font-medium text-text-primary'>Values required from you</h3>
-              <p className='mt-0.5 text-sm text-text-muted'>These secrets are needed to run your app. Fill in each one to continue.</p>
+              <p className='mt-0.5 text-sm text-text-muted'>
+                These secrets are needed to run your app. Anything Clyro can generate itself is
+                marked — fill in the rest to continue.
+              </p>
             </div>
           </div>
 
@@ -137,11 +140,33 @@ function EnvVarsPanel({
                     <p className={`text-right text-xs text-text-muted ${isStep1 ? 'font-mono' : ''}`}>{field.context_block}</p>
                   ) : null}
                 </div>
+                {/* CLYRO.md's `third_party` hint: this value only exists in an
+                    external console, so link straight to it rather than leaving
+                    the user to hunt for which dashboard mints it. */}
+                {field.acquire_url ? (
+                  <p className='mb-1.5 text-xs text-text-muted'>
+                    Get it at{' '}
+                    <a
+                      href={field.acquire_url}
+                      target='_blank'
+                      rel='noreferrer'
+                      className='text-amber-300/90 underline decoration-amber-300/30 underline-offset-2 hover:text-amber-200'
+                    >
+                      {field.acquire_url.replace(/^https?:\/\//, '')}
+                    </a>
+                  </p>
+                ) : null}
                 <div className='flex items-center gap-2'>
                   <input
                     type={showSecrets[field.key_name] ? 'text' : 'password'}
                     value={secretValues[field.key_name] || ''}
-                    placeholder={field.secrets_manager_arn ? 'Saved — leave blank to keep' : ''}
+                    placeholder={
+                      field.secrets_manager_arn
+                        ? 'Saved — leave blank to keep'
+                        : field.hint === 'agent_generatable'
+                          ? 'Leave blank — Clyro generates this for you'
+                          : ''
+                    }
                     onChange={(event) => onSecretValueChange(field.key_name, event.target.value)}
                     className={inputClasses}
                   />

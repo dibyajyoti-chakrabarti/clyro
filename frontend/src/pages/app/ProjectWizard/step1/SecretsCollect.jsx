@@ -31,8 +31,16 @@ export default function SecretsCollect({ projectId, onDone }) {
   // A required secret is satisfied if the user typed a value OR it was already
   // staged on a previous visit (resume case) — the saved value never returns
   // to the browser, so the field otherwise renders empty.
+  //
+  // 'agent_generatable' secrets (CLYRO.md's hint for values that are pure
+  // entropy, like DJANGO_SECRET_KEY) are never required: Clyro mints those
+  // itself at write time. The input stays, so a user who wants to pin a
+  // specific value still can.
   const allSecretsFilled = userSecretVars.length === 0 || userSecretVars.every(
-    (field) => field.secrets_manager_arn || (secretValues[field.key_name] || '').trim() !== ''
+    (field) =>
+      field.hint === 'agent_generatable' ||
+      field.secrets_manager_arn ||
+      (secretValues[field.key_name] || '').trim() !== ''
   )
 
   const handleStageEnvVars = async () => {
