@@ -1,7 +1,7 @@
 """Ingestion of ``CLYRO.md`` — the contract an offline coding agent writes into
 the user's repo in place of Clyro's own Step 1 scan.
 
-The user runs the ``/clyro-scan`` skill (``skills/clyro-scan/SKILL.md``) locally
+The user runs the ``/clyro-scan`` skill (``backend/skills/clyro-scan/SKILL.md``) locally
 with Claude Code / Cursor / Aider; it reads their real checkout, applies
 compliance fixes, and commits a ``CLYRO.md`` at the repo root. This module reads
 that file back and turns it into the detection shape the rest of the pipeline
