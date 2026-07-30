@@ -27,6 +27,7 @@ chapter you need.
 | 17 | [E2E Hardening Report](ch_17_e2e_hardening_report.md) | Hardening test results post-optimization |
 | 18 | [IAM Least-Privilege Review](ch_18_iam_least_privilege_review.md) | Recurring audit of generated customer roles and ClyroProvisioningRole |
 | 19 | [Audit Remediation & Prod Verification Report](ch_19_audit_remediation_and_prod_verification.md) | Full audit close-out, production deploy, and live E2E verification against clyro.cloud |
+| 20 | [Step 1 Revamp: Offline Scan Contract](ch_20_offline_scan_contract_plan.md) | Replacing the live repo scan with an offline agent that writes a CLYRO.md contract |
 
 ## Repo layout at a glance
 
@@ -36,4 +37,5 @@ frontend/          ← the React/Vite web application
 backend/           ← the Django API and Celery workers
 infrastructure/    ← the Terraform code (foundation and workloads)
 scripts/           ← utility scripts for database/deployment
+skills/            ← the offline agent skills we ship to users (clyro-scan)
 ```
