@@ -198,6 +198,10 @@ class ScanResult(models.Model):
         FAILED = 'failed'
         BLOCKED = 'blocked'
 
+    class Source(models.TextChoices):
+        CLYRO_MD = 'clyro_md'
+        LIVE = 'live'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='scan_results')
     scan_timestamp = models.DateTimeField(auto_now_add=True)
@@ -208,6 +212,20 @@ class ScanResult(models.Model):
     draft_canvas_yaml = models.TextField(null=True, blank=True)
     raw_file_tree = models.JSONField(null=True, blank=True)
     compliance_findings = models.JSONField(null=True, blank=True)
+    # Where the detection came from. 'live' is the retired in-cloud scan; rows
+    # predating the offline contract keep it for provenance.
+    source = models.TextField(choices=Source.choices, default=Source.CLYRO_MD)
+    # The CLYRO.md text exactly as ingested — an audit trail for "why did Clyro
+    # think that?", since the file can change under us on the next push.
+    # UNTRUSTED user/agent-authored content: never interpolate this into an LLM
+    # prompt. Only the validated output of clyro_md.to_detection() goes
+    # downstream (documentation/ch_20 §4).
+    contract_raw = models.TextField(null=True, blank=True)
+    # {agent, generated_at, commit_sha, scan_mode, confidence, schema_version}
+    contract_meta = models.JSONField(null=True, blank=True)
+    # Human-readable notes where the contract disagreed with what Clyro verified
+    # itself, or where the repo moved on since the contract was generated.
+    contract_drift = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -402,6 +420,13 @@ class EnvVarKey(models.Model):
     source_file = models.TextField(null=True, blank=True)
     context_block = models.TextField(null=True, blank=True)
     production_default = models.TextField(null=True, blank=True)
+    # How a user_secret gets its value, straight from CLYRO.md's `hint`.
+    # 'agent_generatable' means the value is just entropy with no external
+    # authority, so Clyro mints its own and never prompts for it;
+    # 'third_party' means only an external console has it, and acquire_url is
+    # where the user goes to fetch it.
+    hint = models.TextField(null=True, blank=True)
+    acquire_url = models.TextField(null=True, blank=True)
     # Holds a value collected by env_vars_stage (Step 2, before an AWS connection
     # exists) until env_vars_save actually writes it to Secrets Manager (Step 4).
     # Cleared back to null once write_secret succeeds — plaintext secrets should
