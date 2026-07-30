@@ -1,15 +1,17 @@
+import ContractIngesting from './ContractIngesting'
+import ContractSetup from './ContractSetup'
 import GithubConnectCard from './GithubConnectCard'
 import RepositorySelector from './RepositorySelector'
-import ScanProgress from './ScanProgress'
 import ScanBlocked from './ScanBlocked'
 import ScanResults from './ScanResults'
 import SecretsCollect from './SecretsCollect'
 import useScanFlow from '../hooks/useScanFlow'
 
-// Step 1: connect the repo, scan it, then stage the secrets it needs — all
-// before any AWS account is connected (that's Step 2). Self-manages its own
-// advance to Step 2 via onComplete once secrets are staged, since it spans
-// two internal sub-phases (scan results -> secrets) behind one wizard step.
+// Step 1: connect the repo, ingest the CLYRO.md contract an offline agent wrote
+// into it, then stage the secrets it names — all before any AWS account is
+// connected (that's Step 2). Self-manages its own advance to Step 2 via
+// onComplete once secrets are staged, since it spans two internal sub-phases
+// (results -> secrets) behind one wizard step.
 export default function StepOnePanel({ projectId, projectData, setProjectData, setStep1CanContinue, onComplete }) {
   const {
     phase,
@@ -26,10 +28,11 @@ export default function StepOnePanel({ projectId, projectData, setProjectData, s
     handleRepoChange,
     setSelectedBranch,
     handleScan,
+    handleRecheck,
+    rechecking,
     canScan,
     blockReason,
-    scanMessages,
-    scanStep,
+    contractErrors,
     isMonorepo,
     detectedServices,
     detectedInfra,
@@ -39,6 +42,8 @@ export default function StepOnePanel({ projectId, projectData, setProjectData, s
     optional,
     complianceFindings,
     compliancePrompt,
+    contractMeta,
+    contractDrift,
   } = useScanFlow({ projectId, projectData, setProjectData, setStep1CanContinue })
 
   if (phase === 'connect') {
@@ -49,8 +54,21 @@ export default function StepOnePanel({ projectId, projectData, setProjectData, s
     return <RepositorySelector loadingRepos={loadingRepos} selectedRepo={selectedRepo} loadingBranches={loadingBranches} selectedBranch={selectedBranch} availableRepos={availableRepos} availableBranches={availableBranches} handleRepoChange={handleRepoChange} setSelectedBranch={setSelectedBranch} setPhase={setPhase} handleScan={handleScan} canScan={canScan} />
   }
 
-  if (phase === 'scanning') {
-    return <ScanProgress scanMessages={scanMessages} scanStep={scanStep} />
+  if (phase === 'ingesting') {
+    return <ContractIngesting selectedRepo={selectedRepo} selectedBranch={selectedBranch} />
+  }
+
+  if (phase === 'contract_missing' || phase === 'contract_invalid') {
+    return (
+      <ContractSetup
+        mode={phase === 'contract_invalid' ? 'invalid' : 'missing'}
+        errors={contractErrors}
+        selectedRepo={selectedRepo}
+        selectedBranch={selectedBranch}
+        onRecheck={handleRecheck}
+        rechecking={rechecking}
+      />
+    )
   }
 
   if (phase === 'blocked') {
@@ -76,6 +94,8 @@ export default function StepOnePanel({ projectId, projectData, setProjectData, s
       envVars={envVars}
       complianceFindings={complianceFindings}
       compliancePrompt={compliancePrompt}
+      contractMeta={contractMeta}
+      contractDrift={contractDrift}
       canContinue={!hasBlockingFindings}
       onContinue={() => setPhase('secrets')}
     />

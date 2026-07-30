@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api, pollJob } from '../../../../api'
 
+// Step 1 no longer scans the repo — the user runs the /clyro-scan skill with
+// their own coding agent, which commits a CLYRO.md contract, and this flow
+// ingests it. So "Connect Repository" attempts the ingest immediately: a user
+// who already ran the skill lands straight on results, and only one who hasn't
+// sees the setup instructions.
 export default function useScanFlow({ projectId, projectData, setProjectData, setStep1CanContinue }) {
   const [searchParams] = useSearchParams()
   const [phase, setPhase] = useState(() =>
@@ -10,16 +15,16 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
   const [selectedRepo, setSelectedRepo] = useState(projectData.repo?.repo || '')
   const [selectedBranch, setSelectedBranch] = useState(projectData.repo?.branch || '')
   const [selectedInstallationId, setSelectedInstallationId] = useState(null)
-  const [scanStep, setScanStep] = useState(0)
-  const [scanMessages, setScanMessages] = useState([])
   const [blockReason, setBlockReason] = useState('')
+  const [contractErrors, setContractErrors] = useState([])
+  const [rechecking, setRechecking] = useState(false)
   const [scanResult, setScanResult] = useState(() => projectData.scanResult || null)
   const [availableRepos, setAvailableRepos] = useState([])
   const [availableBranches, setAvailableBranches] = useState([])
   const [existingInstallations, setExistingInstallations] = useState([])
   const [loadingRepos, setLoadingRepos] = useState(false)
   const [loadingBranches, setLoadingBranches] = useState(false)
-  const animIntervalRef = useRef(null)
+  const repoConnectedRef = useRef(false)
 
   useEffect(() => {
     const installationId = searchParams.get('installation_id')
@@ -90,71 +95,74 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
 
   const canScan = selectedRepo !== '' && selectedBranch !== ''
 
+  // Ingest CLYRO.md and route to whichever phase the outcome calls for. Shared
+  // by the initial connect and every "check again" press, so a retry after the
+  // user pushes their contract behaves identically to a first attempt.
+  const ingestContract = async () => {
+    const { job_id: jobId } = await api.triggerScan(projectId)
+    const result = await pollJob(projectId, jobId)
+
+    if (result.status === 'blocked' && result.block_reason === 'clyro_md_missing') {
+      setContractErrors(result.contract_drift || [])
+      setPhase('contract_missing')
+      return
+    }
+
+    if (result.status === 'blocked' && result.block_reason === 'clyro_md_invalid') {
+      setContractErrors(result.contract_drift || [])
+      setPhase('contract_invalid')
+      return
+    }
+
+    // Anything else blocked is the contract reporting the repo itself as
+    // unsupported (no Postgres, not Django) — block_reason carries the message.
+    if (result.status === 'blocked' || result.status === 'failed') {
+      setBlockReason(result.block_reason || 'Clyro could not read this repository')
+      setPhase('blocked')
+      return
+    }
+
+    setScanResult(result)
+    setProjectData((prev) => ({ ...prev, scanResult: result }))
+    setPhase('results')
+  }
+
   const handleScan = async () => {
     if (!canScan) return
 
-    const messages = [
-      'Connecting to repository...',
-      'Verifying access permissions...',
-      'Repository connected!',
-      'Scanning file structure...',
-      'Reading configuration files...',
-      'Detecting services & environment variables...',
-      'Generating architecture draft...',
-    ]
-    setScanMessages(messages)
-    setScanStep(0)
-    setPhase('scanning')
+    setPhase('ingesting')
     setProjectData((prev) => ({ ...prev, repo: { repo: selectedRepo, branch: selectedBranch } }))
 
     try {
-      await api.connectRepo(projectId, {
-        installation_id: parseInt(selectedInstallationId, 10),
-        repo_full_name: selectedRepo,
-        repo_branch: selectedBranch,
-      })
-
-      for (let i = 0; i < 3; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        setScanStep(i + 1)
+      // connect-repo is idempotent per project, but re-POSTing it on every
+      // recheck is pointless work — the repo/branch can't change from here.
+      if (!repoConnectedRef.current) {
+        await api.connectRepo(projectId, {
+          installation_id: parseInt(selectedInstallationId, 10),
+          repo_full_name: selectedRepo,
+          repo_branch: selectedBranch,
+        })
+        repoConnectedRef.current = true
       }
-
-      const scanPromise = api.triggerScan(projectId).then(({ job_id: jobId }) => pollJob(projectId, jobId))
-
-      let animStep = 3
-      animIntervalRef.current = setInterval(() => {
-        animStep++
-        if (animStep <= messages.length - 1) {
-          setScanStep(animStep)
-        } else {
-          clearInterval(animIntervalRef.current)
-        }
-      }, 10000)
-
-      const result = await scanPromise
-      clearInterval(animIntervalRef.current)
-      setScanStep(messages.length)
-      await new Promise((resolve) => setTimeout(resolve, 400))
-
-      if (result.status === 'hard_block') {
-        setBlockReason(result.block_reason || 'Repository scan blocked')
-        setPhase('blocked')
-        return
-      }
-
-      if (result.status === 'soft_block') {
-        setBlockReason(result.block_reason || 'Scan needs clarification')
-        setPhase('blocked')
-        return
-      }
-
-      setScanResult(result)
-      setProjectData((prev) => ({ ...prev, scanResult: result }))
-      setPhase('results')
+      await ingestContract()
     } catch (err) {
-      clearInterval(animIntervalRef.current)
-      setBlockReason(err.message || 'Failed to analyse repository')
+      setBlockReason(err.message || 'Failed to read this repository')
       setPhase('blocked')
+    }
+  }
+
+  // "I've pushed CLYRO.md — check again". Keeps the instructions on screen while
+  // it runs rather than flashing through the ingesting phase, so a still-missing
+  // contract doesn't look like a different failure.
+  const handleRecheck = async () => {
+    setRechecking(true)
+    try {
+      await ingestContract()
+    } catch (err) {
+      setBlockReason(err.message || 'Failed to read this repository')
+      setPhase('blocked')
+    } finally {
+      setRechecking(false)
     }
   }
 
@@ -183,6 +191,8 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
 
   const complianceFindings = scanResult?.compliance_findings || []
   const compliancePrompt = scanResult?.compliance_prompt || null
+  const contractMeta = scanResult?.contract_meta || null
+  const contractDrift = scanResult?.contract_drift || []
 
   return {
     phase,
@@ -199,10 +209,11 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
     handleRepoChange,
     setSelectedBranch,
     handleScan,
+    handleRecheck,
+    rechecking,
     canScan,
     blockReason,
-    scanMessages,
-    scanStep,
+    contractErrors,
     isMonorepo,
     detectedServices,
     detectedInfra,
@@ -212,5 +223,7 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
     optional,
     complianceFindings,
     compliancePrompt,
+    contractMeta,
+    contractDrift,
   }
 }
