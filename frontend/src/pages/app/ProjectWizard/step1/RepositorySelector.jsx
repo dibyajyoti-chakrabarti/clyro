@@ -32,7 +32,13 @@ function RepositorySelector({
         <PremiumStepHeading prefix='Connect your' highlight='repository' className='text-[clamp(44px,5.3vw,64px)]' />
 
         <p className='mx-auto mt-5 max-w-[650px] text-[22px] leading-[1.7] text-white/75'>
-          Crylo scans your code to detect your stack, dependencies, and environment variables.
+          Clyro reads a <span className='font-mono text-white/90'>CLYRO.md</span> contract from your
+          repo — your own coding agent writes it, so nothing about your stack is guessed.
+        </p>
+
+        <p className='mx-auto mt-3 max-w-[600px] text-[14px] leading-[1.6] text-white/45'>
+          Haven't made one yet? Pick your repo and branch — we'll hand you the one-line install and
+          the command to run.
         </p>
 
         <div className='mx-auto mt-10 w-full max-w-[640px] rounded-[24px] border border-[rgba(212,175,55,0.35)] bg-[rgba(10,10,10,0.82)] p-10 text-left shadow-[0_18px_60px_rgba(0,0,0,0.40)]'>
@@ -100,7 +106,7 @@ function RepositorySelector({
           <span className='text-white/30'>•</span>
           <div className='flex items-center gap-2'>
             <ShieldCheck className='h-4 w-4 text-[#E8B84B]' />
-            <span>No Code Changes</span>
+            <span>No Secrets Leave Your Machine</span>
           </div>
         </div>
       </div>
