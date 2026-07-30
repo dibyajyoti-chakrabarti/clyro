@@ -10,11 +10,11 @@ on connect and ingests it.
 
 Two companion documents are the specification this plan implements:
 
-- [`skills/clyro-scan/SKILL.md`](../skills/clyro-scan/SKILL.md) — the skill the
+- [`backend/skills/clyro-scan/SKILL.md`](../backend/skills/clyro-scan/SKILL.md) — the skill the
   offline agent runs. Detection rules, compliance checks, and the `--fix`
   mutate/commit/push sequence. This file is the source of truth and is served
   verbatim to users; edit it there, not in a copy.
-- [`skills/clyro-scan/reference/CLYRO.example.md`](../skills/clyro-scan/reference/CLYRO.example.md)
+- [`backend/skills/clyro-scan/reference/CLYRO.example.md`](../backend/skills/clyro-scan/reference/CLYRO.example.md)
   — the annotated example contract. The machine-parseable YAML blocks in it are
   the ingestion schema.
 
@@ -47,7 +47,7 @@ start, full-tree reasoning, and it can actually apply the fixes.
 | No CLYRO.md on connect | Step 1 blocks with install instructions and a "check now" button. Retryable — the project stays `repo_connected`, not `failed`. |
 | Compliance findings in the file | **Recomputed server-side, always.** Ingest resources and env vars from the contract; re-run `compliance.py` against the live tree and gate Continue on the recomputed set. |
 | `--fix` scope | Mutates, commits one logical fix per commit, and pushes to the current branch after confirmation. Guarded by a preflight. |
-| Skill distribution | Source lives at `skills/clyro-scan/SKILL.md`, served raw from a public Clyro endpoint. `curl` one-liner for Claude Code, copy-prompt button for everything else. |
+| Skill distribution | Source lives at `backend/skills/clyro-scan/SKILL.md`, served raw from a public Clyro endpoint. `curl` one-liner for Claude Code, copy-prompt button for everything else. |
 
 ## 3. What gets deleted
 
@@ -138,7 +138,7 @@ on unknown keys; Clyro wins on its own.
 ### Endpoint
 
 `GET /api/skill/clyro-scan` — public, unauthenticated, serves
-`skills/clyro-scan/SKILL.md` as `text/markdown` so the `curl` one-liner in the UI
+`backend/skills/clyro-scan/SKILL.md` as `text/markdown` so the `curl` one-liner in the UI
 works and the copy-prompt button has something to fetch.
 
 `POST /projects/<pk>/scan/` keeps its name, `AgentJob.Kind.SCAN`, and Celery
@@ -195,7 +195,7 @@ connect → select → contract → ingesting → results
 
 ## 6. Commit order
 
-1. `skills/clyro-scan/` layout; SKILL.md and example contract spec fixes
+1. `backend/skills/clyro-scan/` layout; SKILL.md and example contract spec fixes
 2. `scanner/clyro_md.py` — parser and validator
 3. `scanner/classify.py` — extraction from the detector
 4. migration — `ScanResult` contract fields, `EnvVarKey.hint`/`acquire_url`

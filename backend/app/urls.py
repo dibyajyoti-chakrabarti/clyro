@@ -2,6 +2,8 @@ from django.urls import path
 
 from core.views import health_check
 
+from .skill_views import skill_detail
+
 from .admin_api import (
     admin_login,
     admin_me,
@@ -60,6 +62,9 @@ from .provisioning.views import (
 urlpatterns = [
     path('hello', hello),
     path('health/', health_check),
+    # Public, unauthenticated: users install the offline scan skill before they
+    # have a project (see app/skill_views.py).
+    path('skill/<str:name>', skill_detail),
     path('users/me/', me),
     path('projects/', projects_list),
     path('projects/<uuid:pk>/', project_detail),

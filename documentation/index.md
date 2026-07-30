@@ -35,7 +35,7 @@ chapter you need.
 documentation/     ← you are here (this book)
 frontend/          ← the React/Vite web application
 backend/           ← the Django API and Celery workers
+backend/skills/    ← offline agent skills we serve to users (clyro-scan)
 infrastructure/    ← the Terraform code (foundation and workloads)
 scripts/           ← utility scripts for database/deployment
-skills/            ← the offline agent skills we ship to users (clyro-scan)
 ```
