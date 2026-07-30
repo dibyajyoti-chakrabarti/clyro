@@ -6,6 +6,7 @@ import {
   ChevronUp,
   CheckCircle2,
   Copy,
+  FileCheck2,
   GitBranch,
   ShieldCheck,
   Sparkles,
@@ -256,6 +257,89 @@ function AIPromptCard({ compliancePrompt }) {
   )
 }
 
+function relativeTime(iso) {
+  const then = Date.parse(iso)
+  if (Number.isNaN(then)) return null
+  const minutes = Math.round((Date.now() - then) / 60000)
+  if (minutes < 2) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
+}
+
+// Where this detection came from. Worth stating plainly: the numbers below are
+// the user's own agent's findings, not something Clyro inferred, so they know
+// which file to edit when something looks wrong.
+function ContractProvenance({ contractMeta }) {
+  if (!contractMeta) return null
+
+  const generated = relativeTime(contractMeta.generated_at)
+  const sha = contractMeta.commit_sha ? contractMeta.commit_sha.slice(0, 7) : null
+
+  return (
+    <div className='mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1 border-t border-white/[0.05] pt-3.5 text-[12px] text-white/40'>
+      <span className='inline-flex items-center gap-1.5'>
+        <FileCheck2 className='h-3.5 w-3.5 text-[#E8B84B]' strokeWidth={2.2} />
+        From <span className='font-mono text-white/60'>CLYRO.md</span>
+      </span>
+      {generated && (
+        <>
+          <span className='text-white/20'>·</span>
+          <span>generated {generated}</span>
+        </>
+      )}
+      {sha && (
+        <>
+          <span className='text-white/20'>·</span>
+          <span className='font-mono'>{sha}</span>
+        </>
+      )}
+      {contractMeta.confidence === 'low' && (
+        <>
+          <span className='text-white/20'>·</span>
+          <span className='text-amber-300/80'>agent flagged low confidence</span>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Where the contract and reality disagree. Normally empty: --fix pushes the real
+// fixes before Clyro ever looks, so anything here means either the repo moved on
+// or CLYRO.md claims something Clyro just verified to be false — both worth
+// interrupting for rather than tucking into a muted footnote.
+function ContractDriftCard({ contractDrift }) {
+  if (!contractDrift || contractDrift.length === 0) return null
+
+  return (
+    <div
+      className='w-full rounded-[22px] border border-amber-400/25 bg-amber-400/[0.04] px-7 py-6'
+      style={{ animation: 'cardIn 360ms ease-out 320ms both' }}
+    >
+      <div className='mb-3 flex items-center gap-2'>
+        <AlertTriangle className='h-4 w-4 text-amber-300' strokeWidth={2.2} />
+        <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-300/80'>
+          CLYRO.md is out of sync with your repo
+        </p>
+      </div>
+      <ul className='space-y-2'>
+        {contractDrift.map((note) => (
+          <li key={note} className='flex gap-2.5 text-[13px] leading-snug text-white/60'>
+            <span className='mt-[7px] h-1 w-1 shrink-0 rounded-full bg-amber-400/60' />
+            <span className='min-w-0'>{note}</span>
+          </li>
+        ))}
+      </ul>
+      <p className='mt-3.5 text-[12.5px] leading-snug text-white/40'>
+        The checks below are what Clyro verified against your branch just now — they override
+        whatever CLYRO.md recorded. Re-run <span className='font-mono text-white/60'>/clyro-scan</span>{' '}
+        and push to bring the contract back in line.
+      </p>
+    </div>
+  )
+}
+
 function StackPill({ children }) {
   const icon = getStackIcon(children)
   return (
@@ -275,6 +359,8 @@ export default function ScanResults({
   onContinue,
   complianceFindings,
   compliancePrompt,
+  contractMeta,
+  contractDrift,
   canContinue = true,
 }) {
   const stackSummary = useMemo(() => {
@@ -359,7 +445,12 @@ export default function ScanResults({
               <StackPill key={item}>{item}</StackPill>
             ))}
           </div>
+
+          <ContractProvenance contractMeta={contractMeta} />
         </div>
+
+        {/* ── Contract drift (normally absent) ── */}
+        <ContractDriftCard contractDrift={contractDrift} />
 
         {/* ── Cloud Compliance Checklist ── */}
         <ComplianceChecklistCard complianceFindings={complianceFindings} />
