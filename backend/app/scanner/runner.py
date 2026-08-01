@@ -45,11 +45,11 @@ def run_scan_for_project(project: Project) -> ScanResult:
         try:
             parsed = clyro_md.parse(raw)
         except clyro_md.ContractError as exc:
-            return _block_invalid(scan, exc.errors)
+            return _block_invalid(scan, project, exc.errors)
 
         errors = clyro_md.validate(parsed)
         if errors:
-            return _block_invalid(scan, errors)
+            return _block_invalid(scan, project, errors)
 
         scan.contract_meta = clyro_md.metadata(parsed)
         detection = clyro_md.to_detection(parsed)
@@ -113,10 +113,12 @@ def _block_missing(scan: ScanResult, project: Project) -> ScanResult:
         f"{project.repo_branch}. Run /clyro-scan --fix in your repo and push."
     ]
     scan.save(update_fields=["status", "block_reason", "contract_drift"])
+    project.status = Project.Status.REPO_CONNECTED
+    project.save(update_fields=["status", "updated_at"])
     return scan
 
 
-def _block_invalid(scan: ScanResult, errors: list[str]) -> ScanResult:
+def _block_invalid(scan: ScanResult, project: Project, errors: list[str]) -> ScanResult:
     """CLYRO.md exists but doesn't validate — a hand-edit gone wrong, or an agent
     that emitted an off-schema file. Also retryable: the errors are shown so the
     user can regenerate, and the project stays where it was."""
@@ -124,6 +126,8 @@ def _block_invalid(scan: ScanResult, errors: list[str]) -> ScanResult:
     scan.block_reason = "clyro_md_invalid"
     scan.contract_drift = errors
     scan.save(update_fields=["status", "block_reason", "contract_raw", "contract_drift"])
+    project.status = Project.Status.REPO_CONNECTED
+    project.save(update_fields=["status", "updated_at"])
     return scan
 
 
