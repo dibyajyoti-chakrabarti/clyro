@@ -46,17 +46,40 @@ def _write_staged_secrets(project, credentials, region):
     template was already frozen without the secret by the time it was written,
     so the customer's own container crashed with a bare KeyError at migration —
     writing here, right after AWS connects, ensures the arn exists before Step 5
-    ever runs."""
-    staged = EnvVarKey.objects.filter(
+    ever runs.
+
+    Also mints values for `agent_generatable` user secrets (e.g. DJANGO_SECRET_KEY)
+    the user was told to leave blank. CLYRO.md classifies those as entropy with no
+    external authority, so — mirroring `env_vars_save` — Clyro generates one and
+    writes it here, giving it an arn before Step 5. Without this the var reaches
+    the pre-provision "has no value" blocker (`iac.py`) and wedges provisioning,
+    contradicting the Step 1 "leave blank, Clyro generates this" UI. Never
+    regenerates one already in Secrets Manager (rotating a live signing key would
+    invalidate every session the app has issued)."""
+    to_write: dict[EnvVarKey, str] = {}
+
+    # User-staged secrets (e.g. a third_party value the user pasted in).
+    for var in EnvVarKey.objects.filter(
         project=project, is_active=True, staged_value__isnull=False,
-    ).exclude(staged_value='').exclude(classification=EnvVarKey.Classification.GENERATED)
-    if not staged:
+    ).exclude(staged_value='').exclude(classification=EnvVarKey.Classification.GENERATED):
+        to_write[var] = var.staged_value
+
+    # Agent-generatable secrets left blank — mint entropy now so the arn exists
+    # before Step 5's template build and its "has no value" blocker check.
+    for var in EnvVarKey.objects.filter(
+        project=project, is_active=True, hint='agent_generatable',
+        secrets_manager_arn__isnull=True,
+    ):
+        if not var.staged_value:
+            to_write[var] = secrets.token_urlsafe(48)
+
+    if not to_write:
         return
     project_slug = ''.join(c if c.isalnum() or c == '-' else '-' for c in project.name).lower()
-    for var in staged:
+    for var, value in to_write.items():
         secret_name = f'clyro/{project_slug}/{var.key_name}'
         try:
-            arn = write_secret(credentials, region, secret_name, var.staged_value)
+            arn = write_secret(credentials, region, secret_name, value)
         except ClientError:
             log.exception('Failed to write staged secret %s for project %s', var.key_name, project.pk)
             continue
