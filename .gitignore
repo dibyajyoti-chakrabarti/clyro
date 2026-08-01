@@ -45,4 +45,3 @@ backend/celerybeat-schedule*
 # graphify (personal tooling — generated graph + machine-specific hook paths)
 graphify-out/
 .claude/
-CLAUDE.md

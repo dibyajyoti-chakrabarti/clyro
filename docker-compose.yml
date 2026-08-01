@@ -51,8 +51,14 @@ services:
     volumes:
       - ./backend:/app
       - /app/venv
-      # Local dev: give the container the host's AWS creds (for Bedrock AgentCore).
-      - ${HOME}/.aws:/root/.aws:ro
+      # Local dev: give the container the host's AWS creds (for Bedrock AgentCore
+      # and cross-account assume-role). Relative path (host ~/.aws, two levels up
+      # from this compose dir) rather than ${HOME}/.aws: under Docker Desktop's
+      # WSL interop, compose interpolation runs on the Windows side where $HOME is
+      # empty, so ${HOME} yields an empty mount and an absolute /home/... is read
+      # inside the Docker VM (also empty). A compose-relative path resolves
+      # against the WSL project dir correctly, same as ./backend above.
+      - ../../.aws:/root/.aws:ro
 
   celery_worker:
     build: ./backend
@@ -73,7 +79,7 @@ services:
     volumes:
       - ./backend:/app
       - /app/venv
-      - ${HOME}/.aws:/root/.aws:ro
+      - ../../.aws:/root/.aws:ro
 
   celery_beat:
     build: ./backend
@@ -98,7 +104,7 @@ services:
     volumes:
       - ./backend:/app
       - /app/venv
-      - ${HOME}/.aws:/root/.aws:ro
+      - ../../.aws:/root/.aws:ro
 
   frontend:
     build: ./frontend
