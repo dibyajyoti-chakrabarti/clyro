@@ -26,6 +26,7 @@ reach an agent prompt (see ch_20 §4).
 
 from __future__ import annotations
 
+import datetime
 import re
 from typing import Any
 
@@ -33,6 +34,25 @@ import yaml
 
 CONTRACT_PATH = "CLYRO.md"
 SCHEMA_VERSION = 1
+
+
+def _jsonable(value: Any) -> Any:
+    """Coerce YAML-native scalars that JSON can't represent into strings.
+
+    An unquoted ``generated_at: 2026-08-01`` (or a full timestamp) is valid YAML
+    and loads as a ``datetime.date``/``datetime`` — but the parsed contract is
+    later stored/serialized as JSON, where those types raise "Object of type
+    date is not JSON serializable" and 500 the whole scan. The contract is
+    hand-editable, so we can't rely on the author quoting every date; normalize
+    defensively to ISO strings instead of rejecting the block.
+    """
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, (datetime.date, datetime.datetime, datetime.time)):
+        return value.isoformat()
+    return value
 
 # Recognized top-level keys across every yaml block in the document. Anything
 # else a user adds is ignored rather than rejected — the contract is meant to be
@@ -103,6 +123,7 @@ def parse(text: str) -> dict[str, Any]:
             continue
         if not isinstance(loaded, dict):
             continue
+        loaded = _jsonable(loaded)
         blocks_seen += 1
         for key, value in loaded.items():
             if key in _TOP_LEVEL_KEYS and key not in merged:
