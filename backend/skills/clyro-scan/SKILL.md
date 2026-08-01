@@ -187,6 +187,7 @@ contract documents why it was skipped.
 | `django_migrations` | blocker | always (Django) | Every app with `models.py` OR a `models/` package has ≥1 real migration file in `migrations/` (not just `__init__.py`). Clyro runs `migrate`, not `makemigrations`; a missing migration silently no-ops and every query 500s with `relation ... does not exist`. |
 | `health_endpoint` | warning | always (Django) | A `urls.py` registers a route whose path contains `health` (via `path`/`re_path`/`url`, or an `include()` of a health-check package). Clyro's ALB target group hardcodes `GET /health` and needs a 200 with no auth. |
 | `dockerfile_registry` | warning | **conditional** — only if a Dockerfile is committed in the backend dir (if Clyro generates the Dockerfile, this is skipped) | No `FROM` line pulls a bare image straight from Docker Hub. Docker Hub rate-limits anonymous pulls (~100/6hr shared), a real CodeBuild 429 failure mode. Multi-stage stage refs and `scratch` and build-arg (`$`) bases are ignored; a `FROM` with a registry host (contains `.`/`:` or `localhost`) in the first path segment passes. |
+| `django_system_check` | blocker | always (Django) | **Run the app's own `python manage.py check` in the backend dir** (using the project's `DJANGO_SETTINGS_MODULE`) and read the exit code. Any `ERROR`/`CRITICAL` message — e.g. `staticfiles.E005` from a `STORAGES` dict missing its `'staticfiles'` key — is a **blocker**: Clyro runs `migrate` on deploy, and Django runs system checks before *every* management command, so a check the app fails locally makes `migrate` abort and the deploy hard-fail. `WARNING`s (including the extra `--deploy` hardening warnings) are recorded as `warning`, never blockers. This is the authoritative gate — it catches app-level misconfig no file-pattern heuristic can, and it runs here (where the code + deps live) because Clyro has no running app until deploy. If you cannot run `manage.py check` (no venv/deps), do **not** fake a pass: record `passed: false` and tell the user the exact command to run — see `--fix`. |
 
 ### React frontend checks (conditional — only if a React frontend was detected)
 
@@ -389,6 +390,12 @@ unrelated. Use each finding's `fix_hint` as the spec:
 - `allowed_hosts_env` → `ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',')`.
 - `django_migrations` → run `python manage.py makemigrations <app>` and commit
   the generated files. If you cannot run it, tell the user the exact command.
+- `django_system_check` → run `python manage.py check` and fix each reported
+  `ERROR` at its source (e.g. `staticfiles.E005` → add the missing `'staticfiles'`
+  key to the `STORAGES` dict; a broken `INSTALLED_APPS`/`MIDDLEWARE` import → fix
+  the dotted path). Re-run until it exits 0. If you cannot run it (no venv/deps),
+  do not guess: leave the finding `passed: false` and tell the user the exact
+  command — Clyro will block the deploy on it, which is correct.
 - `health_endpoint` → add `path('health', lambda request: HttpResponse('ok'))`
   (import `HttpResponse`) to the root `urls.py`.
 - `dockerfile_registry` → rewrite `FROM <img>` to
