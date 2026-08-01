@@ -5,11 +5,12 @@ import {
   Rocket,
   AlertTriangle,
   Loader2,
+  Settings2,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import Button from "../ui/Button";
 import ProjectStatusBadge from "./ProjectStatusBadge";
 import GitHubLogo from "../common/GitHubLogo";
+import { hasInfra } from "../../lib/projectStatus";
 
 function formatDate(value) {
   if (!value) return "Recently updated";
@@ -23,8 +24,9 @@ function formatDate(value) {
   }).format(date);
 }
 
-export default function ProjectCard({ project, onDelete, deleting = false }) {
+export default function ProjectCard({ project, onDelete, onManage, deleting = false }) {
   const status = deleting ? "deleting" : project.status || "default";
+  const canManage = hasInfra(status) && !deleting;
   const iconClassName = "h-5 w-5";
 
   const renderProjectIcon = () => {
@@ -104,11 +106,22 @@ export default function ProjectCard({ project, onDelete, deleting = false }) {
             </p>
           </div>
 
+          {canManage && (
+            <button
+              type="button"
+              aria-label="Manage infrastructure"
+              onClick={() => onManage?.(project)}
+              className="flex items-center justify-center text-text-muted transition-all duration-200 hover:scale-110 hover:text-amber-300"
+            >
+              <Settings2 strokeWidth={2.2} className="h-6 w-6" />
+            </button>
+          )}
+
           <button
             type="button"
             aria-label={deleting ? "Deleting project" : "Delete project"}
             disabled={deleting}
-            onClick={() => onDelete?.(project.id)}
+            onClick={() => onDelete?.(project)}
             className="flex items-center justify-center text-red-400 transition-all duration-200 hover:scale-110 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
           >
             {deleting ? (

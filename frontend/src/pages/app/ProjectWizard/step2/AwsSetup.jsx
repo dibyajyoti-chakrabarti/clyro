@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../../../../api'
+import usePreferences from '../../../../context/usePreferences'
 import AwsConnectCard from './AwsConnectCard'
 
 // Step 2: connect + verify the AWS account. This is now its own step, up front
@@ -8,6 +9,7 @@ import AwsConnectCard from './AwsConnectCard'
 // type still needs to be captured here so verification can flag a mismatch
 // between what they picked and what the account actually is.
 export default function AwsSetup({ projectId, initialAccountType, initiallyConnected, onConnected, onBack, onContinue }) {
+  const { preferredRegion } = usePreferences()
   const [accountType, setAccountType] = useState(initialAccountType || 'paid')
   const [cfnConsoleUrl, setCfnConsoleUrl] = useState(null)
   const [urlLoading, setUrlLoading] = useState(false)
@@ -63,7 +65,7 @@ export default function AwsSetup({ projectId, initialAccountType, initiallyConne
       // type (queried live from AWS) and flag account_type_mismatch if they differ.
       const data = await api.verifyAwsConnection(projectId, {
         role_arn: arnInput.trim(),
-        region: 'us-east-1',
+        region: preferredRegion,
         account_type: accountType,
       })
       setRoleConnected(true)

@@ -5,6 +5,7 @@ import useProjectDeletion from '../../hooks/useProjectDeletion'
 import ProjectsHeader from '../../components/projects/ProjectsHeader'
 import ProjectsToolbar from '../../components/projects/ProjectsToolbar'
 import ProjectCard from '../../components/projects/ProjectCard'
+import InfraManageModal from '../../components/projects/InfraManageModal'
 
 export default function Projects() {
   const [projects, setProjects] = useState([])
@@ -12,14 +13,15 @@ export default function Projects() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('All')
   const [sort, setSort] = useState('Newest')
-  const { deletingIds, confirmDelete, resumeDeletions } = useProjectDeletion(setProjects)
+  const [manageProject, setManageProject] = useState(null)
+  const { deletingIds, confirmDelete, resumeDeletions, dialog } = useProjectDeletion(setProjects)
+
+  const loadProjects = () =>
+    api.listProjects().then((list) => { setProjects(list); return list })
 
   useEffect(() => {
-    api.listProjects()
-      .then((list) => {
-        setProjects(list)
-        resumeDeletions(list)
-      })
+    loadProjects()
+      .then((list) => resumeDeletions(list))
       .catch(() => {})
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,11 +83,20 @@ export default function Projects() {
               key={project.id}
               project={project}
               onDelete={confirmDelete}
+              onManage={setManageProject}
               deleting={deletingIds.has(project.id) || project.status === 'deleting'}
             />
           ))}
         </div>
       )}
+
+      <InfraManageModal
+        open={Boolean(manageProject)}
+        project={manageProject}
+        onClose={() => setManageProject(null)}
+        onChanged={loadProjects}
+      />
+      {dialog}
     </div>
   )
 }

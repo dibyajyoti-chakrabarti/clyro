@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { Bell, Globe, Mail, MessageSquareMore, MoonStar, Palette, Workflow } from 'lucide-react'
+import { useState } from 'react'
+import { Globe, Monitor, MoonStar, Palette, Sun } from 'lucide-react'
 import Button from '../../components/ui/Button'
-import GlassSelect from "../../components/ui/GlassSelect";
+import GlassSelect from '../../components/ui/GlassSelect'
+import usePreferences from '../../context/usePreferences'
 
 const AWS_REGIONS = [
   { value: 'ap-south-1', label: 'Asia Pacific — Mumbai (ap-south-1)' },
@@ -13,7 +14,11 @@ const AWS_REGIONS = [
   { value: 'eu-central-1', label: 'Europe — Frankfurt (eu-central-1)' },
 ]
 
-const STORAGE_KEY = 'clyro_preferred_region'
+const THEME_OPTIONS = [
+  { value: 'system', label: 'System', icon: Monitor },
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: MoonStar },
+]
 
 function Card({ children, className = '' }) {
   return (
@@ -32,129 +37,96 @@ function SectionHeader({ icon: Icon, title, description }) {
         <Icon size={18} />
       </div>
       <div className='min-w-0'>
-        <h2 className='text-2xl font-semibold text-white'>{title}</h2>
+        <h2 className='text-2xl font-semibold text-text-primary'>{title}</h2>
         <p className='mt-0.5 max-w-3xl text-sm text-text-muted'>{description}</p>
       </div>
     </div>
   )
 }
 
-function ComingSoonRow({ icon: Icon, label, description }) {
+// Segmented system/light/dark switch — applies immediately via PreferencesContext.
+function ThemeSwitch({ value, onChange }) {
   return (
-    <div className='flex min-h-16 items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-background/20 px-5 py-3 transition-colors hover:border-amber-300/20'>
-      <div className='flex min-w-0 items-center gap-3'>
-        <div className='grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.04] text-amber-300'>
-          <Icon size={18} />
-        </div>
-        <div className='min-w-0'>
-          <p className='text-base font-semibold text-text-primary'>{label}</p>
-          <p className='text-sm text-text-muted'>{description}</p>
-        </div>
-      </div>
-      <span className='shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs text-text-muted'>
-        Coming soon
-      </span>
+    <div className='inline-flex rounded-2xl border border-white/[0.08] bg-background/30 p-1'>
+      {THEME_OPTIONS.map(({ value: v, label, icon: Icon }) => {
+        const active = value === v
+        return (
+          <button
+            key={v}
+            type='button'
+            onClick={() => onChange(v)}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+              active
+                ? 'bg-amber-400/15 text-amber-200 shadow-inner'
+                : 'text-text-muted hover:text-text-primary'
+            }`}
+          >
+            <Icon size={16} />
+            {label}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
 export default function Settings() {
-  const [region, setRegion] = useState(() => localStorage.getItem(STORAGE_KEY) || 'ap-south-1')
-  const [saved, setSaved] = useState(false)
+  const { preferredRegion, setPreferredRegion, theme, setTheme } = usePreferences()
+  const [region, setRegion] = useState(preferredRegion)
+  const dirty = region !== preferredRegion
 
-  useEffect(() => {
-    setSaved(false)
-  }, [region])
-
-  const handleSave = () => {
-    localStorage.setItem(STORAGE_KEY, region)
-    setSaved(true)
-  }
+  const handleSave = () => setPreferredRegion(region)
 
   return (
-    <div className="space-y-5">
-      <div className="mb-6">
-        <h1 className="text-5xl font-semibold text-white">Settings</h1>
-        <p className="mt-2 text-base text-text-muted">
-          Manage your preferences.
-        </p>
+    <div className='space-y-5'>
+      <div className='mb-6'>
+        <h1 className='text-5xl font-semibold text-text-primary'>Settings</h1>
+        <p className='mt-2 text-base text-text-muted'>Manage your preferences.</p>
       </div>
 
       <Card>
-        <div className="space-y-4">
+        <div className='space-y-4'>
           <SectionHeader
             icon={Globe}
-            title="Default AWS Region"
-            description="Used as the default when creating new projects. You can override this per project."
+            title='Default AWS Region'
+            description='Used as the default when creating new projects. You can override this per project.'
           />
 
-          <div className="flex flex-col gap-2 md:flex-row md:items-center">
-            <GlassSelect
-              options={AWS_REGIONS}
-              value={region}
-              onChange={setRegion}
-            />
+          <div className='flex flex-col gap-2 md:flex-row md:items-center'>
+            <GlassSelect options={AWS_REGIONS} value={region} onChange={setRegion} />
             <Button
-              variant="primary"
+              variant='primary'
               onClick={handleSave}
-              disabled={saved}
-              className="h-12 w-full rounded-xl px-5 md:w-[120px]"
+              disabled={!dirty}
+              className='h-12 w-full rounded-xl px-5 md:w-[120px]'
             >
-              {saved ? "Saved" : "Save"}
+              {dirty ? 'Save' : 'Saved'}
             </Button>
           </div>
 
-          <p className="text-sm text-text-muted">
-            Stored locally in your browser - not synced across devices.
+          <p className='text-sm text-text-muted'>
+            Stored locally in your browser — not synced across devices.
           </p>
         </div>
       </Card>
 
       <Card>
-        <div className="space-y-4">
-          <SectionHeader
-            icon={Bell}
-            title="Notifications"
-            description="Control how Clyro notifies you about your infrastructure events."
-          />
-
-          <div className="space-y-2">
-            <ComingSoonRow
-              icon={Mail}
-              label="Email notifications"
-              description="Deployment success, failure, and cost alerts"
-            />
-            <ComingSoonRow
-              icon={MessageSquareMore}
-              label="Slack integration"
-              description="Post deployment events to a channel"
-            />
-            <ComingSoonRow
-              icon={Workflow}
-              label="Webhooks"
-              description="Send events to your own endpoint"
-            />
-          </div>
-        </div>
-      </Card>
-
-      <Card>
-        <div className="space-y-4">
+        <div className='space-y-4'>
           <SectionHeader
             icon={Palette}
-            title="Appearance"
-            description="Visual preferences for the Clyro interface."
+            title='Appearance'
+            description='Visual preferences for the Clyro interface.'
           />
 
-          <div className="space-y-2">
-            <ComingSoonRow
-              icon={MoonStar}
-              label="Theme"
-              description="Light, dark, or system default"
-            />
+          <div className='flex flex-col gap-3 rounded-2xl border border-white/[0.08] bg-background/20 px-5 py-4 sm:flex-row sm:items-center sm:justify-between'>
+            <div className='min-w-0'>
+              <p className='text-base font-semibold text-text-primary'>Theme</p>
+              <p className='text-sm text-text-muted'>Light, dark, or match your system.</p>
+            </div>
+            <ThemeSwitch value={theme} onChange={setTheme} />
           </div>
         </div>
       </Card>
     </div>
-  );
+  )
 }

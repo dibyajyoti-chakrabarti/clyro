@@ -1,5 +1,6 @@
-import { ArrowRight, CheckCircle2, Copy, Globe, Pause, Play, Trash2 } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Copy, Globe } from 'lucide-react'
 import Button from '../../../../components/ui/Button'
+import ManageInfrastructurePanel from '../../../../components/projects/ManageInfrastructurePanel'
 import { WizardPanel } from '../../../../components/wizard/WizardPanel'
 import heroLeft from '../../../../assets/steps/step6/step6_left.webp'
 import heroRight from '../../../../assets/steps/step6/step6_right.webp'
@@ -67,8 +68,6 @@ function DeploymentSuccess({
   stackOutputs = [], copiedKey, onCopy, onGoToDashboard,
   deployStatus, infraActionLoading, infraActionError, onPause, onResume, onTeardown,
 }) {
-  const isPaused = deployStatus === 'paused'
-  const isDeleting = deployStatus === 'deleting'
   const isDeleted = deployStatus === 'deleted'
 
   const cloudFront = stackOutputs.find((o) => o.key === CLOUDFRONT_KEY)
@@ -166,42 +165,15 @@ function DeploymentSuccess({
 
         {/* Manage infrastructure */}
         {!isDeleted && (
-          <div className={`${CARD} ${CARD_HOVER} flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between`}>
-            <div className='min-w-0'>
-              <h4 className='text-sm font-semibold text-text-primary'>Manage infrastructure</h4>
-              <p className='mt-1 text-xs leading-relaxed text-text-muted'>
-                {isPaused
-                  ? 'Infra is paused — ECS tasks are scaled to 0 and the database is stopped. Nothing is billed for compute while paused.'
-                  : isDeleting
-                    ? 'Deleting all provisioned resources…'
-                    : 'Pause to stop billing without losing anything, or permanently delete the stack.'}
-              </p>
-              {infraActionError && (
-                <p className='mt-2 text-xs text-red-400'>{infraActionError}</p>
-              )}
-            </div>
-            <div className='flex shrink-0 flex-wrap gap-2'>
-              {isPaused ? (
-                <Button variant='secondary' disabled={infraActionLoading} onClick={onResume}>
-                  <Play className='h-4 w-4' />
-                  Resume
-                </Button>
-              ) : (
-                <Button variant='secondary' disabled={infraActionLoading || isDeleting} onClick={onPause}>
-                  <Pause className='h-4 w-4' />
-                  Pause
-                </Button>
-              )}
-              <Button
-                variant='danger'
-                disabled={infraActionLoading || isDeleting}
-                onClick={onTeardown}
-              >
-                <Trash2 className='h-4 w-4' />
-                {isDeleting ? 'Deleting…' : 'Delete infrastructure'}
-              </Button>
-            </div>
-          </div>
+          <ManageInfrastructurePanel
+            deployStatus={deployStatus}
+            loading={infraActionLoading}
+            error={infraActionError}
+            onPause={onPause}
+            onResume={onResume}
+            onTeardown={onTeardown}
+            className={CARD_HOVER}
+          />
         )}
 
         <div className='flex justify-end'>
