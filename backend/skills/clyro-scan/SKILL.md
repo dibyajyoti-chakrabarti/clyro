@@ -206,12 +206,150 @@ passes for the rest.
 
 ---
 
+## CLYRO.md output format — what Clyro actually ingests
+
+**This section is the authoritative format. Follow it exactly — do not invent
+fence tags or key names.** Clyro's ingester (`clyro_md.py`) is deliberately
+structure-blind: it scans the whole document, finds **every fenced code block
+whose language is `yaml` (or `yml`)**, parses each as YAML, and merges the
+recognized top-level keys into one dict. Everything else — prose, tables, HTML
+comments, headings — is ignored for ingestion.
+
+Two hard rules follow from that:
+
+1. **Fences must be ` ```yaml `.** A block fenced ` ```clyro `, ` ```clyro:env `,
+   ` ```json `, or with no language is **invisible** to the parser. If none of
+   your blocks are `yaml`, ingestion fails with *"No machine-readable ```yaml
+   block found in CLYRO.md."* — the contract is rejected even though it looks
+   complete.
+2. **Use these exact top-level keys** (anything else is silently dropped):
+   `repository`, `services`, `infrastructure`, `existing_iac`, `env_vars`,
+   `compliance_findings`, `status`, `block_reason`, `block_message`, `agent`,
+   `generated_at`, `commit_sha`, `scan_mode`, `confidence`, `schema_version`.
+   Note: it is `services`/`infrastructure`/`env_vars`/`compliance_findings` —
+   **not** `resources`/`env`/`compliance`.
+
+You may split these across several `yaml` fences (one per section, as below) or
+combine them; the parser merges by key name regardless of which heading a fence
+sits under. Emit exactly these blocks, filled in from what you read in THIS repo
+(a fuller annotated example lives at `reference/CLYRO.example.md`):
+
+**Resource graph** — `repository` + `services` + `infrastructure` + `existing_iac`:
+
+```yaml
+repository:
+  is_monorepo: true
+services:
+  backend:
+    detected: true
+    framework: django
+    path: ./backend            # "." for a root-level backend
+    project_name: taskboard    # Django project package; null only if unresolvable
+    wsgi_path: taskboard.wsgi:application   # best-effort; null is fine
+    dockerfile_found: true
+    dockerfile_generated: false  # true when Clyro will generate the Dockerfile
+  frontend:                    # detected:false when backend-only
+    detected: true
+    framework: react
+    path: ./frontend
+  worker:
+    detected: true
+    type: celery
+    scheduled: true
+    broker: redis              # real broker (redis|sqs), NOT a blind sqs default
+infrastructure:
+  database:
+    detected: true
+    engine: postgres           # PostgreSQL only; MySQL/SQLite are blocks
+    source: backend/requirements.txt
+  cache:
+    detected: true
+    engine: redis
+    source: backend/requirements.txt
+  storage:
+    detected: true
+    type: s3
+    source: settings
+  queue:
+    detected: false            # true only when the Celery broker is SQS
+    type: null
+    source: null
+existing_iac:
+  found: false
+  type: null
+  path: null
+```
+
+**Environment variables** — one entry per var under `env_vars` (classification is
+one of `generated`/`optional`/`user_secret`; every `user_secret` also carries a
+`hint` of `agent_generatable` or `third_party`, and `third_party` carries an
+`acquire_url` when the service is recognizable):
+
+```yaml
+env_vars:
+  - key: DATABASE_URL
+    source: backend/config/settings/base.py
+    context: "dj_database_url.parse(os.environ['DATABASE_URL'])"
+    classification: generated
+    production_default: null
+  - key: DJANGO_SECRET_KEY
+    source: backend/config/settings/base.py
+    context: "SECRET_KEY = os.environ['DJANGO_SECRET_KEY']"
+    classification: user_secret
+    production_default: null
+    hint: agent_generatable
+  - key: STRIPE_SECRET_KEY
+    source: backend/payments/views.py
+    context: "stripe.api_key = os.environ['STRIPE_SECRET_KEY']"
+    classification: user_secret
+    production_default: null
+    hint: third_party
+    acquire_url: https://dashboard.stripe.com/apikeys
+  - key: DEBUG
+    source: backend/config/settings/base.py
+    context: "DEBUG = os.environ.get('DEBUG', 'False') == 'True'"
+    classification: optional
+    production_default: "False"
+```
+
+**Compliance** — applied findings only, under `compliance_findings` (omitted
+architecture-dependent checks are documented in prose, never emitted as findings):
+
+```yaml
+compliance_findings:
+  - id: health_endpoint
+    title: Exposes a /health route
+    passed: false
+    severity: warning
+    detail: No route containing "health" was found in urls.py.
+    fix_hint: >-
+      Add a route at /health that returns 200 with no authentication required
+      (e.g. path("health", lambda request: HttpResponse("ok"))).
+```
+
+**Block status + metadata** — always emit both (on a clean scan `status:
+complete` and the block fields are null):
+
+```yaml
+status: complete          # complete | hard_block | soft_block
+block_reason: null        # missing_requirements | unsupported_framework | unsupported_database | ambiguous_database | no_database_found
+block_message: null
+agent: "clyro-scan skill"
+commit_sha: "<git rev-parse HEAD at scan time>"
+scan_mode: default        # default | fix | validate
+confidence: high          # high | low
+schema_version: 1
+```
+
+---
+
 ## Mode behaviour
 
 ### Default `/clyro-scan`
-Run Phase 1 + Phase 2. Write `CLYRO.md` at the repo root using the format in the
-annotated example at `reference/CLYRO.example.md`, with `commit_sha` set to
-`git rev-parse HEAD`. Do
+Run Phase 1 + Phase 2. Write `CLYRO.md` at the repo root using the exact machine
+blocks from *CLYRO.md output format* above (` ```yaml ` fences, keys
+`services`/`infrastructure`/`env_vars`/`compliance_findings`), with `commit_sha`
+set to `git rev-parse HEAD`. Do
 **not** modify any other file. Do not write `.env.clyro`. Do not stage, commit,
 or push — CLYRO.md is left in the working tree for the user to review and commit
 themselves. Print a summary: N resources, N env vars (by classification), and
