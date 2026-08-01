@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
 import { api } from '../../../../api'
 import { cachedFetch, invalidate } from '../../../../lib/apiCache'
+import GlassSelect from '../../../../components/ui/GlassSelect'
+import MonitorCard from './MonitorCard'
 
 const REFRESH_INTERVAL_MS = 60000
 const CACHE_TTL_MS = 30000
@@ -40,7 +42,7 @@ function highlight(message, query) {
   return parts
 }
 
-function LogsPanel({ projectId, services }) {
+function LogsPanel({ projectId, services, className = '', footer = null }) {
   const [selected, setSelected] = useState('')
   const [level, setLevel] = useState('all')
   const [range, setRange] = useState('1h')
@@ -100,12 +102,20 @@ function LogsPanel({ projectId, services }) {
     }
   }
 
-  if (services.length === 0) return null
+  if (services.length === 0) {
+    return (
+      <MonitorCard title='Logs' className={className}>
+        <p className='rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-center text-sm text-text-muted'>
+          Waiting for services to report before logs can be streamed…
+        </p>
+        {footer}
+      </MonitorCard>
+    )
+  }
 
   return (
-    <div>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <h3 className='text-lg font-semibold'>Logs</h3>
+    <MonitorCard title='Logs' className={className}>
+      <div className='flex flex-1 flex-col'>
         <div className='flex flex-wrap items-center gap-2'>
           <input
             type='search'
@@ -116,27 +126,24 @@ function LogsPanel({ projectId, services }) {
             }}
             placeholder='Search logs… (Enter)'
             aria-label='Search logs'
-            className='w-44 rounded-lg border border-border bg-surface px-2 py-1 text-sm text-text-primary placeholder:text-text-muted'
+            className='min-w-0 flex-1 basis-40 rounded-lg border border-border bg-surface px-2 py-1 text-sm text-text-primary placeholder:text-text-muted'
           />
-          <select
+          <GlassSelect
+            size='sm'
+            ariaLabel='Log service'
             value={selected}
-            onChange={(e) => setSelected(e.target.value)}
-            className='rounded-lg border border-border bg-surface px-2 py-1 text-sm text-text-primary'
-          >
-            {services.map((name) => (
-              <option key={name} value={name}>{name}</option>
-            ))}
-          </select>
-          <select
+            onChange={setSelected}
+            options={services.map((name) => ({ value: name, label: name }))}
+            style={{ minWidth: '9rem' }}
+          />
+          <GlassSelect
+            size='sm'
+            ariaLabel='Log time range'
             value={range}
-            onChange={(e) => setRange(e.target.value)}
-            aria-label='Log time range'
-            className='rounded-lg border border-border bg-surface px-2 py-1 text-sm text-text-primary'
-          >
-            {RANGES.map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+            onChange={setRange}
+            options={RANGES.map(([value, label]) => ({ value, label }))}
+            style={{ minWidth: '8rem' }}
+          />
           <div className='flex rounded-lg border border-border bg-surface p-0.5 text-xs'>
             {[['all', 'All'], ['error', 'Errors']].map(([value, label]) => (
               <button
@@ -164,32 +171,33 @@ function LogsPanel({ projectId, services }) {
             <Download className='h-4 w-4' />
           </button>
         </div>
-      </div>
-      {warnings.map((warning) => (
-        <p key={warning} className='mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300'>{warning}</p>
-      ))}
-      <div className='mt-3 max-h-80 overflow-auto rounded-lg border border-border bg-surface p-3 font-mono text-xs'>
-        {events.length === 0 ? (
-          <p className='font-sans text-sm text-text-muted'>
-            {query ? `No matches for “${query}” in the selected range.` : 'No log events in the selected range.'}
-          </p>
-        ) : (
-          events.map((event, index) => (
-            <p key={index} className='whitespace-pre-wrap break-all py-0.5'>
-              <span className='text-text-muted'>
-                {range === '1h'
-                  ? new Date(event.timestamp).toLocaleTimeString()
-                  : new Date(event.timestamp).toLocaleString()}
-              </span>{' '}
-              <span className='text-text-primary'>{highlight(event.message, query)}</span>
+        {warnings.map((warning) => (
+          <p key={warning} className='mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300'>{warning}</p>
+        ))}
+        <div className='mt-3 max-h-72 min-h-[7rem] flex-1 overflow-auto rounded-lg border border-white/[0.07] bg-gradient-to-br from-white/[0.03] to-transparent p-3 font-mono text-xs'>
+          {events.length === 0 ? (
+            <p className='font-sans text-sm text-text-muted'>
+              {query ? `No matches for “${query}” in the selected range.` : 'No log events in the selected range.'}
             </p>
-          ))
-        )}
+          ) : (
+            events.map((event, index) => (
+              <p key={index} className='whitespace-pre-wrap break-all py-0.5'>
+                <span className='text-text-muted'>
+                  {range === '1h'
+                    ? new Date(event.timestamp).toLocaleTimeString()
+                    : new Date(event.timestamp).toLocaleString()}
+                </span>{' '}
+                <span className='text-text-primary'>{highlight(event.message, query)}</span>
+              </p>
+            ))
+          )}
+        </div>
+        {truncated ? (
+          <p className='mt-2 text-xs text-text-muted'>Showing the most recent events — older entries in this range were left out.</p>
+        ) : null}
+        {footer}
       </div>
-      {truncated ? (
-        <p className='mt-2 text-xs text-text-muted'>Showing the most recent events — older entries in this range were left out.</p>
-      ) : null}
-    </div>
+    </MonitorCard>
   )
 }
 

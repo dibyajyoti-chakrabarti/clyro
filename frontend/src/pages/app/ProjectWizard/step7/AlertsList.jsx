@@ -1,18 +1,23 @@
 import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
+import MonitorCard from './MonitorCard'
 
-function AlertsList({ alerts }) {
+function stateBadge(state) {
+  if (state === 'OK') return [CheckCircle2, 'text-green-400', 'OK']
+  if (state === 'ALARM') return [XCircle, 'text-red-400', 'Firing']
+  return [AlertTriangle, 'text-text-muted', 'No data']
+}
+
+function AlertsList({ alerts, alarms = [], className = '' }) {
+  const count = alerts.length > 0
+    ? <span className='rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300'>{alerts.length}</span>
+    : null
+
   return (
-    <div>
-      <div className='flex items-center gap-2'>
-        <h3 className='text-lg font-semibold'>Alerts</h3>
-        {alerts.length > 0 ? (
-          <span className='rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-300'>{alerts.length}</span>
-        ) : null}
-      </div>
-      <div className='mt-3 space-y-2'>
+    <MonitorCard title='Alerts' tint='green' className={className} headerRight={count}>
+      <div className='space-y-2'>
         {alerts.length === 0 ? (
-          <p className='flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-3 text-sm text-text-muted'>
-            <CheckCircle2 className='h-4 w-4 text-success' />
+          <p className='flex items-center gap-2 rounded-lg border border-white/[0.07] bg-gradient-to-br from-white/[0.04] to-transparent px-3 py-3 text-sm text-text-muted'>
+            <CheckCircle2 className='h-4 w-4 shrink-0 text-success' />
             No active alerts — everything looks healthy.
           </p>
         ) : (
@@ -36,7 +41,29 @@ function AlertsList({ alerts }) {
           })
         )}
       </div>
-    </div>
+
+      {/* The stack's standing alarm rules and their current state. */}
+      {alarms.length > 0 ? (
+        <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+          {alarms.map((alarm) => {
+            const [Icon, color, label] = stateBadge(alarm.state)
+            return (
+              <div
+                key={alarm.name}
+                title={alarm.name}
+                className='flex items-start gap-2 rounded-lg border border-white/[0.07] bg-gradient-to-br from-white/[0.04] to-transparent p-3'
+              >
+                <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${color}`} />
+                <div className='min-w-0'>
+                  <p className='text-xs leading-relaxed text-text-primary'>{alarm.description || alarm.name}</p>
+                  <p className={`mt-0.5 text-xs font-medium ${color}`}>{label}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
+    </MonitorCard>
   )
 }
 

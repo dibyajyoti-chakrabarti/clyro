@@ -6,9 +6,11 @@ import AlarmsPanel from './AlarmsPanel'
 import HealthOverview from './HealthOverview'
 import MetricsGrid from './MetricsGrid'
 import AlertsList from './AlertsList'
+import CostCard from './CostCard'
 import LogsPanel from './LogsPanel'
 import StackStatus from './StackStatus'
 import UptimeSection from './UptimeSection'
+import useAlarms from './useAlarms'
 
 const POLL_INTERVAL_MS = 20000
 
@@ -21,6 +23,11 @@ function StepSevenPanel({ projectId }) {
   const [stackStatus, setStackStatus] = useState(null)
   const [warnings, setWarnings] = useState([])
   const [warningsDismissed, setWarningsDismissed] = useState(false)
+
+  // Polled once here and split across two cards: the rules render in Alerts,
+  // the notification state and history in Alarms & notifications.
+  const alarmsData = useAlarms(projectId)
+  const alarmRules = alarmsData?.stack_status === 'ok' && alarmsData.configured ? (alarmsData.alarms || []) : []
 
   const statusIcon = (status) => {
     if (status === 'healthy') return [CheckCircle2, 'text-green-400', 'Healthy']
@@ -72,8 +79,8 @@ function StepSevenPanel({ projectId }) {
   }, [projectId])
 
   return (
-    <div className='mt-6 flex-1 overflow-auto rounded-xl border border-white/[0.07] bg-background/40 p-6'>
-      <div className='mx-auto w-full max-w-5xl space-y-6'>
+    <div className='mt-6 flex-1 overflow-auto'>
+      <div className='mx-auto flex w-full max-w-7xl flex-col gap-4'>
         {warnings.length > 0 && !warningsDismissed ? (
           <div className='flex items-start justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2'>
             <div className='space-y-1'>
@@ -90,28 +97,38 @@ function StepSevenPanel({ projectId }) {
             </button>
           </div>
         ) : null}
-        <HealthOverview healthItems={healthItems} statusIcon={statusIcon} notFound={notFound} />
-        <MetricsGrid metrics={metrics} series={series} />
-        <UptimeSection projectId={projectId} />
-        <div>
-          <h3 className='text-lg font-semibold'>Cost</h3>
-          <div className='mt-3 grid gap-3 md:grid-cols-3'>
-            {[
-              ['This month so far', '—'],
-              ['Projected', '—'],
-              ['Last month', '—'],
-            ].map(([k, v]) => (
-              <div key={k} className='rounded-lg border border-border bg-surface p-3'>
-                <p className='text-xs text-text-muted'>{k}</p>
-                <p className='mt-2 text-xl font-semibold text-text-primary'>{v}</p>
-              </div>
-            ))}
-          </div>
+        {/* Row 1 — health (5/12) + key metrics (7/12) */}
+        <div className='grid gap-4 lg:grid-cols-12'>
+          <HealthOverview
+            healthItems={healthItems}
+            statusIcon={statusIcon}
+            notFound={notFound}
+            className='lg:col-span-5'
+          />
+          <MetricsGrid metrics={metrics} series={series} className='lg:col-span-7' />
         </div>
-        <AlertsList alerts={alerts} />
-        <AlarmsPanel projectId={projectId} />
-        <LogsPanel projectId={projectId} services={healthItems.map((item) => item.name)} />
-        <StackStatus stackStatus={stackStatus} />
+
+        {/* Row 2 — uptime + downtime timeline (wider) + cost */}
+        <div className='grid gap-4 md:grid-cols-2 lg:grid-cols-12'>
+          <UptimeSection
+            projectId={projectId}
+            uptimeClassName='lg:col-span-3'
+            timelineClassName='lg:col-span-6'
+          />
+          <CostCard className='md:col-span-2 lg:col-span-3' />
+        </div>
+
+        {/* Row 3 — alerts + alarms + logs */}
+        <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-3'>
+          <AlertsList alerts={alerts} alarms={alarmRules} />
+          <AlarmsPanel data={alarmsData} />
+          <LogsPanel
+            projectId={projectId}
+            services={healthItems.map((item) => item.name)}
+            className='md:col-span-2 xl:col-span-1'
+            footer={<StackStatus stackStatus={stackStatus} />}
+          />
+        </div>
       </div>
     </div>
   )
