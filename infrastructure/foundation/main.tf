@@ -86,8 +86,8 @@ module "cognito" {
   environment           = var.environment
   domain                = var.domain
   aws_region            = var.aws_region
-  google_client_id      = var.google_client_id
-  google_client_secret  = var.google_client_secret
+  google_client_id      = local.google_oauth["client_id"]
+  google_client_secret  = local.google_oauth["client_secret"]
   pre_signup_lambda_zip = local.pre_signup_zip
 
   callback_urls = [

@@ -18,16 +18,11 @@ variable "account_id" {
   default = "321613317660"
 }
 
-variable "google_client_id" {
-  description = "Google OAuth client ID — fill after creating OAuth app in Google Cloud Console"
-  default     = "REPLACE_ME"
-}
-
-variable "google_client_secret" {
-  description = "Google OAuth client secret"
-  default     = "REPLACE_ME"
-  sensitive   = true
-}
+# google_client_id / google_client_secret used to live here with a "REPLACE_ME"
+# default. They are deliberately gone: the credentials now come from the
+# clyro-prod/cognito/google-oauth secret (see secrets.tf). Keeping the variables
+# around would just let someone pass -var and silently have it ignored, or
+# re-introduce the placeholder that overwrote the live IdP.
 
 variable "vpc_cidr" {
   default = "10.0.0.0/16"

@@ -3,16 +3,17 @@ variable "environment" { type = string }
 variable "domain" { type = string }
 variable "aws_region" { type = string }
 
+# Required, with no default on purpose. A "REPLACE_ME" default here is what let
+# a bare `terraform apply` silently rewrite the live Google IdP's client_id and
+# break sign-in; an omitted input must fail loudly at plan time instead.
 variable "google_client_id" {
-  description = "Google OAuth client ID — update after creating Google OAuth app"
+  description = "Google OAuth client ID (from the cognito/google-oauth secret)"
   type        = string
-  default     = "REPLACE_ME"
 }
 
 variable "google_client_secret" {
-  description = "Google OAuth client secret"
+  description = "Google OAuth client secret (from the cognito/google-oauth secret)"
   type        = string
-  default     = "REPLACE_ME"
   sensitive   = true
 }
 
