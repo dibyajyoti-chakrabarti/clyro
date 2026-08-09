@@ -12,10 +12,13 @@ permissions:
 env:
   AWS_REGION: ap-south-1
   RDS_INSTANCE: clyro-prod-rds
+  NAT_NAME_TAG: clyro-prod-nat
+  ECS_CLUSTER: clyro-prod-celery-cluster
+  ECS_SERVICE: clyro-prod-celery-worker
 
 jobs:
   start:
-    name: Start RDS and NAT instance
+    name: Start RDS, NAT instance and celery worker
     runs-on: ubuntu-latest
 
     steps:
@@ -25,32 +28,78 @@ jobs:
           role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # RDS first and blocking: both the NAT route and the celery worker are
+      # useless until the database is reachable. Also note AWS force-starts a
+      # stopped RDS after 7 days on its own — this daily start makes that
+      # irrelevant, but it is why the nightly stop must keep running.
       - name: Start RDS if stopped
+        id: rds
         run: |
           STATUS=$(aws rds describe-db-instances \
-            --db-instance-identifier ${{ env.RDS_INSTANCE }} \
+            --db-instance-identifier "$RDS_INSTANCE" \
             --query "DBInstances[0].DBInstanceStatus" \
             --output text)
           echo "Current RDS status: $STATUS"
           if [ "$STATUS" = "stopped" ]; then
-            aws rds start-db-instance --db-instance-identifier ${{ env.RDS_INSTANCE }}
+            aws rds start-db-instance --db-instance-identifier "$RDS_INSTANCE" \
+              --query 'DBInstance.DBInstanceStatus'
             echo "Waiting for RDS to become available…"
-            aws rds wait db-instance-available --db-instance-identifier ${{ env.RDS_INSTANCE }}
+            aws rds wait db-instance-available --db-instance-identifier "$RDS_INSTANCE"
             echo "✓ RDS available"
           else
             echo "RDS is not stopped — skipping (status: $STATUS)"
           fi
 
+      # Looked up by Name tag, never by a stored instance id — see the comment
+      # in scheduled-infra-stop.yml for the incident this prevents.
       - name: Start NAT instance if stopped
+        id: nat
+        if: always()
         run: |
-          STATE=$(aws ec2 describe-instances \
-            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
-            --query "Reservations[0].Instances[0].State.Name" \
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=$NAT_NAME_TAG" \
+                      "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+            --query "Reservations[].Instances[].InstanceId | [0]" \
             --output text)
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            echo "::error::No EC2 instance tagged Name=$NAT_NAME_TAG found"
+            exit 1
+          fi
+          echo "NAT instance: $INSTANCE_ID"
+
+          STATE=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
+            --query "Reservations[0].Instances[0].State.Name" --output text)
           echo "Current NAT instance state: $STATE"
           if [ "$STATE" = "stopped" ]; then
-            aws ec2 start-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID }}
-            echo "✓ NAT instance start initiated"
+            aws ec2 start-instances --instance-ids "$INSTANCE_ID" --query 'StartingInstances[].CurrentState.Name'
+            aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+            echo "✓ NAT instance running"
           else
             echo "NAT instance is not stopped — skipping (state: $STATE)"
           fi
+
+      # Last: the worker needs both RDS and the NAT route (Bedrock, GitHub,
+      # customer-account STS) before it can usefully consume the queue.
+      - name: Scale celery worker to 1
+        id: ecs
+        if: always()
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --desired-count 1 \
+            --query 'service.{name:serviceName,desired:desiredCount}'
+          echo "✓ celery worker scaled to 1"
+
+      - name: Fail if any start step failed
+        if: always()
+        run: |
+          FAILED=""
+          [ "${{ steps.rds.outcome }}" = "failure" ] && FAILED="$FAILED rds"
+          [ "${{ steps.nat.outcome }}" = "failure" ] && FAILED="$FAILED nat"
+          [ "${{ steps.ecs.outcome }}" = "failure" ] && FAILED="$FAILED ecs"
+          if [ -n "$FAILED" ]; then
+            echo "::error::start steps failed:$FAILED"
+            exit 1
+          fi
+          echo "✓ all start steps succeeded"

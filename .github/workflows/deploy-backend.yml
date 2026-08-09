@@ -17,6 +17,8 @@ env:
   ECR_REGISTRY: 321613317660.dkr.ecr.ap-south-1.amazonaws.com
   ECR_REPOSITORY: clyro-backend
   FUNCTION_NAME: clyro-prod-backend
+  ECS_CLUSTER: clyro-prod-celery-cluster
+  ECS_SERVICE: clyro-prod-celery-worker
 
 jobs:
   deploy:
@@ -100,7 +102,39 @@ jobs:
             --output json | jq '{FunctionName, LastUpdateStatus}'
           aws lambda wait function-updated --function-name "${{ env.FUNCTION_NAME }}"
 
+      # The celery worker runs the SAME image as the Lambda but is deployed by
+      # ECS, which had no step here at all — so it kept running whatever
+      # `latest` pointed at when its task last started. It drifted to two weeks
+      # behind the Lambda and started throwing
+      #   KeyError: 'app.tasks.run_delete_project_task'
+      # on tasks the newer Lambda enqueued. The task definition tracks the
+      # mutable `latest` tag that the build step above just re-pushed, so
+      # forcing a new deployment is all that's needed to pull the worker back
+      # in step with the API.
+      - name: Redeploy celery worker on the new image
+        run: |
+          DESIRED=$(aws ecs describe-services \
+            --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}" \
+            --query 'services[0].desiredCount' --output text)
+          if [ "$DESIRED" = "0" ]; then
+            echo "celery worker is scaled to 0 (outside the 9AM-9PM window) — "
+            echo "skipping force-deploy; it will start on the new image at 9AM."
+            exit 0
+          fi
+          aws ecs update-service \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --service "${{ env.ECS_SERVICE }}" \
+            --force-new-deployment \
+            --query 'service.{name:serviceName,desired:desiredCount}'
+          echo "Waiting for the worker to reach steady state…"
+          aws ecs wait services-stable \
+            --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}"
+          echo "✓ celery worker redeployed"
+
       - name: Verify deployed image
         run: |
           aws lambda get-function --function-name "${{ env.FUNCTION_NAME }}" \
             --query 'Code.ImageUri' --output text
+          aws ecs describe-services \
+            --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}" \
+            --query 'services[0].{desired:desiredCount,running:runningCount,taskDef:taskDefinition}'

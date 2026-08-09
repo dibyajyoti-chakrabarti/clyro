@@ -6,8 +6,12 @@ set -euo pipefail
 
 PROFILE="${AWS_PROFILE:-clyro}"
 REGION="${AWS_REGION:-ap-south-1}"
-CLUSTER="${ECS_CLUSTER:-clyro-prod-cluster}"
-SERVICE="${ECS_SERVICE:-clyro-prod-backend-service}"
+# These defaults used to be clyro-prod-cluster / clyro-prod-backend-service —
+# names that have never existed. The backend is a Lambda, not an ECS service;
+# the only ECS workload is the celery worker. Every non-FULL run therefore
+# died with ClusterNotFoundException and saved nothing.
+CLUSTER="${ECS_CLUSTER:-clyro-prod-celery-cluster}"
+SERVICE="${ECS_SERVICE:-clyro-prod-celery-worker}"
 
 if [[ "${FULL:-0}" == "1" ]]; then
   echo "[$(date -u)] Full destroy of workloads layer..."
@@ -19,12 +23,14 @@ if [[ "${FULL:-0}" == "1" ]]; then
   terraform destroy -auto-approve
   echo "[$(date -u)] Workloads destroyed."
 else
-  echo "[$(date -u)] Scaling ECS service to 0 (RDS stays up)..."
+  echo "[$(date -u)] Scaling celery worker to 0 (RDS stays up)..."
   aws ecs update-service \
     --cluster "$CLUSTER" \
     --service "$SERVICE" \
     --desired-count 0 \
     --profile "$PROFILE" \
-    --region "$REGION"
-  echo "[$(date -u)] ECS scaled to 0. RDS is still running."
+    --region "$REGION" \
+    --query 'service.{name:serviceName,desired:desiredCount}'
+  echo "[$(date -u)] Celery worker scaled to 0. RDS is still running."
+  echo "[$(date -u)] NOTE: the backend Lambda is unaffected — the API stays up."
 fi
