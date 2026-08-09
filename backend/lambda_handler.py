@@ -1,16 +1,11 @@
 import os
 
-# settings.GITHUB_APP_PRIVATE_KEY_PATH only reads a PEM *file* from disk; the
-# Lambda environment carries the PEM content as GITHUB_APP_PRIVATE_KEY, so we
-# write it to /tmp (the only writable path in the Lambda runtime) before
-# Django settings are imported.
-_pem_content = os.environ.get('GITHUB_APP_PRIVATE_KEY')
-if _pem_content:
-    _pem_path = '/tmp/github-app.pem'
-    with open(_pem_path, 'w') as f:
-        f.write(_pem_content)
-    os.environ['GITHUB_APP_PRIVATE_KEY_PATH'] = _pem_path
-
+# The GitHub App PEM used to be written to /tmp here, from a plaintext
+# GITHUB_APP_PRIVATE_KEY environment variable. Both halves of that moved:
+# the key is now fetched from SSM at runtime instead of being baked into the
+# function's environment, and the fetch + PEM write happen in
+# config/aws_secrets.py, which settings.py calls before reading any setting.
+# That covers every entrypoint at once rather than each one repeating it.
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
 from mangum import Mangum  # noqa: E402

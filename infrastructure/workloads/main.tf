@@ -32,13 +32,12 @@ module "lambda_backend" {
 
   cognito_user_pool_id = local.f.cognito_user_pool_id
 
-  db_host                      = module.rds.host
-  db_port                      = tostring(module.rds.port)
-  db_name                      = module.rds.db_name
-  db_username                  = module.rds.username
-  db_password_secret_arn       = local.f.db_password_secret_arn
-  django_secret_key_secret_arn = local.f.django_secret_key_secret_arn
-  github_app_pem_secret_arn    = local.f.github_app_pem_secret_arn
+  db_host                = module.rds.host
+  db_port                = tostring(module.rds.port)
+  db_name                = module.rds.db_name
+  db_username            = module.rds.username
+  db_password_secret_arn = local.f.db_password_secret_arn
+  ssm_prefix             = local.f.ssm_prefix
 
   api_gateway_id            = local.f.api_gateway_id
   api_gateway_execution_arn = local.f.api_gateway_execution_arn

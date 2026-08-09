@@ -100,6 +100,13 @@ output "github_app_pem_secret_arn" {
   value = aws_secretsmanager_secret.github_app_pem.arn
 }
 
+# Base path for the SecureString parameters the backend resolves at cold start
+# (see backend/config/aws_secrets.py). Only the prefix crosses the layer
+# boundary — the values never enter Terraform state.
+output "ssm_prefix" {
+  value = local.ssm_base
+}
+
 # ── CloudFront ────────────────────────────────────────────────────────────────
 output "cloudfront_domain" {
   value = module.frontend.cloudfront_domain

@@ -12,6 +12,17 @@ environment = os.environ.get('ENVIRONMENT', 'local')
 env_file = '.env.production' if environment == 'production' else '.env.local'
 environ.Env.read_env(BASE_DIR / env_file)
 
+# Resolve deployed secrets (SECRET_KEY, the GitHub App PEM, and the RDS
+# password behind DATABASE_URL) from SSM / Secrets Manager. Deliberately here,
+# after read_env and before the first env() call: every entrypoint — API
+# handler, migration handler, admin bootstrap, celery worker, celery beat,
+# manage.py — reaches settings, so wiring it in once here covers all of them
+# instead of each having to remember. No-op when CLYRO_SSM_PREFIX is unset,
+# which is every local and CI run. See config/aws_secrets.py.
+from config.aws_secrets import load_into_environ  # noqa: E402
+
+load_into_environ()
+
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['localhost'])

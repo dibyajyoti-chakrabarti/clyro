@@ -6,20 +6,14 @@ task definition overrides that image's ENTRYPOINT (awslambdaric, which
 expects a Lambda handler path, not a shell command) to run this script
 instead, which then execs the real command (celery worker / celery beat).
 
-Mirrors lambda_handler.py's PEM-write trick: settings.GITHUB_APP_PRIVATE_KEY_PATH
-only reads a PEM *file* from disk, but the container only carries the PEM
-content as the GITHUB_APP_PRIVATE_KEY env var — write it to /tmp before the
-real command (and therefore Django settings) loads.
+This used to also write the GitHub App PEM to /tmp from a plaintext
+GITHUB_APP_PRIVATE_KEY env var, mirroring lambda_handler.py. Both copies are
+gone: the key is fetched from SSM at runtime by config/aws_secrets.py, which
+settings.py calls on the way in — so the exec'd celery process picks it up
+itself and there is nothing to prepare here.
 """
 
 import os
 import sys
-
-_pem_content = os.environ.get('GITHUB_APP_PRIVATE_KEY')
-if _pem_content:
-    _pem_path = '/tmp/github-app.pem'
-    with open(_pem_path, 'w') as f:
-        f.write(_pem_content)
-    os.environ['GITHUB_APP_PRIVATE_KEY_PATH'] = _pem_path
 
 os.execvp(sys.argv[1], sys.argv[1:])

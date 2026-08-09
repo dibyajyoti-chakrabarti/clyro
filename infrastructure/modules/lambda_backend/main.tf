@@ -2,17 +2,13 @@ locals {
   prefix = "${var.project}-${var.environment}"
 }
 
-data "aws_secretsmanager_secret_version" "db_password" {
-  secret_id = var.db_password_secret_arn
-}
-
-data "aws_secretsmanager_secret_version" "django_secret_key" {
-  secret_id = var.django_secret_key_secret_arn
-}
-
-data "aws_secretsmanager_secret_version" "github_app_pem" {
-  secret_id = var.github_app_pem_secret_arn
-}
+# The three `aws_secretsmanager_secret_version` data sources that used to sit
+# here are gone on purpose. They resolved the Django SECRET_KEY, the GitHub App
+# private key and the RDS password at plan time and wrote them, in plaintext,
+# into this function's environment — readable by anyone with
+# lambda:GetFunctionConfiguration, and copied verbatim into the Terraform state
+# file. The function now receives only pointers and resolves the values itself
+# at cold start; see backend/config/aws_secrets.py.
 
 resource "aws_lambda_function" "backend" {
   function_name = "${local.prefix}-backend"
@@ -45,22 +41,25 @@ resource "aws_lambda_function" "backend" {
       # it. Must match that file's queue_name_prefix exactly, or this Lambda
       # publishes to a different SQS queue name than the one it's IAM-scoped
       # to reach (queue_name_prefix + Celery's default queue name "celery").
-      CELERY_BROKER_URL      = "sqs://"
-      CELERY_RESULT_BACKEND  = "cache+memory://"
+      CELERY_BROKER_URL       = "sqs://"
+      CELERY_RESULT_BACKEND   = "cache+memory://"
       CELERY_SQS_QUEUE_PREFIX = "${local.prefix}-"
 
-      # Django settings reads a single DATABASE_URL (django-environ), not
-      # discrete DB_* vars.
-      DATABASE_URL = "postgres://${var.db_username}:${urlencode(data.aws_secretsmanager_secret_version.db_password.secret_string)}@${var.db_host}:${var.db_port}/${var.db_name}"
+      # Secret *pointers*, not secrets. aws_secrets.load_into_environ() reads
+      # the SecureStrings under this prefix and assembles DATABASE_URL from the
+      # non-secret parts below plus the password behind this ARN.
+      CLYRO_SSM_PREFIX             = var.ssm_prefix
+      CLYRO_DB_PASSWORD_SECRET_ARN = var.db_password_secret_arn
 
-      SECRET_KEY = data.aws_secretsmanager_secret_version.django_secret_key.secret_string
+      # Non-secret halves of the DSN. Django settings wants one DATABASE_URL
+      # (django-environ), which the loader builds once the password resolves.
+      DB_HOST = var.db_host
+      DB_PORT = var.db_port
+      DB_NAME = var.db_name
+      DB_USER = var.db_username
 
-      # settings.GITHUB_APP_PRIVATE_KEY_PATH only reads a PEM *file*, not an
-      # env var directly — lambda_handler.py writes this content to /tmp on
-      # cold start and points the path env var at it before Django loads.
-      GITHUB_APP_PRIVATE_KEY = data.aws_secretsmanager_secret_version.github_app_pem.secret_string
-      GITHUB_APP_ID          = var.github_app_id
-      GITHUB_APP_NAME        = var.github_app_name
+      GITHUB_APP_ID   = var.github_app_id
+      GITHUB_APP_NAME = var.github_app_name
     }
   }
 

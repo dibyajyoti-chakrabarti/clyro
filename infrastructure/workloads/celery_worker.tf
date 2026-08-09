@@ -13,22 +13,37 @@
 # it as a second lightweight container in the same task avoids paying for a
 # second always-on task just to fire a schedule every 15 minutes.
 
-data "aws_secretsmanager_secret_version" "celery_db_password" {
-  secret_id = local.f.db_password_secret_arn
-}
+# The three `aws_secretsmanager_secret_version` data sources that used to sit
+# here are gone for the same reason as in modules/lambda_backend: they wrote
+# the Django SECRET_KEY, the GitHub App private key and the RDS password in
+# plaintext into the ECS task definition (readable via
+# ecs:DescribeTaskDefinition) and into the workloads state file. The worker
+# resolves them itself at startup now — see backend/config/aws_secrets.py,
+# which settings.py calls on the way in, so the exec'd celery process picks
+# them up without celery_entrypoint.py having to prepare anything.
 
-data "aws_secretsmanager_secret_version" "celery_django_secret_key" {
-  secret_id = local.f.django_secret_key_secret_arn
-}
-
-data "aws_secretsmanager_secret_version" "celery_github_app_pem" {
-  secret_id = local.f.github_app_pem_secret_arn
+# Poison-message sink. Without it a task the worker can't handle — e.g. one
+# whose name isn't registered because the worker is running an older image —
+# is redelivered every visibility timeout for the full retention period and
+# then silently vanishes. Found live: a run_delete_project_task message at
+# ApproximateReceiveCount 87, with the user's AgentJob row still showing
+# 'pending' and no failure surfaced anywhere.
+resource "aws_sqs_queue" "celery_dlq" {
+  name                      = "${local.prefix}-celery-dlq"
+  message_retention_seconds = 1209600 # 14 days — long enough to notice and inspect
 }
 
 resource "aws_sqs_queue" "celery_broker" {
   name                       = "${local.prefix}-celery"
   visibility_timeout_seconds = 1000 # > CELERY_TASK_TIME_LIMIT (900s) + margin
   message_retention_seconds  = 86400
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.celery_dlq.arn
+    # 3 gives a genuinely stuck task two retries (tasks here are long and
+    # idempotent-ish) without letting a poison message loop for a day.
+    maxReceiveCount = 3
+  })
 }
 
 resource "aws_cloudwatch_log_group" "celery_worker" {
@@ -108,6 +123,28 @@ resource "aws_iam_role_policy" "celery_task_runtime" {
         ]
       },
       {
+        # SECRET_KEY and the GitHub App PEM are now SecureString parameters
+        # resolved at container start; decrypting them through SSM needs
+        # kms:Decrypt against the AWS-managed aws/ssm key. ViaService keeps
+        # this usable only through SSM.
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "ssm.${var.aws_region}.amazonaws.com"
+          }
+        }
+      },
+      {
+        # The RDS password is still a Secrets Manager secret (the
+        # aws_db_instance resource uses it), so the worker fetches that one
+        # directly to assemble DATABASE_URL.
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [local.f.db_password_secret_arn]
+      },
+      {
         Effect = "Allow"
         Action = [
           "cloudformation:*",
@@ -123,6 +160,14 @@ resource "aws_iam_role_policy" "celery_task_runtime" {
           "sqs:GetQueueUrl",
           "sqs:GetQueueAttributes",
           "sqs:ChangeMessageVisibility",
+          # Found live: the `beat` sidecar is a *producer*, not just a consumer —
+          # it publishes each scheduled task onto this same queue. Without
+          # SendMessage every fire died with
+          #   celery.beat.SchedulingError: ... AccessDenied ... sqs:sendmessage
+          # and it had failed 1344 consecutive times (the entire 14-day log
+          # retention) before anyone looked, so reconcile / health-snapshot /
+          # log-archive had never once run in production.
+          "sqs:SendMessage",
         ]
         Resource = aws_sqs_queue.celery_broker.arn
       },
@@ -149,9 +194,13 @@ locals {
     { name = "COGNITO_REGION", value = var.aws_region },
     { name = "COGNITO_USER_POOL_ID", value = local.f.cognito_user_pool_id },
     { name = "CLYRO_AWS_ACCOUNT_ID", value = var.account_id },
-    { name = "DATABASE_URL", value = "postgres://${module.rds.username}:${urlencode(data.aws_secretsmanager_secret_version.celery_db_password.secret_string)}@${module.rds.host}:${module.rds.port}/${module.rds.db_name}" },
-    { name = "SECRET_KEY", value = data.aws_secretsmanager_secret_version.celery_django_secret_key.secret_string },
-    { name = "GITHUB_APP_PRIVATE_KEY", value = data.aws_secretsmanager_secret_version.celery_github_app_pem.secret_string },
+    # Secret pointers only — the values resolve at container start.
+    { name = "CLYRO_SSM_PREFIX", value = local.f.ssm_prefix },
+    { name = "CLYRO_DB_PASSWORD_SECRET_ARN", value = local.f.db_password_secret_arn },
+    { name = "DB_HOST", value = module.rds.host },
+    { name = "DB_PORT", value = tostring(module.rds.port) },
+    { name = "DB_NAME", value = module.rds.db_name },
+    { name = "DB_USER", value = module.rds.username },
     { name = "GITHUB_APP_ID", value = "3955174" },
     { name = "GITHUB_APP_NAME", value = "crylo-github" },
     { name = "CELERY_BROKER_URL", value = "sqs://" },
