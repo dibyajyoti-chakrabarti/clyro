@@ -1144,21 +1144,20 @@ def destroy(project: Project) -> dict[str, Any]:
     A DeployError from teardown/_wait propagates: a stack that refuses to
     delete must fail the delete job loudly rather than silently orphan a
     running (billing) stack. An already-dead connection is the one exception —
-    there's nothing left we *can* reach, so purge is a no-op."""
-    deployment = _active_deployment(project)
-    if deployment is not None and deployment.status != Deployment.Status.DELETED:
-        try:
-            if deployment.status != Deployment.Status.DELETING:
-                teardown(project)
-                deployment.refresh_from_db()
-            _wait_stack_deleted(deployment)
-        except DeployError as exc:
-            if "no longer valid" not in str(exc):
-                raise
-            return {"purged": False, "reason": "aws_connection_dead"}
-        deployment.status = Deployment.Status.DELETED
-        deployment.save(update_fields=["status", "updated_at"])
+    there's nothing left we *can* reach, so purge is a no-op.
 
+    Found live (2026-08-09): the secret purge used to sit *after* the teardown
+    wait, so every failed or timed-out stack delete skipped it and stranded the
+    project's secrets at ~$0.40/month each, forever — 16 had accumulated in
+    us-east-1. The purge is now in a `finally`, and credentials are resolved
+    up-front so it always has a session to run on. `finally` rather than
+    `except DeployError` on purpose: the delete task's Celery soft time limit
+    raises SoftTimeLimitExceeded, which is not a DeployError and used to skip
+    the purge the same way."""
+    # Credentials up-front: the purge below must run even when teardown blows up.
+    # (Resolving these before teardown is safe — teardown assumes the same role
+    # internally, so a project with no live connection could never tear down
+    # anyway; it just now reports never_connected a little earlier.)
     conn = (AWSAccountConnection.objects
             .filter(project=project, connected_at__isnull=False)
             .order_by("-connected_at").first())
@@ -1172,13 +1171,32 @@ def destroy(project: Project) -> dict[str, Any]:
         return {"purged": False, "reason": "aws_connection_dead"}
     region = conn.aws_region or "us-east-1"
 
-    # Best-effort per secret: one already-deleted secret must not strand the rest.
-    for var in EnvVarKey.objects.filter(project=project, secrets_manager_arn__isnull=False):
+    def _purge_secrets() -> None:
+        # Best-effort per secret: one already-deleted secret must not strand the rest.
+        for var in EnvVarKey.objects.filter(project=project, secrets_manager_arn__isnull=False):
+            try:
+                aws_client.delete_secret(creds, region, var.secrets_manager_arn)
+            except ClientError:
+                log.warning("destroy: could not delete secret %s for project %s",
+                            var.secrets_manager_arn, project.pk)
+
+    deployment = _active_deployment(project)
+    if deployment is not None and deployment.status != Deployment.Status.DELETED:
         try:
-            aws_client.delete_secret(creds, region, var.secrets_manager_arn)
-        except ClientError:
-            log.warning("destroy: could not delete secret %s for project %s",
-                        var.secrets_manager_arn, project.pk)
+            if deployment.status != Deployment.Status.DELETING:
+                teardown(project)
+                deployment.refresh_from_db()
+            _wait_stack_deleted(deployment)
+        except DeployError as exc:
+            if "no longer valid" not in str(exc):
+                raise
+            return {"purged": False, "reason": "aws_connection_dead"}
+        finally:
+            _purge_secrets()
+        deployment.status = Deployment.Status.DELETED
+        deployment.save(update_fields=["status", "updated_at"])
+    else:
+        _purge_secrets()
 
     # Best-effort: CFN deletes the role mid-delete, which can invalidate the very
     # session driving the delete — a DELETE_FAILED connector stack holds only the
