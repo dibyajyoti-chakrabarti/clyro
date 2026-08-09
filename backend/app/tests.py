@@ -1057,3 +1057,165 @@ class AwsConnectionVerifyArnMatchTests(TestCase):
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('different Clyro connection', resp.data['error'])
         mock_assume.assert_not_called()
+
+
+class RuntimeSecretLoaderTests(SimpleTestCase):
+    """config.aws_secrets — the cold-start resolver that replaced the plaintext
+    SECRET_KEY / GITHUB_APP_PRIVATE_KEY / DATABASE_URL environment variables
+    that Terraform used to bake into the Lambda and the ECS task definition.
+
+    It runs before every setting is read on every entrypoint, so a regression
+    here takes the whole backend down rather than degrading something narrow.
+    """
+
+    ENV_KEYS = (
+        'CLYRO_SSM_PREFIX', 'CLYRO_DB_PASSWORD_SECRET_ARN', 'SECRET_KEY',
+        'DATABASE_URL', 'GITHUB_APP_PRIVATE_KEY_PATH',
+        'DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER',
+    )
+
+    def setUp(self):
+        import os
+        self._saved = {k: os.environ.get(k) for k in self.ENV_KEYS}
+        for key in self.ENV_KEYS:
+            os.environ.pop(key, None)
+
+    def tearDown(self):
+        import os
+        for key, value in self._saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def _ssm_response(self, prefix, secret_key='django-key', pem='-----PEM-----'):
+        return {
+            'Parameters': [
+                {'Name': f'{prefix}/django/secret-key', 'Value': secret_key},
+                {'Name': f'{prefix}/github/app-pem', 'Value': pem},
+            ],
+            'InvalidParameters': [],
+        }
+
+    def test_noop_without_prefix(self):
+        """Local dev and CI must be untouched — no boto3 client is even built."""
+        import os
+        from config import aws_secrets
+
+        with patch('boto3.client') as mock_client:
+            aws_secrets.load_into_environ()
+
+        mock_client.assert_not_called()
+        self.assertIsNone(os.environ.get('SECRET_KEY'))
+
+    def test_populates_secret_key_and_pem_file(self):
+        import os
+        from config import aws_secrets
+
+        os.environ['CLYRO_SSM_PREFIX'] = '/clyro/prod'
+        ssm = patch.object(
+            aws_secrets, '_fetch_ssm_parameters',
+            return_value={'secret_key': 's3kr3t', 'github_pem': '-----BEGIN RSA-----'},
+        )
+        with ssm:
+            aws_secrets.load_into_environ()
+
+        self.assertEqual(os.environ['SECRET_KEY'], 's3kr3t')
+        pem_path = os.environ['GITHUB_APP_PRIVATE_KEY_PATH']
+        with open(pem_path) as handle:
+            self.assertEqual(handle.read(), '-----BEGIN RSA-----')
+
+    def test_existing_env_wins(self):
+        """The rollout deploys this code while Terraform still sets the old
+        plaintext vars; if the loader clobbered them the two would fight."""
+        import os
+        from config import aws_secrets
+
+        os.environ['CLYRO_SSM_PREFIX'] = '/clyro/prod'
+        os.environ['SECRET_KEY'] = 'already-set'
+        os.environ['GITHUB_APP_PRIVATE_KEY_PATH'] = '/tmp/pre-existing.pem'
+
+        with patch.object(
+            aws_secrets, '_fetch_ssm_parameters',
+            return_value={'secret_key': 'from-ssm', 'github_pem': 'x'},
+        ):
+            aws_secrets.load_into_environ()
+
+        self.assertEqual(os.environ['SECRET_KEY'], 'already-set')
+        self.assertEqual(
+            os.environ['GITHUB_APP_PRIVATE_KEY_PATH'], '/tmp/pre-existing.pem'
+        )
+
+    def test_database_url_percent_encodes_password(self):
+        """Generated RDS passwords contain $, & and % — a raw password silently
+        corrupts the DSN, which is why the old Terraform used urlencode()."""
+        import os
+        from config import aws_secrets
+
+        os.environ.update({
+            'CLYRO_DB_PASSWORD_SECRET_ARN': 'arn:aws:secretsmanager:x:y:secret:z',
+            'DB_HOST': 'db.example.com', 'DB_PORT': '5432',
+            'DB_NAME': 'clyro_db', 'DB_USER': 'clyro',
+        })
+
+        with patch.object(
+            aws_secrets, '_fetch_db_password', return_value='Ybq9$PIUJn&7Mw2%fLD5'
+        ):
+            aws_secrets.load_into_environ()
+
+        self.assertEqual(
+            os.environ['DATABASE_URL'],
+            'postgres://clyro:Ybq9%24PIUJn%267Mw2%25fLD5@db.example.com:5432/clyro_db',
+        )
+
+    def test_missing_db_parts_raise(self):
+        import os
+        from django.core.exceptions import ImproperlyConfigured
+        from config import aws_secrets
+
+        os.environ['CLYRO_DB_PASSWORD_SECRET_ARN'] = 'arn:aws:secretsmanager:x:y:secret:z'
+
+        with patch.object(aws_secrets, '_fetch_db_password', return_value='pw'):
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                aws_secrets.load_into_environ()
+
+        self.assertIn('DB_HOST', str(ctx.exception))
+
+    def test_invalid_ssm_parameters_raise(self):
+        """A missing parameter must fail loudly at import, not surface later as
+        an unexplained 500 once a request happens to need the key."""
+        import os
+        from django.core.exceptions import ImproperlyConfigured
+        from config import aws_secrets
+
+        os.environ['CLYRO_SSM_PREFIX'] = '/clyro/prod'
+        client = patch('boto3.client')
+        with client as mock_client:
+            mock_client.return_value.get_parameters.return_value = {
+                'Parameters': [],
+                'InvalidParameters': ['/clyro/prod/django/secret-key'],
+            }
+            with self.assertRaises(ImproperlyConfigured) as ctx:
+                aws_secrets.load_into_environ()
+
+        self.assertIn('/clyro/prod/django/secret-key', str(ctx.exception))
+
+    def test_fetches_both_parameters_in_one_call(self):
+        """One GetParameters, not two GetParameter — this is on the cold-start
+        path for every invocation."""
+        import os
+        from config import aws_secrets
+
+        os.environ['CLYRO_SSM_PREFIX'] = '/clyro/prod'
+        with patch('boto3.client') as mock_client:
+            mock_client.return_value.get_parameters.return_value = self._ssm_response(
+                '/clyro/prod'
+            )
+            aws_secrets.load_into_environ()
+
+        mock_client.return_value.get_parameters.assert_called_once()
+        kwargs = mock_client.return_value.get_parameters.call_args.kwargs
+        self.assertTrue(kwargs['WithDecryption'])
+        self.assertEqual(sorted(kwargs['Names']), [
+            '/clyro/prod/django/secret-key', '/clyro/prod/github/app-pem',
+        ])

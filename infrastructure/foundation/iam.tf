@@ -60,13 +60,28 @@ resource "aws_iam_role_policy" "backend_lambda_runtime" {
         Resource = module.cognito.user_pool_arn
       },
       {
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue"]
-        Resource = [
-          aws_secretsmanager_secret.db_password.arn,
-          aws_secretsmanager_secret.django_secret_key.arn,
-          aws_secretsmanager_secret.github_app_pem.arn,
-        ]
+        # Narrowed to the RDS password only: the Django SECRET_KEY and the
+        # GitHub App PEM moved to SSM SecureString parameters (see ssm.tf), so
+        # this role has no reason to reach their Secrets Manager copies. The
+        # RDS password stays in Secrets Manager because the aws_db_instance
+        # resource itself uses it.
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [aws_secretsmanager_secret.db_password.arn]
+      },
+      {
+        # SecureString parameters are decrypted with the AWS-managed aws/ssm
+        # key, and GetParameters(WithDecryption=true) needs kms:Decrypt on top
+        # of the ssm:GetParameters below. Constrained with ViaService so this
+        # can only ever decrypt through SSM, never against another key user.
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "ssm.${var.aws_region}.amazonaws.com"
+          }
+        }
       },
       {
         Effect = "Allow"

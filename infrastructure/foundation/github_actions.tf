@@ -119,13 +119,33 @@ resource "aws_iam_role_policy" "github_actions_backend" {
   policy = data.aws_iam_policy_document.github_actions_backend.json
 }
 
-# ── Workloads control: NAT instance + RDS stop/start (cron + manual) ───────
+# ── Workloads control: celery worker + NAT instance + RDS stop/start ───────
 data "aws_iam_policy_document" "github_actions_workloads" {
+  # Resource-level scoping is not available for ec2:DescribeInstances, and the
+  # stop/start workflows deliberately resolve the NAT box by its Name tag
+  # rather than a stored id — a hardcoded EC2_INSTANCE_ID repo secret went
+  # stale when the instance was replaced and silently broke the nightly
+  # shutdown for weeks.
   statement {
     sid       = "NATInstanceDescribe"
     effect    = "Allow"
     actions   = ["ec2:DescribeInstances"]
     resources = ["*"]
+  }
+
+  # The Fargate celery worker is the most expensive always-on component and
+  # was previously outside the 9-9 window entirely; the scheduled workflows
+  # now scale it 1 -> 0 -> 1 alongside RDS and the NAT instance.
+  statement {
+    sid    = "CeleryWorkerScale"
+    effect = "Allow"
+    actions = [
+      "ecs:UpdateService",
+      "ecs:DescribeServices",
+    ]
+    resources = [
+      "arn:aws:ecs:${var.aws_region}:${var.account_id}:service/${var.project}-${var.environment}-celery-cluster/${var.project}-${var.environment}-celery-worker",
+    ]
   }
 
   statement {

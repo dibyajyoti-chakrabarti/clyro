@@ -26,7 +26,15 @@ jobs:
       - name: Run backend tests
         working-directory: backend
         env:
+          # config/settings.py reads these three with no default, so Django
+          # cannot even import without them. Locally they come from
+          # .env.local, which is gitignored and therefore absent here — this
+          # job had never actually run before (test.yml only triggers on
+          # pull_request and no PR had opened since it was added), so the gap
+          # went unnoticed. Dummy values: nothing in app.tests reaches AWS.
           DATABASE_URL: "sqlite:///:memory:"
+          SECRET_KEY: "ci-only-not-a-real-secret"
+          CLYRO_AWS_ACCOUNT_ID: "000000000000"
         run: python manage.py test app.tests
 
   frontend:

@@ -9,6 +9,11 @@ smaller than grep or `GRAPH_REPORT.md`.
 - After editing code: `graphify update .` (AST-only, no API cost).
 
 ## Cross-session memory (local, not committed)
-Findings, root causes, and brainstorming persist at
-`~/.claude/brainstorming/clyro-findings.md`. Read it at the start of Clyro work;
-append new findings there (dated, status-tagged), not inline here.
+Lives in the agent memory folder
+`~/.claude/projects/-home-dibyajyoti-projects-clyro/memory/`.
+- `MEMORY.md` — index, one line per memory file. Read first.
+- `brainstorm_log.md` — running findings / root causes / decisions, dated and
+  status-tagged (OPEN / FIXED / INFO). Append here, not inline in this file.
+- `live_infra_snapshot.md` — what is actually deployed in AWS, CLI-verified.
+Other `*.md` in that folder are single-fact memories. Old location
+`~/.claude/brainstorming/clyro-findings.md` is superseded.

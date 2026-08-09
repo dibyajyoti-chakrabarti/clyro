@@ -27,8 +27,12 @@ variable "db_port" { type = string }
 variable "db_name" { type = string }
 variable "db_username" { type = string }
 variable "db_password_secret_arn" { type = string }
-variable "django_secret_key_secret_arn" { type = string }
-variable "github_app_pem_secret_arn" { type = string }
+
+# Base path of the SecureString parameters the function resolves at cold start.
+# Replaces django_secret_key_secret_arn / github_app_pem_secret_arn: those two
+# values moved from Secrets Manager to Parameter Store and are no longer read
+# by Terraform at all, so the module needs the prefix rather than the ARNs.
+variable "ssm_prefix" { type = string }
 variable "github_app_id" {
   type    = string
   default = "3955174"
