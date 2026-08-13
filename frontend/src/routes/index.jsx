@@ -40,15 +40,18 @@ function PublicOnlyRoute({ children }) {
 export default function AppRoutes() {
   return (
     <Routes>
+      {/* Landing renders its own navbar/footer, so it sits outside PublicLayout to avoid
+          duplicate chrome. Auth gating is unchanged. */}
+      <Route
+        path='/'
+        element={
+          <PublicOnlyRoute>
+            <Landing />
+          </PublicOnlyRoute>
+        }
+      />
+
       <Route element={<PublicLayout />}>
-        <Route
-          path='/'
-          element={
-            <PublicOnlyRoute>
-              <Landing />
-            </PublicOnlyRoute>
-          }
-        />
         <Route path='/pricing' element={<Pricing />} />
         <Route
           path='/login'
