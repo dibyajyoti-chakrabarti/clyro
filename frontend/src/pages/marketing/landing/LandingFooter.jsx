@@ -12,9 +12,10 @@ const columns = [
     heading: 'Product',
     links: [
       { label: 'Features', href: '#features' },
-      { label: 'Solutions', href: '#solutions' },
       { label: 'Pricing', href: '/pricing' },
-      { label: 'Changelog', href: '#changelog' },
+      { label: 'How It Works', href: '#how-it-works' },
+      { label: 'Integrations', href: '#integrations' },
+      { label: 'Updates', href: '#updates' },
     ],
   },
   {
@@ -22,8 +23,8 @@ const columns = [
     links: [
       { label: 'Documentation', href: '#docs' },
       { label: 'Blog', href: '#blog' },
-      { label: 'Guides', href: '#guides' },
-      { label: 'Help Center', href: '#help' },
+      { label: 'Tutorials', href: '#guides' },
+      { label: 'Community', href: '#help' },
     ],
   },
   {
@@ -33,6 +34,7 @@ const columns = [
       { label: 'Careers', href: '#careers' },
       { label: 'Contact', href: '#contact' },
       { label: 'Privacy Policy', href: '#privacy' },
+      { label: 'Terms of Service', href: '#terms' },
     ],
   },
 ]
@@ -57,28 +59,32 @@ const socials = [
 
 export default function LandingFooter() {
   return (
-    <footer className='bg-[#FDF6ED] px-5 pb-8 sm:px-6 lg:px-8'>
-      <div className='mx-auto w-full max-w-[1240px] rounded-2xl bg-[#0F1F1B] px-6 py-12 sm:px-10 lg:px-12'>
+    <footer className='border-t border-white/10 bg-marketing-dark px-5 py-12 sm:px-6 lg:px-8 lg:py-16'>
+      <div className='mx-auto w-full max-w-[1240px]'>
         <div className='grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_repeat(3,minmax(0,0.75fr))_minmax(0,1.2fr)]'>
           <div>
             <div className='inline-flex items-center gap-2.5'>
               <img src={clyroLogo} alt='' className='h-8 w-auto' />
-              <span className='text-[1.25rem] font-bold text-white'>Clyro</span>
+              <span className='text-[1.25rem] font-bold text-marketing-ink'>Clyro</span>
             </div>
-            <p className='mt-5 text-[0.75rem] text-white/45'>
+            <p className='mt-5 max-w-[19rem] text-[0.85rem] leading-[1.6] text-marketing-muted'>
+              AI-powered cloud infrastructure platform that helps developers build,
+              deploy, and optimize on AWS.
+            </p>
+            <p className='mt-4 text-[0.75rem] text-marketing-muted/70'>
               © 2025 Clyro. All rights reserved.
             </p>
           </div>
 
           {columns.map((column) => (
             <div key={column.heading}>
-              <h3 className='text-[0.85rem] font-semibold text-white'>{column.heading}</h3>
+              <h3 className='text-[1rem] font-semibold text-marketing-ink'>{column.heading}</h3>
               <ul className='mt-4 space-y-2.5'>
                 {column.links.map((link) => (
                   <li key={link.label}>
                     <a
                       href={link.href}
-                      className='text-[0.78rem] text-white/50 transition-colors hover:text-white'
+                      className='text-[0.85rem] text-marketing-muted transition-colors hover:text-marketing-ink'
                     >
                       {link.label}
                     </a>
@@ -89,9 +95,9 @@ export default function LandingFooter() {
           ))}
 
           <div>
-            <h3 className='text-[0.85rem] font-semibold text-white'>Stay Updated</h3>
-            <p className='mt-4 max-w-[18rem] text-[0.78rem] leading-[1.6] text-white/50'>
-              Get the latest updates and insights on cloud architecture.
+            <h3 className='text-[1rem] font-semibold text-marketing-ink'>Newsletter</h3>
+            <p className='mt-4 max-w-[18rem] text-[0.85rem] leading-[1.6] text-marketing-muted'>
+              Get the latest updates and tips delivered to your inbox.
             </p>
 
             <form
@@ -105,12 +111,12 @@ export default function LandingFooter() {
                 id='landing-newsletter-email'
                 type='email'
                 placeholder='Enter your email'
-                className='h-10 w-full min-w-0 rounded-lg border border-white/12 bg-white/[0.06] px-3.5 text-[0.8rem] text-white placeholder:text-white/35 focus:border-[#E8A33D]/60 focus:outline-none'
+                className='h-10 w-full min-w-0 rounded-lg border border-white/12 bg-white/[0.06] px-3.5 text-[0.8rem] text-marketing-ink placeholder:text-white/35 focus:border-marketing-amber/60 focus:outline-none'
               />
               <button
                 type='submit'
                 aria-label='Subscribe'
-                className='inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#E8A33D] text-[#0B0B0B] transition-transform hover:-translate-y-0.5'
+                className='inline-flex size-10 shrink-0 items-center justify-center rounded-lg bg-marketing-amber text-marketing-dark transition-transform hover:-translate-y-0.5'
               >
                 <span aria-hidden='true'>→</span>
               </button>
@@ -118,13 +124,13 @@ export default function LandingFooter() {
           </div>
         </div>
 
-        <ul className='mt-10 flex items-center gap-4 border-t border-white/[0.08] pt-7' aria-label='Social links'>
+        <ul className='mt-10 flex items-center gap-4 border-t border-white/10 pt-7' aria-label='Social links'>
           {socials.map((social) => (
             <li key={social.label}>
               <a
                 href='/'
                 aria-label={social.label}
-                className='flex size-8 items-center justify-center rounded-md text-white/55 transition-colors hover:text-white'
+                className='flex size-8 items-center justify-center rounded-md text-marketing-muted transition-colors hover:text-marketing-ink'
               >
                 {social.Icon ? (
                   <social.Icon />

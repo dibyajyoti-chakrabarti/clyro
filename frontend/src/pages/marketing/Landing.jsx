@@ -1,4 +1,5 @@
 import BuiltForEngineers from './landing/BuiltForEngineers'
+import FeatureHighlights from './landing/FeatureHighlights'
 import FeatureShowcase from './landing/FeatureShowcase'
 import FinalCTA from './landing/FinalCTA'
 import HeroSection from './landing/HeroSection'
@@ -18,6 +19,7 @@ export default function Landing() {
       <main className='w-full'>
         <HeroSection />
         <ToolsStrip />
+        <FeatureHighlights />
         <HowClyroWorks />
         <FeatureShowcase />
         <WhyEngineers />

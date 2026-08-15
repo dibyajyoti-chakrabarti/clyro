@@ -1,61 +1,35 @@
 import { Link } from 'react-router-dom'
-import { Check } from 'lucide-react'
-import ctaIll from '../../../assets/landing_page/cta_ill.webp'
-
-const assurances = ['No credit card required', 'Cancel anytime']
 
 export default function FinalCTA() {
   return (
-    <section className='bg-[#FDF6ED] px-5 pb-16 sm:px-6 lg:px-8'>
-      <div className='mx-auto grid w-full max-w-[1240px] items-center gap-10 overflow-hidden rounded-2xl bg-[#0F1F1B] px-6 py-12 sm:px-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:px-12 lg:py-14'>
-        <div>
-          <h2 className='text-[1.9rem] font-bold leading-[1.15] tracking-[-0.025em] text-white sm:text-[2.5rem]'>
-            Ready to build better
-            <br />
-            on <span className='text-[#E8A33D]'>AWS</span>?
-          </h2>
+    <section className='bg-marketing-amber px-5 py-14 sm:px-6 lg:px-8 lg:py-16'>
+      <div className='mx-auto flex w-full max-w-[1240px] flex-col items-center text-center'>
+        <h2 className='mb-3 max-w-[44rem] text-[2rem] font-bold leading-[1.1] tracking-tight text-[#0B0B0B] lg:text-[2.75rem]'>
+          Ready to move from idea to cloud?
+        </h2>
+        <p className='mb-5 max-w-[32rem] text-[1.375rem] leading-[1.6] text-[#0B0B0B]/80'>
+          Start building your infrastructure now. No credit card required.
+        </p>
 
-          <p className='mt-4 max-w-[24rem] text-[0.92rem] leading-[1.7] text-white/60'>
-            Join thousands of engineering teams building faster with Clyro.
-          </p>
-
-          <div className='mt-8 flex flex-col gap-3 sm:flex-row sm:items-center'>
-            <Link
-              to='/signup'
-              className='inline-flex h-[50px] items-center justify-center gap-2 rounded-xl bg-[#E8A33D] px-7 text-[0.92rem] font-semibold text-[#0B0B0B] transition-transform hover:-translate-y-0.5'
-            >
-              Get Started Free
-              <span aria-hidden='true'>→</span>
-            </Link>
-            <Link
-              to='/pricing'
-              className='inline-flex h-[50px] items-center justify-center rounded-xl border border-white/25 px-7 text-[0.92rem] font-semibold text-white transition-colors hover:bg-white/[0.06]'
-            >
-              Book a Demo
-            </Link>
-          </div>
-
-          <ul className='mt-7 flex flex-wrap items-center gap-x-7 gap-y-3'>
-            {assurances.map((item) => (
-              <li key={item} className='flex items-center gap-2 text-[0.78rem] font-medium text-white/60'>
-                <span className='flex size-[17px] items-center justify-center rounded-full bg-[#E8A33D]'>
-                  <Check size={10} strokeWidth={3.2} className='text-[#0F1F1B]' />
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
+        <div className='mb-4 flex flex-col items-center gap-3 sm:flex-row sm:justify-center'>
+          <Link
+            to='/signup'
+            className='inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#0B0B0B] px-6 text-[1rem] font-semibold text-white shadow-[0_10px_28px_rgba(11,11,11,0.18)] transition-all hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B0B0B]'
+          >
+            Start Building Free
+            <span aria-hidden='true'>→</span>
+          </Link>
+          <Link
+            to='/pricing'
+            className='inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-black/40 bg-transparent px-6 text-[1rem] font-semibold text-[#0B0B0B] transition-colors hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0B0B0B]'
+          >
+            Book a Demo
+          </Link>
         </div>
 
-        <div>
-          <img
-            src={ctaIll}
-            alt='Engineers watching a successful Clyro deployment complete on AWS'
-            className='w-full max-w-full'
-            width={1536}
-            height={1024}
-          />
-        </div>
+        <p className='text-[0.85rem] font-medium text-[#0B0B0B]/70'>
+          Free 14-day trial &bull; No credit card &bull; Cancel anytime
+        </p>
       </div>
     </section>
   )
