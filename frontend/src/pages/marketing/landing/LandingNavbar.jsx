@@ -19,15 +19,15 @@ export default function LandingNavbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   return (
-    <header className='sticky top-0 z-50 w-full border-b border-black/[0.06] bg-[#FDF6ED]/90 backdrop-blur-md'>
-      <div className='mx-auto flex w-full max-w-[1240px] items-center justify-between gap-6 px-5 py-3.5 sm:px-6 lg:px-8'>
+    <header className='sticky top-4 z-50 w-full px-4 lg:px-8'>
+      <div className='mx-auto flex w-full max-w-[1240px] items-center justify-between gap-6 rounded-2xl border border-white/10 bg-marketing-near-black/70 px-5 py-3.5 shadow-lg shadow-black/20 backdrop-blur-xl sm:px-6 lg:px-8'>
         <Link
           to='/'
           className='inline-flex shrink-0 items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-marketing-amber'
           aria-label='Clyro home'
         >
           <img src={clyroLogo} alt='' className='h-8 w-auto' />
-          <span className='text-[1rem] font-bold tracking-[-0.02em] text-[#0B0B0B]'>Clyro</span>
+          <span className='text-[1rem] font-bold tracking-[-0.02em] text-marketing-text-primary'>Clyro</span>
         </Link>
 
         <nav className='hidden items-center gap-7 lg:flex' aria-label='Primary navigation'>
@@ -35,7 +35,7 @@ export default function LandingNavbar() {
             <a
               key={item.label}
               href={item.href}
-              className='inline-flex items-center gap-1 text-[0.85rem] font-medium text-[#26241F] transition-colors hover:text-marketing-amber'
+              className='inline-flex items-center gap-1 text-[0.85rem] font-medium text-marketing-text-secondary transition-colors hover:text-marketing-amber-core'
             >
               {item.label}
               {item.hasChevron ? <ChevronDown size={14} strokeWidth={2} aria-hidden='true' /> : null}
@@ -46,13 +46,13 @@ export default function LandingNavbar() {
         <div className='hidden shrink-0 items-center gap-3 md:flex'>
           <Link
             to='/login'
-            className='inline-flex h-10 items-center justify-center rounded-lg border border-black/15 bg-white px-5 text-[0.85rem] font-semibold text-[#0B0B0B] transition-colors hover:border-black/40'
+            className='inline-flex h-10 items-center justify-center rounded-lg border border-white/20 bg-white/10 px-5 text-[0.85rem] font-semibold text-white transition-colors hover:border-white/40 hover:bg-white/15'
           >
             Log in
           </Link>
           <Link
             to='/signup'
-            className='inline-flex h-10 items-center gap-1.5 rounded-lg bg-[#0B0B0B] px-5 text-[0.85rem] font-semibold text-white transition-transform hover:-translate-y-0.5'
+            className='inline-flex h-10 items-center gap-1.5 rounded-lg border-2 border-black bg-marketing-amber-2 px-5 text-[0.85rem] font-semibold text-black transition-colors hover:border-marketing-amber-2 hover:bg-black hover:text-marketing-amber-2'
           >
             Get Started Free
             <span aria-hidden='true'>→</span>
@@ -61,7 +61,7 @@ export default function LandingNavbar() {
 
         <button
           type='button'
-          className='inline-flex size-10 items-center justify-center rounded-lg border border-black/12 text-[#0B0B0B] md:hidden'
+          className='inline-flex size-10 items-center justify-center rounded-lg border border-white/15 text-white md:hidden'
           aria-label='Toggle navigation menu'
           aria-expanded={isMenuOpen}
           onClick={() => setIsMenuOpen((open) => !open)}
@@ -71,28 +71,28 @@ export default function LandingNavbar() {
       </div>
 
       {isMenuOpen ? (
-        <div className='border-t border-black/[0.06] bg-[#FDF6ED] md:hidden'>
-          <nav className='mx-auto flex w-full max-w-[1240px] flex-col gap-1 px-5 py-4'>
+        <div className='mx-auto mt-2 w-full max-w-[1240px] rounded-2xl border border-white/10 bg-marketing-near-black/80 shadow-lg shadow-black/20 backdrop-blur-xl md:hidden'>
+          <nav className='flex w-full flex-col gap-1 px-5 py-4'>
             {navItems.map((item) => (
               <a
                 key={item.label}
                 href={item.href}
                 onClick={() => setIsMenuOpen(false)}
-                className='rounded-md px-2 py-2.5 text-[0.85rem] font-medium text-[#26241F] hover:bg-black/[0.04]'
+                className='rounded-md px-2 py-2.5 text-[0.85rem] font-medium text-marketing-text-secondary hover:bg-white/[0.06] hover:text-marketing-amber-core'
               >
                 {item.label}
               </a>
             ))}
-            <div className='mt-3 grid gap-2 border-t border-black/[0.06] pt-4'>
+            <div className='mt-3 grid gap-2 border-t border-white/10 pt-4'>
               <Link
                 to='/login'
-                className='inline-flex h-10 items-center justify-center rounded-lg border border-black/15 bg-white text-[0.85rem] font-semibold text-[#0B0B0B]'
+                className='inline-flex h-10 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-[0.85rem] font-semibold text-white'
               >
                 Log in
               </Link>
               <Link
                 to='/signup'
-                className='inline-flex h-10 items-center justify-center rounded-lg bg-[#0B0B0B] text-[0.85rem] font-semibold text-white'
+                className='inline-flex h-10 items-center justify-center rounded-lg border-2 border-black bg-marketing-amber-2 text-[0.85rem] font-semibold text-black transition-colors hover:border-marketing-amber-2 hover:bg-black hover:text-marketing-amber-2'
               >
                 Get Started Free →
               </Link>

@@ -1,5 +1,19 @@
 import { Link } from 'react-router-dom'
-import { Check, Zap, PlayCircle, BarChart, Shield, Sparkles } from 'lucide-react'
+import {
+  Activity,
+  BarChart,
+  BarChart3,
+  Calculator,
+  Check,
+  PlayCircle,
+  Puzzle,
+  Rocket,
+  Shield,
+  Sparkles,
+  TrendingUp,
+  UploadCloud,
+  Zap,
+} from 'lucide-react'
 
 const assurances = ['No credit card required', 'AI-Powered', 'Supports AWS']
 
@@ -9,52 +23,103 @@ const calloutBadges = [
     Icon: BarChart,
     wrapperClass: '-left-6 top-6',
     lineClass: 'left-[52%] top-full h-10 w-px',
+    accentBgClass: 'bg-marketing-gold-light',
+    accentTextClass: 'text-black',
+    rotate: '-2deg',
   },
   {
     label: 'Secure',
     Icon: Shield,
     wrapperClass: '-right-6 top-6',
     lineClass: 'left-[48%] top-full h-10 w-px',
+    accentBgClass: 'bg-marketing-bronze',
+    accentTextClass: 'text-marketing-cream-2',
+    rotate: '1deg',
   },
   {
     label: 'Intelligent',
     Icon: Sparkles,
     wrapperClass: '-left-6 bottom-6',
     lineClass: 'left-[52%] bottom-full h-10 w-px',
+    accentBgClass: 'bg-marketing-amber-core',
+    accentTextClass: 'text-black',
+    rotate: '-1deg',
   },
   {
     label: 'Optimized',
     Icon: Zap,
     wrapperClass: '-right-6 bottom-6',
     lineClass: 'left-[48%] bottom-full h-10 w-px',
+    accentBgClass: 'bg-marketing-near-black',
+    accentTextClass: 'text-marketing-amber-core',
+    rotate: '2deg',
   },
+]
+
+const painPoints = [
+  {
+    icon: Zap,
+    prefix: 'Spending too much time ',
+    highlight: 'designing AWS architecture',
+    suffix: '?',
+    accentBgClass: 'bg-marketing-gold-light',
+  },
+  {
+    icon: Puzzle,
+    prefix: 'Still ',
+    highlight: 'provisioning cloud infrastructure',
+    suffix: ' manually?',
+    accentBgClass: 'bg-marketing-amber-core',
+  },
+  {
+    icon: BarChart3,
+    prefix: 'Not sure your infra is ',
+    highlight: 'secure, scalable & cost-efficient',
+    suffix: '?',
+    accentBgClass: 'bg-marketing-bronze',
+  },
+]
+
+const bottomFeatures = [
+  { icon: Rocket, label: 'Architecture Generation' },
+  { icon: UploadCloud, label: 'One-Click Provisioning' },
+  { icon: Activity, label: 'Real-time Monitoring' },
+  { icon: Sparkles, label: 'AI-Powered Reviews' },
+  { icon: Calculator, label: 'Cost Estimation' },
+  { icon: TrendingUp, label: 'Continuous Optimization' },
 ]
 
 export default function HeroSection() {
   return (
-    <section className='relative overflow-hidden bg-marketing-dark'>
-      {/* Deep space backdrop: base gradient + scattered star dots + soft amber glow. */}
+    <section className='relative z-10 overflow-hidden rounded-b-[2.5rem] bg-marketing-bg-warm'>
+      {/* Deep space backdrop: base gradient + scattered star dots + amber glow (top-right) + bronze glow (bottom-left).
+          Single atmosphere layer shared by both Hero's own content and the merged
+          pain-points/solution/feature-card content below — do not duplicate this per block. */}
       <div className='pointer-events-none absolute inset-0' aria-hidden='true'>
         <div className='absolute inset-0 bg-[radial-gradient(ellipse_120%_80%_at_50%_-10%,#1c1830_0%,#0d0b16_55%,#0d0b16_100%)]' />
         <div
           className='absolute inset-0 opacity-70 [background-image:radial-gradient(rgba(247,246,243,0.5)_1px,transparent_1px),radial-gradient(rgba(244,196,48,0.5)_1px,transparent_1px)] [background-size:140px_140px,220px_220px] [background-position:0_0,70px_90px]'
         />
-        <div className='absolute -right-40 -top-32 h-[560px] w-[560px] rounded-full bg-marketing-amber/20 blur-[110px]' />
+        <div className='absolute -right-40 -top-32 h-[560px] w-[560px] rounded-full bg-marketing-amber-core/[0.1] blur-[110px]' />
+        <div className='absolute -bottom-32 -left-40 h-[560px] w-[560px] rounded-full bg-marketing-bronze/[0.1] blur-[110px]' />
       </div>
 
-      <div className='relative mx-auto grid w-full max-w-[1240px] items-center gap-12 px-5 py-16 sm:px-6 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,1.18fr)] lg:gap-6 lg:px-8 lg:py-24'>
+      <div className='relative mx-auto grid w-full max-w-[1240px] items-center gap-12 px-5 pb-16 pt-36 sm:px-6 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,1.18fr)] lg:gap-6 lg:px-8 lg:pb-24 lg:pt-44'>
         <div>
-          <span className='inline-flex items-center gap-2 rounded-full border border-marketing-amber-border bg-marketing-amber-soft px-4 py-1.5 text-[0.75rem] font-semibold uppercase tracking-wide text-marketing-amber'>
+          <span
+            className='inline-flex items-center gap-2 rounded-full border-2 border-black bg-marketing-amber-2 px-4 py-1.5 text-[0.75rem] font-semibold uppercase tracking-wide text-black'
+            style={{ transform: 'rotate(-2deg)' }}
+          >
             <Zap size={13} strokeWidth={2} />
             AI-Powered Cloud Infrastructure
           </span>
 
           <h1 className='mt-6 text-[2.75rem] font-bold leading-[1.1] tracking-[-0.035em] text-marketing-ink lg:text-[3.5rem]'>
             From Idea to Cloud Infrastructure,{' '}
-            <span className='relative inline-block text-marketing-amber'>
+            <span className='relative inline-block bg-gradient-to-r from-marketing-amber-2 to-marketing-amber-light bg-clip-text text-transparent'>
               Powered by AI.
               <span
-                className='absolute inset-x-0 -bottom-1.5 h-[3px] rounded-full bg-marketing-amber/50'
+                className='absolute inset-x-0 -bottom-1.5 h-[3px] rounded-full bg-gradient-to-r from-marketing-amber-2 to-marketing-amber-light opacity-50'
                 aria-hidden='true'
               />
             </span>
@@ -85,8 +150,8 @@ export default function HeroSection() {
           <ul className='mt-8 flex flex-wrap items-center gap-x-7 gap-y-3'>
             {assurances.map((item) => (
               <li key={item} className='flex items-center gap-2 text-[0.85rem] font-medium text-marketing-muted'>
-                <span className='flex size-[18px] items-center justify-center rounded-full bg-marketing-amber'>
-                  <Check size={11} strokeWidth={3.2} className='text-marketing-dark' />
+                <span className='flex size-[18px] items-center justify-center rounded-full bg-marketing-gold-light'>
+                  <Check size={11} strokeWidth={3.2} className='text-black' />
                 </span>
                 {item}
               </li>
@@ -96,10 +161,10 @@ export default function HeroSection() {
 
         <div className='relative mx-auto w-full max-w-[560px] lg:mx-0'>
           <div
-            className='relative flex aspect-[3/2] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] shadow-[0_30px_60px_rgba(0,0,0,0.45)]'
+            className='relative flex aspect-[3/2] w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-marketing-gold-light bg-white/[0.03] shadow-[0_30px_60px_rgba(0,0,0,0.45)]'
           >
             <div
-              className='pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-marketing-amber/15 blur-[70px]'
+              className='pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-marketing-amber-2/15 blur-[70px]'
               aria-hidden='true'
             />
             <span className='relative text-[0.85rem] font-medium text-marketing-muted'>
@@ -107,17 +172,74 @@ export default function HeroSection() {
             </span>
           </div>
 
-          {calloutBadges.map(({ label, Icon, wrapperClass, lineClass }) => (
+          {calloutBadges.map(({ label, Icon, wrapperClass, lineClass, accentBgClass, accentTextClass, rotate }) => (
             <div key={label} className={`absolute z-10 hidden lg:block ${wrapperClass}`} aria-hidden='true'>
+              <span className={`absolute border-l border-dashed border-black/40 ${lineClass}`} />
               <span
-                className={`absolute border-l border-dashed border-marketing-amber-border ${lineClass}`}
-              />
-              <span className='relative inline-flex items-center gap-1.5 rounded-full border border-marketing-amber-border bg-marketing-dark-surface/90 px-3 py-1.5 text-[0.7rem] font-semibold text-marketing-ink shadow-[0_8px_20px_rgba(0,0,0,0.35)]'>
-                <Icon size={13} strokeWidth={2} className='text-marketing-amber' />
+                className={`relative inline-flex items-center gap-1.5 rounded-full border border-black ${accentBgClass} ${accentTextClass} px-3 py-1.5 text-[0.7rem] font-semibold shadow-[0_8px_20px_rgba(0,0,0,0.35)]`}
+                style={{ transform: `rotate(${rotate})` }}
+              >
+                <Icon size={13} strokeWidth={2} className={accentTextClass} />
                 {label}
               </span>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className='relative mx-auto w-full max-w-[1240px] px-5 pb-16 pt-16 sm:px-6 lg:px-8 lg:pb-24 lg:pt-24'>
+        {/* Part 1 — pain points */}
+        <h3 className='mx-auto max-w-[36rem] text-center text-[1.7rem] font-semibold leading-[1.25] text-marketing-text-primary'>
+          Is your cloud infrastructure becoming{' '}
+          <span className='text-marketing-amber-core'>harder to build, manage, and scale?</span>
+        </h3>
+
+        <ul className='mt-10 grid grid-cols-1 gap-10 sm:grid-cols-3 sm:gap-6'>
+          {painPoints.map((item) => (
+            <li key={item.highlight} className='flex flex-col items-center gap-4 text-center sm:px-6'>
+              <span className={`flex size-16 shrink-0 items-center justify-center rounded-full sm:size-20 ${item.accentBgClass} text-black`}>
+                <item.icon size={26} strokeWidth={1.8} />
+              </span>
+              <p className='text-[0.85rem] leading-[1.6] text-marketing-text-secondary'>
+                {item.prefix}
+                <span className='text-marketing-amber-core'>{item.highlight}</span>
+                {item.suffix}
+              </p>
+            </li>
+          ))}
+        </ul>
+
+        {/* Part 2 — solution heading + feature list (left) and a single contained illustration (right) */}
+        <div className='mt-16 grid grid-cols-1 items-start gap-10 lg:grid-cols-2 lg:gap-16'>
+          <div>
+            <h2 className='text-[2rem] font-bold leading-[1.15] tracking-[-0.02em] text-marketing-text-primary lg:text-[2.75rem]'>
+              We build <span className='text-marketing-amber-core'>and evolve</span>
+              <br />
+              your cloud infrastructure
+            </h2>
+            <p className='mt-4 max-w-[32rem] text-[1.375rem] leading-[1.6] text-marketing-text-secondary'>
+              From architecture to production — Clyro{' '}
+              <span className='font-semibold text-marketing-amber-core'>handles the complexity</span>{' '}
+              behind your AWS infrastructure.
+            </p>
+
+            <div className='mt-10 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3'>
+              {bottomFeatures.map((item) => (
+                <div key={item.label} className='flex flex-col items-center gap-4 text-center'>
+                  <span className='flex size-9 shrink-0 items-center justify-center rounded-md bg-marketing-amber-core text-black'>
+                    <item.icon size={18} strokeWidth={1.8} />
+                  </span>
+                  <span className='text-[0.85rem] font-medium text-marketing-text-primary'>{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className='flex h-full min-h-[320px] w-full items-center justify-center rounded-2xl border border-marketing-border-hairline bg-marketing-bg-card'>
+            <span className='px-4 text-center text-[0.85rem] font-medium uppercase tracking-wide text-marketing-text-muted-2'>
+              Illustration placeholder
+            </span>
+          </div>
         </div>
       </div>
     </section>
