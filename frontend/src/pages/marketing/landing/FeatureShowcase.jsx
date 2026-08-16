@@ -1,3 +1,7 @@
+import { useRef } from 'react'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { useGSAP } from '@gsap/react'
 import {
   BadgeCheck,
   BellRing,
@@ -54,13 +58,57 @@ const features = [
 ]
 
 export default function FeatureShowcase() {
+  const cardRef = useRef(null)
+  const illustrationRef = useRef(null)
+  const gridRef = useRef(null)
+
+  useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    gsap.registerPlugin(ScrollTrigger)
+
+    const mm = gsap.matchMedia()
+
+    // Illustration parallax is desktop-only: below lg the illustration stacks above the
+    // (now single-column) feature grid with limited vertical room, so even this modest
+    // drift risks overlapping the heading/grid content right below it.
+    mm.add('(min-width: 1024px)', () => {
+      gsap.to(illustrationRef.current, {
+        yPercent: -18,
+        ease: 'none',
+        scrollTrigger: {
+          trigger: cardRef.current,
+          start: 'top bottom',
+          end: 'bottom top',
+          scrub: true,
+        },
+      })
+    })
+
+    gsap.from(gridRef.current.querySelectorAll('.feature-grid-item'), {
+      y: 20,
+      opacity: 0,
+      duration: 0.5,
+      ease: 'power2.out',
+      stagger: 0.08,
+      scrollTrigger: {
+        trigger: gridRef.current,
+        start: 'top 75%',
+        toggleActions: 'play none none none',
+      },
+    })
+
+    return () => mm.revert()
+  })
+
   return (
     <section id='features' className='bg-marketing-gold-pale px-5 pb-16 pt-10 sm:px-6 lg:px-8 lg:pb-24 lg:pt-14'>
-      <div className='mx-auto w-[99%] rounded-2xl bg-marketing-near-black p-6 lg:rounded-3xl lg:p-10'>
+      <div ref={cardRef} className='mx-auto w-[99%] rounded-2xl bg-marketing-near-black p-6 lg:rounded-3xl lg:p-10'>
         <div className='grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-12'>
           <div>
             <div className='aspect-[3/2] w-full'>
               <img
+                ref={illustrationRef}
                 src={featureShowcaseIllustration}
                 alt='Clyro dashboard overview showing total resources, cost estimate, confidence score, monthly cost chart, and resource distribution'
                 className='h-full w-full object-cover'
@@ -76,9 +124,9 @@ export default function FeatureShowcase() {
               Everything you need to design, validate, and deploy cloud architectures.
             </p>
 
-            <ul className='mt-9 grid gap-x-6 gap-y-5 sm:grid-cols-2'>
+            <ul ref={gridRef} className='mt-9 grid gap-x-6 gap-y-5 sm:grid-cols-2'>
               {features.map((feature) => (
-                <li key={feature.title} className='flex gap-3'>
+                <li key={feature.title} className='feature-grid-item flex gap-3'>
                   <span className={`flex size-9 shrink-0 items-center justify-center rounded-md ${feature.accentBgClass} ${feature.accentTextClass}`}>
                     <feature.icon size={16} strokeWidth={1.8} />
                   </span>

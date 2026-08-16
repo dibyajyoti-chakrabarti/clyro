@@ -1,4 +1,8 @@
+import { useRef } from 'react'
 import { Link } from 'react-router-dom'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { useGSAP } from '@gsap/react'
 import heroIllustrationFirst from '../../../assets/landing_page/hero_section_ill_first.webp'
 import heroIllustrationSecond from '../../../assets/landing_page/second_ill_hero_section.webp'
 import painPointOne from '../../../assets/landing_page/one.webp'
@@ -48,6 +52,76 @@ const bottomFeatures = [
 ]
 
 export default function HeroSection() {
+  const heroTextRef = useRef(null)
+  const amberGlowRef = useRef(null)
+  const bronzeGlowRef = useRef(null)
+  const painPointsRef = useRef(null)
+  const solutionBlockRef = useRef(null)
+
+  useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    gsap.registerPlugin(ScrollTrigger)
+
+    const mm = gsap.matchMedia()
+
+    mm.add('(min-width: 1024px)', () => {
+      const scrollTriggerBase = {
+        trigger: heroTextRef.current,
+        start: 'top top',
+        end: 'bottom top',
+        scrub: true,
+      }
+
+      gsap.to(heroTextRef.current, {
+        yPercent: -25,
+        opacity: 0,
+        ease: 'none',
+        scrollTrigger: scrollTriggerBase,
+      })
+
+      gsap.to([amberGlowRef.current, bronzeGlowRef.current], {
+        yPercent: -45,
+        ease: 'none',
+        scrollTrigger: { ...scrollTriggerBase },
+      })
+
+      // end: '+=800' is a placeholder pin distance — tune by eye once this is live.
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: solutionBlockRef.current,
+          start: 'top top',
+          end: '+=800',
+          pin: true,
+          scrub: 1,
+        },
+      })
+
+      tl.from(solutionBlockRef.current.querySelectorAll('.solution-icon-item'), {
+        opacity: 0,
+        y: 30,
+        stagger: 0.15,
+        ease: 'power1.out',
+      })
+    })
+
+    gsap.from(painPointsRef.current.querySelectorAll('.pain-point-card'), {
+      y: 24,
+      opacity: 0,
+      scale: 0.96,
+      duration: 0.6,
+      ease: 'power2.out',
+      stagger: 0.1,
+      scrollTrigger: {
+        trigger: painPointsRef.current,
+        start: 'top 80%',
+        toggleActions: 'play none none none',
+      },
+    })
+
+    return () => mm.revert()
+  })
+
   return (
     <section className='relative z-10 overflow-hidden rounded-b-[2.5rem] bg-marketing-bg-warm'>
       {/* Deep space backdrop: base gradient + scattered star dots + amber glow (top-right) + bronze glow (bottom-left).
@@ -58,12 +132,18 @@ export default function HeroSection() {
         <div
           className='absolute inset-0 opacity-70 [background-image:radial-gradient(rgba(247,246,243,0.5)_1px,transparent_1px),radial-gradient(rgba(244,196,48,0.5)_1px,transparent_1px)] [background-size:140px_140px,220px_220px] [background-position:0_0,70px_90px]'
         />
-        <div className='absolute -right-40 -top-32 h-[560px] w-[560px] rounded-full bg-marketing-amber-core/[0.1] blur-[110px]' />
-        <div className='absolute -bottom-32 -left-40 h-[560px] w-[560px] rounded-full bg-marketing-bronze/[0.1] blur-[110px]' />
+        <div
+          ref={amberGlowRef}
+          className='absolute -right-40 -top-32 h-[560px] w-[560px] rounded-full bg-marketing-amber-core/[0.1] blur-[110px]'
+        />
+        <div
+          ref={bronzeGlowRef}
+          className='absolute -bottom-32 -left-40 h-[560px] w-[560px] rounded-full bg-marketing-bronze/[0.1] blur-[110px]'
+        />
       </div>
 
       <div className='relative mx-auto grid w-full max-w-[1600px] items-center gap-12 px-6 pb-20 pt-36 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-2 lg:px-10 lg:pb-28 lg:pt-44'>
-        <div>
+        <div ref={heroTextRef}>
           <h1 className='text-[2.75rem] font-bold leading-[1.1] tracking-[-0.035em] text-marketing-ink'>
             From Idea to Cloud Infrastructure,{' '}
             <span className='relative inline-block bg-gradient-to-r from-marketing-amber-2 to-marketing-amber-light bg-clip-text text-transparent'>
@@ -120,9 +200,12 @@ export default function HeroSection() {
           <span className='text-marketing-amber-core'>harder to build, manage, and scale?</span>
         </h3>
 
-        <ul className='mt-10 grid grid-cols-1 gap-10 sm:grid-cols-3 sm:gap-8'>
+        <ul ref={painPointsRef} className='mt-10 grid grid-cols-1 gap-10 sm:grid-cols-3 sm:gap-8'>
           {painPoints.map((item) => (
-            <li key={item.highlight} className='flex flex-col items-center gap-5 text-center sm:px-6'>
+            <li
+              key={item.highlight}
+              className='pain-point-card flex flex-col items-center gap-5 text-center sm:px-6'
+            >
               <img
                 src={item.image}
                 alt={item.alt}
@@ -138,7 +221,10 @@ export default function HeroSection() {
         </ul>
 
         {/* Part 2 — solution heading + feature list (left) and a single contained illustration (right) */}
-        <div className='mt-24 grid grid-cols-1 items-start gap-10 lg:grid-cols-[1fr_1.15fr] lg:items-stretch lg:gap-12'>
+        <div
+          ref={solutionBlockRef}
+          className='mt-24 grid grid-cols-1 items-start gap-10 lg:grid-cols-[1fr_1.15fr] lg:items-stretch lg:gap-12'
+        >
           <div>
             <h2 className='text-[2rem] font-bold leading-[1.15] tracking-[-0.02em] text-marketing-text-primary lg:text-[2.75rem]'>
               We build <span className='text-marketing-amber-core'>and evolve</span>
@@ -153,7 +239,10 @@ export default function HeroSection() {
 
             <div className='mt-10 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3'>
               {bottomFeatures.map((item) => (
-                <div key={item.label} className='flex flex-col items-center gap-4 text-center'>
+                <div
+                  key={item.label}
+                  className='solution-icon-item flex flex-col items-center gap-4 text-center'
+                >
                   <span className='flex size-9 shrink-0 items-center justify-center rounded-md bg-marketing-amber-core text-black'>
                     <item.icon size={18} strokeWidth={1.8} />
                   </span>
@@ -168,6 +257,7 @@ export default function HeroSection() {
               src={heroIllustrationSecond}
               alt='Two people holding balloons labeled with Clyro features: architecture generation, one-click provisioning, real-time monitoring, AI-powered reviews, cost estimation, and continuous optimization'
               className='h-full w-full object-contain'
+              onLoad={() => ScrollTrigger.refresh()}
             />
           </div>
         </div>

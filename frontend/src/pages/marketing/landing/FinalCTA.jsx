@@ -1,8 +1,33 @@
+import { useRef } from 'react'
 import { Link } from 'react-router-dom'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { useGSAP } from '@gsap/react'
 
 export default function FinalCTA() {
+  const bandRef = useRef(null)
+
+  useGSAP(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    gsap.registerPlugin(ScrollTrigger)
+
+    gsap.set(bandRef.current, { filter: 'saturate(0.35) brightness(0.9)' })
+
+    gsap.to(bandRef.current, {
+      filter: 'saturate(1) brightness(1)',
+      duration: 0.9,
+      ease: 'power2.out',
+      scrollTrigger: {
+        trigger: bandRef.current,
+        start: 'top 80%',
+        toggleActions: 'play none none none',
+      },
+    })
+  })
+
   return (
-    <section className='bg-marketing-amber-2 px-5 py-14 sm:px-6 lg:px-8 lg:py-16'>
+    <section ref={bandRef} className='bg-marketing-amber-2 px-5 py-14 sm:px-6 lg:px-8 lg:py-16'>
       <div className='mx-auto flex w-full max-w-[1240px] flex-col items-center text-center'>
         <h2 className='mb-3 max-w-[44rem] text-[2rem] font-bold leading-[1.1] tracking-tight text-marketing-bg-deep lg:text-[2.75rem]'>
           Ready to move from idea to cloud?

@@ -5,11 +5,14 @@ import HeroSection from './landing/HeroSection'
 import HowClyroWorks from './landing/HowClyroWorks'
 import LandingFooter from './landing/LandingFooter'
 import LandingNavbar from './landing/LandingNavbar'
+import useSmoothScroll from '../../hooks/useSmoothScroll'
 
 /* The landing page owns its own chrome (LandingNavbar / LandingFooter) so it can carry
    the dark theme without touching the shared PublicLayout chrome that /pricing,
    /login and /signup still render. */
 export default function Landing() {
+  useSmoothScroll()
+
   return (
     <div className='min-h-screen bg-marketing-bg-warm text-marketing-text-primary'>
       <LandingNavbar />
