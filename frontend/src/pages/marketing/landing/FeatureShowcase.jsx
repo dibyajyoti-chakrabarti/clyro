@@ -6,6 +6,7 @@ import {
   Rocket,
   Workflow,
 } from 'lucide-react'
+import featureShowcaseIllustration from '../../../assets/landing_page/feature_showcase_ill.webp'
 
 const features = [
   {
@@ -58,17 +59,12 @@ export default function FeatureShowcase() {
       <div className='mx-auto w-[99%] rounded-2xl bg-marketing-near-black p-6 lg:rounded-3xl lg:p-10'>
         <div className='grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-12'>
           <div>
-            <div className='overflow-hidden rounded-2xl border-2 border-marketing-bronze bg-marketing-bg-card'>
-              <div className='flex items-center gap-1.5 border-b border-marketing-border-hairline px-4 py-3'>
-                <span className='size-2.5 rounded-full bg-marketing-text-muted-2' />
-                <span className='size-2.5 rounded-full bg-marketing-text-muted-2' />
-                <span className='size-2.5 rounded-full bg-marketing-text-muted-2' />
-              </div>
-              <div className='flex aspect-[3/2] w-full items-center justify-center bg-marketing-bg-elevated'>
-                <span className='text-[0.8rem] font-medium uppercase tracking-wide text-marketing-text-muted-2'>
-                  placeholder
-                </span>
-              </div>
+            <div className='aspect-[3/2] w-full'>
+              <img
+                src={featureShowcaseIllustration}
+                alt='Clyro dashboard overview showing total resources, cost estimate, confidence score, monthly cost chart, and resource distribution'
+                className='h-full w-full object-cover'
+              />
             </div>
           </div>
 

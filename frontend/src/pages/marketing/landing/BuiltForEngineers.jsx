@@ -1,4 +1,5 @@
 import { Check, Zap } from 'lucide-react'
+import builtForEngineersIllustration from '../../../assets/landing_page/everything_needed_ill.webp'
 
 const checklist = [
   'AI-generated architecture diagrams',
@@ -47,17 +48,12 @@ export default function BuiltForEngineers() {
         </div>
 
         <div>
-          <div className='overflow-hidden rounded-2xl border border-marketing-border-hairline bg-marketing-bg-card'>
-            <div className='flex items-center gap-1.5 border-b border-marketing-border-hairline px-4 py-3'>
-              <span className='size-2.5 rounded-full bg-white/20' />
-              <span className='size-2.5 rounded-full bg-white/20' />
-              <span className='size-2.5 rounded-full bg-white/20' />
-            </div>
-            <div className='flex aspect-[3/2] w-full items-center justify-center bg-marketing-bg-elevated'>
-              <span className='text-[0.8rem] font-medium uppercase tracking-wide text-marketing-text-muted-2'>
-                placeholder
-              </span>
-            </div>
+          <div className='aspect-[3/2] w-full'>
+            <img
+              src={builtForEngineersIllustration}
+              alt='Illustration of a Clyro storefront offering infrastructure essentials, operations and monitoring, and optimization and best practices to engineers'
+              className='h-full w-full object-cover'
+            />
           </div>
         </div>
       </div>

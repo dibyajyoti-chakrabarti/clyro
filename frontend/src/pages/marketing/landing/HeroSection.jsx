@@ -1,82 +1,40 @@
 import { Link } from 'react-router-dom'
+import heroIllustrationFirst from '../../../assets/landing_page/hero_section_ill_first.webp'
+import heroIllustrationSecond from '../../../assets/landing_page/second_ill_hero_section.webp'
+import painPointOne from '../../../assets/landing_page/one.webp'
+import painPointTwo from '../../../assets/landing_page/two.webp'
+import painPointThree from '../../../assets/landing_page/three.webp'
 import {
   Activity,
-  BarChart,
-  BarChart3,
   Calculator,
-  Check,
   PlayCircle,
-  Puzzle,
   Rocket,
-  Shield,
   Sparkles,
   TrendingUp,
   UploadCloud,
-  Zap,
 } from 'lucide-react'
-
-const assurances = ['No credit card required', 'AI-Powered', 'Supports AWS']
-
-const calloutBadges = [
-  {
-    label: 'Scalable',
-    Icon: BarChart,
-    wrapperClass: '-left-6 top-6',
-    lineClass: 'left-[52%] top-full h-10 w-px',
-    accentBgClass: 'bg-marketing-gold-light',
-    accentTextClass: 'text-black',
-    rotate: '-2deg',
-  },
-  {
-    label: 'Secure',
-    Icon: Shield,
-    wrapperClass: '-right-6 top-6',
-    lineClass: 'left-[48%] top-full h-10 w-px',
-    accentBgClass: 'bg-marketing-bronze',
-    accentTextClass: 'text-marketing-cream-2',
-    rotate: '1deg',
-  },
-  {
-    label: 'Intelligent',
-    Icon: Sparkles,
-    wrapperClass: '-left-6 bottom-6',
-    lineClass: 'left-[52%] bottom-full h-10 w-px',
-    accentBgClass: 'bg-marketing-amber-core',
-    accentTextClass: 'text-black',
-    rotate: '-1deg',
-  },
-  {
-    label: 'Optimized',
-    Icon: Zap,
-    wrapperClass: '-right-6 bottom-6',
-    lineClass: 'left-[48%] bottom-full h-10 w-px',
-    accentBgClass: 'bg-marketing-near-black',
-    accentTextClass: 'text-marketing-amber-core',
-    rotate: '2deg',
-  },
-]
 
 const painPoints = [
   {
-    icon: Zap,
+    image: painPointOne,
+    alt: 'Illustration of a developer overwhelmed by a ticking clock, representing time spent designing AWS architecture',
     prefix: 'Spending too much time ',
     highlight: 'designing AWS architecture',
     suffix: '?',
-    accentBgClass: 'bg-marketing-gold-light',
   },
   {
-    icon: Puzzle,
+    image: painPointTwo,
+    alt: 'Illustration of a developer surrounded by manual AWS provisioning steps for networking, security, and compute',
     prefix: 'Still ',
     highlight: 'provisioning cloud infrastructure',
     suffix: ' manually?',
-    accentBgClass: 'bg-marketing-amber-core',
   },
   {
-    icon: BarChart3,
+    image: painPointThree,
+    alt: 'Illustration of a developer questioning whether their AWS infrastructure is secure, scalable, and cost-efficient',
     prefix: 'Not sure your infra is ',
     highlight: 'secure, scalable & cost-efficient',
     suffix: '?',
-    accentBgClass: 'bg-marketing-bronze',
   },
 ]
 
@@ -104,17 +62,9 @@ export default function HeroSection() {
         <div className='absolute -bottom-32 -left-40 h-[560px] w-[560px] rounded-full bg-marketing-bronze/[0.1] blur-[110px]' />
       </div>
 
-      <div className='relative mx-auto grid w-full max-w-[1240px] items-center gap-12 px-5 pb-16 pt-36 sm:px-6 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,1.18fr)] lg:gap-6 lg:px-8 lg:pb-24 lg:pt-44'>
+      <div className='relative mx-auto grid w-full max-w-[1600px] items-center gap-12 px-6 pb-20 pt-36 sm:px-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-2 lg:px-10 lg:pb-28 lg:pt-44'>
         <div>
-          <span
-            className='inline-flex items-center gap-2 rounded-full border-2 border-black bg-marketing-amber-2 px-4 py-1.5 text-[0.75rem] font-semibold uppercase tracking-wide text-black'
-            style={{ transform: 'rotate(-2deg)' }}
-          >
-            <Zap size={13} strokeWidth={2} />
-            AI-Powered Cloud Infrastructure
-          </span>
-
-          <h1 className='mt-6 text-[2.75rem] font-bold leading-[1.1] tracking-[-0.035em] text-marketing-ink lg:text-[3.5rem]'>
+          <h1 className='text-[2.75rem] font-bold leading-[1.1] tracking-[-0.035em] text-marketing-ink'>
             From Idea to Cloud Infrastructure,{' '}
             <span className='relative inline-block bg-gradient-to-r from-marketing-amber-2 to-marketing-amber-light bg-clip-text text-transparent'>
               Powered by AI.
@@ -125,7 +75,7 @@ export default function HeroSection() {
             </span>
           </h1>
 
-          <p className='mt-6 max-w-[30rem] text-[1.375rem] leading-[1.75] text-marketing-muted'>
+          <p className='mt-6 max-w-[30rem] text-[1.375rem] leading-[1.75] text-marketing-muted lg:mt-7'>
             Clyro designs, reviews and deploys production-ready cloud infrastructure in
             minutes — so you can ship faster.
           </p>
@@ -133,74 +83,52 @@ export default function HeroSection() {
           <div className='mt-9 flex flex-col gap-3 sm:flex-row sm:items-center'>
             <Link
               to='/signup'
-              className='inline-flex h-[52px] items-center justify-center gap-2 rounded-xl bg-marketing-amber px-7 text-[0.95rem] font-semibold text-marketing-dark shadow-[0_10px_28px_rgba(244,196,48,0.22)] transition-all hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marketing-amber'
+              className='inline-flex h-[52px] items-center justify-center gap-2 rounded-xl bg-marketing-amber px-7 text-[0.95rem] font-semibold text-marketing-dark shadow-[0_10px_28px_rgba(244,196,48,0.22)] transition-all hover:-translate-y-0.5 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marketing-amber lg:h-14 lg:px-8'
             >
               Start Building for Free
               <span aria-hidden='true'>→</span>
             </Link>
             <Link
               to='/pricing'
-              className='inline-flex h-[52px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-7 text-[0.95rem] font-semibold text-marketing-ink transition-colors hover:border-white/35 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marketing-amber'
+              className='inline-flex h-[52px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-7 text-[0.95rem] font-semibold text-marketing-ink transition-colors hover:border-white/35 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marketing-amber lg:h-14 lg:px-8'
             >
               <PlayCircle size={17} strokeWidth={2} />
-              Book a Demo
+              View Plans
             </Link>
           </div>
-
-          <ul className='mt-8 flex flex-wrap items-center gap-x-7 gap-y-3'>
-            {assurances.map((item) => (
-              <li key={item} className='flex items-center gap-2 text-[0.85rem] font-medium text-marketing-muted'>
-                <span className='flex size-[18px] items-center justify-center rounded-full bg-marketing-gold-light'>
-                  <Check size={11} strokeWidth={3.2} className='text-black' />
-                </span>
-                {item}
-              </li>
-            ))}
-          </ul>
         </div>
 
-        <div className='relative mx-auto w-full max-w-[560px] lg:mx-0'>
-          <div
-            className='relative flex aspect-[3/2] w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-marketing-gold-light bg-white/[0.03] shadow-[0_30px_60px_rgba(0,0,0,0.45)]'
-          >
+        <div className='relative mx-auto w-full max-w-[760px] lg:mx-0'>
+          <div className='relative flex aspect-[3/2] w-full items-center justify-center overflow-hidden'>
             <div
               className='pointer-events-none absolute left-1/2 top-1/2 h-[70%] w-[70%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-marketing-amber-2/15 blur-[70px]'
               aria-hidden='true'
             />
-            <span className='relative text-[0.85rem] font-medium text-marketing-muted'>
-              Illustration placeholder
-            </span>
+            <img
+              src={heroIllustrationFirst}
+              alt='Clyro dashboard showing an AI-generated AWS architecture diagram with cost estimate, confidence score, and resource count'
+              className='relative h-full w-full object-cover'
+            />
           </div>
-
-          {calloutBadges.map(({ label, Icon, wrapperClass, lineClass, accentBgClass, accentTextClass, rotate }) => (
-            <div key={label} className={`absolute z-10 hidden lg:block ${wrapperClass}`} aria-hidden='true'>
-              <span className={`absolute border-l border-dashed border-black/40 ${lineClass}`} />
-              <span
-                className={`relative inline-flex items-center gap-1.5 rounded-full border border-black ${accentBgClass} ${accentTextClass} px-3 py-1.5 text-[0.7rem] font-semibold shadow-[0_8px_20px_rgba(0,0,0,0.35)]`}
-                style={{ transform: `rotate(${rotate})` }}
-              >
-                <Icon size={13} strokeWidth={2} className={accentTextClass} />
-                {label}
-              </span>
-            </div>
-          ))}
         </div>
       </div>
 
-      <div className='relative mx-auto w-full max-w-[1240px] px-5 pb-16 pt-16 sm:px-6 lg:px-8 lg:pb-24 lg:pt-24'>
+      <div className='relative mx-auto w-full max-w-[1240px] px-5 pb-16 pt-6 sm:px-6 lg:px-8 lg:pb-24 lg:pt-8'>
         {/* Part 1 — pain points */}
         <h3 className='mx-auto max-w-[36rem] text-center text-[1.7rem] font-semibold leading-[1.25] text-marketing-text-primary'>
           Is your cloud infrastructure becoming{' '}
           <span className='text-marketing-amber-core'>harder to build, manage, and scale?</span>
         </h3>
 
-        <ul className='mt-10 grid grid-cols-1 gap-10 sm:grid-cols-3 sm:gap-6'>
+        <ul className='mt-10 grid grid-cols-1 gap-10 sm:grid-cols-3 sm:gap-8'>
           {painPoints.map((item) => (
-            <li key={item.highlight} className='flex flex-col items-center gap-4 text-center sm:px-6'>
-              <span className={`flex size-16 shrink-0 items-center justify-center rounded-full sm:size-20 ${item.accentBgClass} text-black`}>
-                <item.icon size={26} strokeWidth={1.8} />
-              </span>
-              <p className='text-[0.85rem] leading-[1.6] text-marketing-text-secondary'>
+            <li key={item.highlight} className='flex flex-col items-center gap-5 text-center sm:px-6'>
+              <img
+                src={item.image}
+                alt={item.alt}
+                className='size-24 shrink-0 object-contain sm:size-32'
+              />
+              <p className='text-[1rem] leading-[1.6] text-marketing-text-secondary'>
                 {item.prefix}
                 <span className='text-marketing-amber-core'>{item.highlight}</span>
                 {item.suffix}
@@ -210,7 +138,7 @@ export default function HeroSection() {
         </ul>
 
         {/* Part 2 — solution heading + feature list (left) and a single contained illustration (right) */}
-        <div className='mt-16 grid grid-cols-1 items-start gap-10 lg:grid-cols-2 lg:gap-16'>
+        <div className='mt-24 grid grid-cols-1 items-start gap-10 lg:grid-cols-[1fr_1.15fr] lg:items-stretch lg:gap-12'>
           <div>
             <h2 className='text-[2rem] font-bold leading-[1.15] tracking-[-0.02em] text-marketing-text-primary lg:text-[2.75rem]'>
               We build <span className='text-marketing-amber-core'>and evolve</span>
@@ -235,10 +163,12 @@ export default function HeroSection() {
             </div>
           </div>
 
-          <div className='flex h-full min-h-[320px] w-full items-center justify-center rounded-2xl border border-marketing-border-hairline bg-marketing-bg-card'>
-            <span className='px-4 text-center text-[0.85rem] font-medium uppercase tracking-wide text-marketing-text-muted-2'>
-              Illustration placeholder
-            </span>
+          <div className='flex h-full min-h-[380px] w-full items-center justify-center overflow-hidden'>
+            <img
+              src={heroIllustrationSecond}
+              alt='Two people holding balloons labeled with Clyro features: architecture generation, one-click provisioning, real-time monitoring, AI-powered reviews, cost estimation, and continuous optimization'
+              className='h-full w-full object-contain'
+            />
           </div>
         </div>
       </div>

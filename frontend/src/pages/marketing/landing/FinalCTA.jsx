@@ -23,7 +23,7 @@ export default function FinalCTA() {
             to='/pricing'
             className='inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-marketing-bg-deep/40 bg-transparent px-6 text-[1rem] font-semibold text-marketing-bg-deep transition-colors hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marketing-bg-deep'
           >
-            Book a Demo
+            View Plans
           </Link>
         </div>
 

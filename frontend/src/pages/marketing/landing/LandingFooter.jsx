@@ -1,3 +1,4 @@
+import clyroLogo from '../../../assets/logos/Clyro_logo.png'
 import githubLogo from '../../../assets/logos/github-fill.svg'
 import linkedinLogo from '../../../assets/logos/linkedin-box-fill.svg'
 import twitterLogo from '../../../assets/logos/twitter-fill.svg'
@@ -45,19 +46,13 @@ export default function LandingFooter() {
         <div className='grid gap-10 lg:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,0.7fr))]'>
           <div>
             <div className='inline-flex items-center gap-2.5'>
-              <span className='flex size-8 shrink-0 items-center justify-center rounded-lg bg-marketing-amber-core' aria-hidden='true' />
+              <img src={clyroLogo} alt='Clyro' className='h-8 w-auto shrink-0' />
               <span className='text-[1.25rem] font-bold text-marketing-text-primary'>Clyro</span>
             </div>
             <p className='mt-5 max-w-[19rem] text-[0.85rem] leading-[1.6] text-marketing-text-secondary'>
               AI-powered cloud infrastructure platform that helps engineers build,
               deploy, and optimize on AWS.
             </p>
-            <span className='mt-5 inline-flex items-center gap-2 rounded-full border border-marketing-amber-core/40 px-3 py-1.5'>
-              <span className='size-1.5 rounded-full bg-marketing-amber-core' aria-hidden='true' />
-              <span className='text-[0.7rem] font-bold uppercase tracking-wide text-marketing-amber-core'>
-                All Systems Operational
-              </span>
-            </span>
           </div>
 
           {columns.map((column, index) => (
@@ -91,13 +86,13 @@ export default function LandingFooter() {
                 <a
                   href='/'
                   aria-label={social.label}
-                  className='flex size-8 items-center justify-center rounded-full border border-marketing-border-hairline text-marketing-text-muted-2 transition-colors hover:border-marketing-gold-light hover:text-marketing-gold-light'
+                  className='flex size-10 items-center justify-center rounded-full border border-marketing-border-hairline text-marketing-text-muted-2 transition-colors hover:border-marketing-gold-light hover:text-marketing-gold-light'
                 >
                   <img
                     src={social.logo}
                     alt=''
                     aria-hidden='true'
-                    className='h-[15px] w-[15px] opacity-70 invert transition-opacity hover:opacity-100'
+                    className='h-[20px] w-[20px] opacity-90 invert transition-opacity hover:opacity-100'
                   />
                 </a>
               </li>

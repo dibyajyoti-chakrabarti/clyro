@@ -90,6 +90,7 @@
      referencing these steps, rather than default Tailwind size classes or one-off
      values, so type sizing stays uniform and proportional across every section. */
   --font-size-display: 3.5rem; /* 56px — largest, hero H1 only */
+  --font-size-display-lg: 4.5rem; /* 72px — desktop-only hero H1, display x ~1.272 (root of 1.618) Fibonacci step */
   --font-size-h2: 2.75rem; /* 44px — section H2s */
   --font-size-h3: 1.7rem; /* 27px — sub-headings, large subcopy */
   --font-size-lead: 1.375rem; /* 22px — intro/lead paragraph text */
