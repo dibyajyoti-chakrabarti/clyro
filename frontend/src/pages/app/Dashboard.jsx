@@ -18,7 +18,7 @@ import InfraManageModal from '../../components/projects/InfraManageModal'
 
 function StatCard({ icon: Icon, label, value, glow }) {
   return (
-    <div className={`group relative overflow-hidden rounded-xl border bg-gradient-to-b from-white/[0.03] to-transparent p-5 transition-all duration-200 hover:-translate-y-px hover:shadow-lg hover:shadow-black/20 ${glow ? 'border-accent/20 shadow-[0_0_30px_rgba(249,115,22,0.06)]' : 'border-white/[0.07]'}`}>
+    <div className={`group relative overflow-hidden rounded-xl border bg-surface p-5 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.04] transition-all duration-200 hover:-translate-y-px hover:shadow-lg hover:shadow-black/20 ${glow ? 'border-accent/20 shadow-[0_0_30px_rgba(249,115,22,0.06)]' : 'border-white/[0.07]'}`}>
       <div className='flex items-center justify-between'>
         <p className='text-xs font-medium uppercase tracking-widest text-text-muted'>{label}</p>
         <div className={`grid h-8 w-8 place-items-center rounded-lg ${glow ? 'bg-accent/12 text-accent' : 'bg-white/[0.05] text-text-muted'}`}>
@@ -41,7 +41,7 @@ function RecentProjectRow({ project, onDelete, onManage, deleting }) {
     <Link
       to={`/app/projects/${project.id}`}
       onClick={(e) => { if (deleting) e.preventDefault() }}
-      className={`group flex items-center justify-between gap-4 rounded-xl border border-white/[0.06] bg-background/60 px-4 py-3.5 transition-all duration-150 hover:border-accent/20 hover:bg-white/[0.03] hover:shadow-md hover:shadow-black/20 ${deleting ? 'opacity-60' : ''}`}
+      className={`group flex items-center justify-between gap-4 rounded-xl border border-white/[0.07] bg-surface px-4 py-3.5 shadow-sm shadow-black/30 ring-1 ring-inset ring-white/[0.04] transition-all duration-150 hover:border-accent/20 hover:shadow-md hover:shadow-black/20 ${deleting ? 'opacity-60' : ''}`}
     >
       <div className='min-w-0 flex-1'>
         <p className='truncate text-sm font-semibold text-text-primary group-hover:text-accent transition-colors duration-150'>{project.name}</p>
@@ -156,7 +156,7 @@ export default function Dashboard() {
         </div>
 
         {loading ? (
-          <div className='flex h-48 items-center justify-center rounded-xl border border-white/[0.06]'>
+          <div className='flex h-48 items-center justify-center rounded-xl border border-white/[0.07] bg-surface'>
             <Loader2 className='h-5 w-5 animate-spin text-accent drop-shadow-[0_0_6px_rgba(249,115,22,0.5)]' />
           </div>
         ) : projects.length === 0 ? (

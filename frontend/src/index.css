@@ -18,6 +18,7 @@
 @theme {
   --color-background: var(--c-background);
   --color-surface: var(--c-surface);
+  --color-shell: var(--c-shell);
   --color-border: var(--c-border);
   --color-accent: var(--c-accent);
   --color-accent-soft: var(--c-accent-soft);
@@ -103,6 +104,7 @@
   /* Dark baseline (mirrors the original hardcoded values). */
   --c-background: #111318;
   --c-surface: #1c1e26;
+  --c-shell: #050912;
   --c-border: #2c2e38;
   --c-accent: #f97316;
   --c-accent-soft: #431407;
@@ -117,6 +119,10 @@
 :root[data-theme='light'] {
   --c-background: #f6f7f9;
   --c-surface: #ffffff;
+  /* Placeholder: mirrors --c-surface for now so light mode is unaffected by the
+     dark-mode sidebar/main-panel unification. A real light-mode shell tone is a
+     deferred follow-up, not a finished decision. */
+  --c-shell: #ffffff;
   --c-border: #e3e5ec;
   --c-accent: #f97316;
   --c-accent-soft: #ffedd5;
