@@ -13,7 +13,6 @@ import Dashboard from '../pages/app/Dashboard'
 import Profile from '../pages/app/Profile'
 import Projects from '../pages/app/Projects'
 import ProjectWizard from '../pages/app/ProjectWizard'
-import Settings from '../pages/app/Settings'
 import ArchitectureCanvas from '../pages/app/ArchitectureCanvas'
 import GithubCallback from '../pages/app/GithubCallback'
 
@@ -74,11 +73,15 @@ export default function AppRoutes() {
       </Route>
 
       <Route element={<ProtectedRoute />}>
+        {/* Settings page was deprecated and its features redistributed (region → Projects,
+            theme → sidebar toggle) — stale bookmarks/links land on the dashboard instead
+            of dead-ending. */}
+        <Route path='/app/settings' element={<Navigate to='/app/dashboard' replace />} />
+
         <Route element={<AppLayout />}>
           <Route path='/app/dashboard' element={<Dashboard />} />
           <Route path='/app/profile' element={<Profile />} />
           <Route path='/app/projects' element={<Projects />} />
-          <Route path='/app/settings' element={<Settings />} />
           <Route path='/app/github/callback' element={<GithubCallback />} />
         </Route>
 

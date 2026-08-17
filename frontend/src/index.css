@@ -19,6 +19,8 @@
   --color-background: var(--c-background);
   --color-surface: var(--c-surface);
   --color-shell: var(--c-shell);
+  --color-shell-fg: var(--c-shell-fg);
+  --color-shell-fg-muted: var(--c-shell-fg-muted);
   --color-border: var(--c-border);
   --color-accent: var(--c-accent);
   --color-accent-soft: var(--c-accent-soft);
@@ -105,6 +107,12 @@
   --c-background: #111318;
   --c-surface: #1c1e26;
   --c-shell: #050912;
+  /* Sidebar text/icon colors — scoped separately from --c-text-primary/--c-text-muted
+     because those tokens are tuned for the lighter --c-surface/--c-background contexts,
+     not the near-black shell. Dark values reproduce the previous literal
+     text-white / text-white/65 look exactly, so dark mode is unchanged. */
+  --c-shell-fg: #ffffff;
+  --c-shell-fg-muted: rgba(255, 255, 255, 0.65);
   --c-border: #2c2e38;
   --c-accent: #f97316;
   --c-accent-soft: #431407;
@@ -123,6 +131,10 @@
      dark-mode sidebar/main-panel unification. A real light-mode shell tone is a
      deferred follow-up, not a finished decision. */
   --c-shell: #ffffff;
+  /* Mirrors --c-text-primary / --c-text-muted's light values — same colors already
+     vetted for readability on light backgrounds elsewhere in the app. */
+  --c-shell-fg: #1a1c22;
+  --c-shell-fg-muted: #5b6070;
   --c-border: #e3e5ec;
   --c-accent: #f97316;
   --c-accent-soft: #ffedd5;
