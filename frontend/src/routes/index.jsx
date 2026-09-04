@@ -5,8 +5,7 @@ import PublicLayout from '../layouts/PublicLayout'
 import useAuth from '../context/useAuth'
 import Landing from '../pages/marketing/Landing'
 import Pricing from '../pages/marketing/Pricing'
-import Login from '../pages/auth/Login'
-import Signup from '../pages/auth/Signup'
+import AuthTransition from '../pages/auth/AuthTransition'
 import VerifyOtp from '../pages/auth/VerifyOtp'
 import OAuthCallback from '../pages/auth/OAuthCallback'
 import Dashboard from '../pages/app/Dashboard'
@@ -52,22 +51,8 @@ export default function AppRoutes() {
 
       <Route element={<PublicLayout />}>
         <Route path='/pricing' element={<Pricing />} />
-        <Route
-          path='/login'
-          element={
-            <PublicOnlyRoute>
-              <Login />
-            </PublicOnlyRoute>
-          }
-        />
-        <Route
-          path='/signup'
-          element={
-            <PublicOnlyRoute>
-              <Signup />
-            </PublicOnlyRoute>
-          }
-        />
+        <Route path='/login' element={<AuthTransition />} />
+        <Route path='/signup' element={<AuthTransition />} />
         <Route path='/verify-otp' element={<VerifyOtp />} />
         <Route path='/auth/callback' element={<OAuthCallback />} />
       </Route>

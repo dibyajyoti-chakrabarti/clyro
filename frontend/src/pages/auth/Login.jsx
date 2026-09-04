@@ -5,7 +5,7 @@ import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import { GitHubIcon, GoogleIcon } from '../../components/ui/BrandIcons'
 import useAuth from '../../context/useAuth'
-import loginArt from '../../assets/login_art6.jpg'
+import loginArt from '../../assets/login_art.webp'
 import clyroLogo from "../../assets/logos/Clyro_logo.png";
 
 export default function Login() {
@@ -34,7 +34,7 @@ export default function Login() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030609] text-text-primary">
+    <div className="h-full w-full overflow-y-auto bg-[#030609] text-text-primary">
       <div className="flex min-h-full w-full">
         <div className="grid w-full grid-cols-1 bg-[#070b0f] lg:grid-cols-[1.1fr_1.6fr] xl:grid-cols-[1fr_2fr]">
           <section className="order-1 flex min-h-screen flex-col border-white/[0.1] bg-[radial-gradient(circle_at_20%_0%,rgba(251,191,36,0.08),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.015))] px-6 py-7 sm:px-9 sm:py-10 lg:border-r lg:px-12 lg:py-12">
