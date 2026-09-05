@@ -190,7 +190,21 @@ jobs:
         working-directory: backend/agents/${{ matrix.project }}/agentcore/cdk
         run: |
           set -euo pipefail
-          npx cdk deploy --all --require-approval never
+
+          # List first. `cdk deploy --all` against an app that synthesizes zero
+          # stacks prints nothing and exits 0, so the first attempt looked like
+          # a successful deploy that created no resources. Assert there is
+          # something to deploy before claiming to deploy it.
+          echo "--- stacks the app synthesizes ---"
+          npx cdk list 2>&1 | tee /tmp/stacks.txt
+          if [ ! -s /tmp/stacks.txt ]; then
+            echo "::error::The CDK app synthesized no stacks. Check that"
+            echo "agentcore.json and aws-targets.json were written next to cdk/,"
+            echo "and that agentcore.json lists at least one runtime."
+            exit 1
+          fi
+
+          npx cdk deploy --all --require-approval never --progress events
 
       - name: Publish the runtime ARNs
         run: |
