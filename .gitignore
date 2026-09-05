@@ -39,6 +39,10 @@ backend/celerybeat-schedule*
 *.tfstate
 *.tfstate.backup
 *.tfstate.lock.info
+# Renamed-aside state from a previous account, and its provider cache. Kept on
+# disk so the old account can still be torn down, never committed.
+*.tfstate.*
+.terraform.*/
 # Do NOT ignore .terraform.lock.hcl — it pins provider versions (like package-lock.json)
 # Do NOT ignore *.tfvars — they contain non-secret config (secrets passed via -var flags)
 

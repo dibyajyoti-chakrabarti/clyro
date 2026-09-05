@@ -19,12 +19,12 @@ variable "domain" {
   default = "clyro.cloud"
 }
 
-# Account 469465348250. This account is shared with an unrelated product
-# (Structra), which is why every resource here is prefixed and why the VPC CIDR
-# below deliberately avoids Structra's 10.0.0.0/16.
+# Account 190084967282. Shared with Jan Saathi and Structra, which is why every
+# resource here is clyro-prefixed and why the VPC CIDR below avoids the ranges
+# already in use.
 variable "account_id" {
   type    = string
-  default = "469465348250"
+  default = "190084967282"
 }
 
 # ACM issues a certificate only after it can resolve the DNS validation record
@@ -43,10 +43,10 @@ variable "dns_delegated" {
 
 # ── Networking (consumed in the next phase, when the EC2 box lands) ──────────
 #
-# 10.20.0.0/16, not the 10.0.0.0/16 the old design used: Structra's VPC in this
-# same account already occupies 10.0.0.0/16. Two VPCs may legally overlap, but
-# overlapping ranges rule out peering later and make every VPC flow log
-# ambiguous when reading them side by side.
+# 10.20.0.0/16, not the 10.0.0.0/16 the old design used. Neighbouring products
+# in this account already sit in the low 10.0 ranges. Two VPCs may legally
+# overlap, but overlapping ranges rule out peering later and make every VPC flow
+# log ambiguous when read side by side.
 variable "vpc_cidr" {
   type    = string
   default = "10.20.0.0/16"

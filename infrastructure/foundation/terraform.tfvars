@@ -1,12 +1,12 @@
 project     = "clyro"
 environment = "prod"
 domain      = "clyro.cloud"
-account_id  = "469465348250"
+account_id  = "190084967282"
 aws_region  = "ap-south-1"
 
 # Flip to true after the registrar's nameservers point at the hosted zone
 # created by this layer. See the variable's comment for why the gate exists.
-dns_delegated = true
+dns_delegated = false
 
 vpc_cidr            = "10.20.0.0/16"
 public_subnet_cidrs = ["10.20.1.0/24", "10.20.2.0/24"]

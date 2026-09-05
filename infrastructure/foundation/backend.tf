@@ -9,7 +9,7 @@
 #   terraform -chdir=infrastructure/foundation init
 terraform {
   backend "s3" {
-    bucket       = "clyro-tfstate-469465348250-ap-south-1"
+    bucket       = "clyro-tfstate-190084967282-ap-south-1"
     key          = "foundation/terraform.tfstate"
     region       = "ap-south-1"
     use_lockfile = true
