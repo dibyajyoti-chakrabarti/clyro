@@ -1,11 +1,55 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Globe, Search } from 'lucide-react'
 import { api } from '../../api'
 import useProjectDeletion from '../../hooks/useProjectDeletion'
+import usePreferences from '../../context/usePreferences'
 import ProjectsHeader from '../../components/projects/ProjectsHeader'
 import ProjectsToolbar from '../../components/projects/ProjectsToolbar'
 import ProjectCard from '../../components/projects/ProjectCard'
 import InfraManageModal from '../../components/projects/InfraManageModal'
+import GlassSelect from '../../components/ui/GlassSelect'
+
+// Moved here from the deprecated Settings page — this is the only place the
+// default-region preference is edited now.
+const AWS_REGIONS = [
+  { value: 'ap-south-1', label: 'Asia Pacific — Mumbai (ap-south-1)' },
+  { value: 'ap-southeast-1', label: 'Asia Pacific — Singapore (ap-southeast-1)' },
+  { value: 'ap-northeast-1', label: 'Asia Pacific — Tokyo (ap-northeast-1)' },
+  { value: 'us-east-1', label: 'US East — N. Virginia (us-east-1)' },
+  { value: 'us-west-2', label: 'US West — Oregon (us-west-2)' },
+  { value: 'eu-west-1', label: 'Europe — Ireland (eu-west-1)' },
+  { value: 'eu-central-1', label: 'Europe — Frankfurt (eu-central-1)' },
+]
+
+function DefaultRegionPanel() {
+  const { preferredRegion, setPreferredRegion } = usePreferences()
+
+  return (
+    <div className='flex flex-col gap-3 rounded-2xl border border-white/[0.08] bg-surface/40 p-4 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between'>
+      <div className='flex min-w-0 items-center gap-3'>
+        <div className='grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/[0.08] bg-white/[0.04] text-amber-300'>
+          <Globe size={16} />
+        </div>
+        <div className='min-w-0'>
+          <p className='text-sm font-semibold text-text-primary'>Default AWS Region</p>
+          <p className='text-xs text-text-muted'>
+            Used as the default when creating new projects. You can override this per project.
+            Stored locally in your browser — not synced across devices.
+          </p>
+        </div>
+      </div>
+
+      <GlassSelect
+        options={AWS_REGIONS}
+        value={preferredRegion}
+        onChange={setPreferredRegion}
+        size='sm'
+        ariaLabel='Default AWS region'
+        className='sm:w-[280px]'
+      />
+    </div>
+  )
+}
 
 export default function Projects() {
   const [projects, setProjects] = useState([])
@@ -54,6 +98,8 @@ export default function Projects() {
   return (
     <div className='space-y-5'>
       <ProjectsHeader count={projects.length} />
+
+      <DefaultRegionPanel />
 
       <ProjectsToolbar
         search={search}

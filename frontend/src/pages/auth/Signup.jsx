@@ -4,7 +4,7 @@ import { signUp, signInWithRedirect } from 'aws-amplify/auth'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import { GitHubIcon, GoogleIcon } from '../../components/ui/BrandIcons'
-import signUpArt from '../../assets/signup_art_.jpg'
+import signUpArt from '../../assets/signup_art.webp'
 import clyroLogo from "../../assets/logos/Clyro_logo.png";
 
 export default function Signup() {
@@ -46,7 +46,7 @@ export default function Signup() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030609] text-text-primary">
+    <div className="h-full w-full overflow-y-auto bg-[#030609] text-text-primary">
       <div className="flex min-h-full w-full">
         <div className="grid w-full grid-cols-1 bg-[#060a0e] lg:grid-cols-[1.6fr_1.1fr] xl:grid-cols-[2fr_1fr]">
           <section className="relative order-2 hidden min-h-screen flex-col overflow-hidden border-r border-white/[0.1] bg-[#060a0e] lg:order-1 lg:flex">

@@ -4,11 +4,28 @@
 
 export const THEME_KEY = 'clyro_theme'
 export const DEFAULT_THEME = 'dark' // app was dark-only; keep that as the baseline
-export const THEMES = ['system', 'light', 'dark']
+export const THEMES = ['light', 'dark']
 
+function osPrefersDark() {
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true
+}
+
+// 'system' was a valid stored value before the Settings page (and its 3-way
+// System/Light/Dark control) was removed. Existing users with 'system' saved
+// are migrated once, here, to whatever their OS currently reports — not
+// silently reset to the DEFAULT_THEME baseline.
 export function readTheme() {
   try {
     const v = localStorage.getItem(THEME_KEY)
+    if (v === 'system') {
+      const migrated = osPrefersDark() ? 'dark' : 'light'
+      try {
+        localStorage.setItem(THEME_KEY, migrated)
+      } catch {
+        /* ignore write failures */
+      }
+      return migrated
+    }
     if (v && THEMES.includes(v)) return v
   } catch {
     /* localStorage unavailable — fall through */
@@ -16,12 +33,9 @@ export function readTheme() {
   return DEFAULT_THEME
 }
 
-// Resolve 'system' to the OS preference; 'light'/'dark' pass through.
+// 'light'/'dark' are the only themes now — kept as a pass-through so callers
+// that resolved a display theme before the 'system' removal don't need to change.
 export function resolveTheme(theme) {
-  if (theme === 'system') {
-    const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true
-    return dark ? 'dark' : 'light'
-  }
   return theme
 }
 

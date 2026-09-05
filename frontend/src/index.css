@@ -18,6 +18,9 @@
 @theme {
   --color-background: var(--c-background);
   --color-surface: var(--c-surface);
+  --color-shell: var(--c-shell);
+  --color-shell-fg: var(--c-shell-fg);
+  --color-shell-fg-muted: var(--c-shell-fg-muted);
   --color-border: var(--c-border);
   --color-accent: var(--c-accent);
   --color-accent-soft: var(--c-accent-soft);
@@ -25,12 +28,91 @@
   --color-text-muted: var(--c-text-muted);
   --color-success: var(--c-success);
   --color-danger: var(--c-danger);
+
+  /* Fixed dark palette for marketing/landing sections being migrated off the light
+     cream theme (hero, trusted-by strip, feature-highlight cards, ...). Not routed
+     through --c-* like the app tokens above: these sections always render dark
+     regardless of the app's light/dark preference, so a static value is correct.
+     Extend this set rather than hardcoding new one-off hex values per section. */
+  --color-marketing-dark: #0d0b16;
+  --color-marketing-dark-surface: #161421;
+  --color-marketing-amber: #f4c430;
+  --color-marketing-amber-soft: rgba(244, 196, 48, 0.14);
+  --color-marketing-amber-border: rgba(244, 196, 48, 0.4);
+  --color-marketing-ink: #f7f6f3;
+  --color-marketing-muted: #a6a3b5;
+
+  /* Multi-accent system layered on top of the palette above: a background ladder
+     for section-to-section temperature/depth variation, plus a 4-color accent
+     family (amber/teal/violet/blue) so repeated UI elements (cards, badges,
+     avatars) rotate colors instead of everything defaulting to amber. Amber-2 is
+     reserved for primary actions/CTAs and headline emphasis — see usage in each
+     component rather than reaching for it as a decorative default. */
+  --color-marketing-bg-base: #0b0b12;
+  --color-marketing-bg-warm: #0d0d14;
+  --color-marketing-bg-cool: #0a0e1a;
+  --color-marketing-bg-deep: #08080d;
+  --color-marketing-bg-card: #14141d;
+  --color-marketing-bg-elevated: #1e1e29;
+  --color-marketing-border-hairline: #22222e;
+
+  --color-marketing-text-primary: #f5f5f7;
+  --color-marketing-text-secondary: #a6a6b3;
+  --color-marketing-text-muted-2: #7a7a87;
+
+  --color-marketing-amber-2: #f2b705;
+  --color-marketing-amber-light: #ffd874;
+  --color-marketing-teal: #2dd4bf;
+  --color-marketing-violet: #a78bfa;
+  --color-marketing-blue: #60a5fa;
+  --color-marketing-amber-soft-2: rgba(242, 183, 5, 0.12);
+  --color-marketing-teal-soft: rgba(45, 212, 191, 0.12);
+  --color-marketing-violet-soft: rgba(167, 139, 250, 0.12);
+  --color-marketing-blue-soft: rgba(96, 165, 250, 0.12);
+
+  /* Gold/black/white-only accent system. Replaces the teal/violet/blue rotation
+     above for all landing-page usage going forward — those tokens are kept
+     intact rather than deleted in case anything outside the landing page still
+     references them, but the 10 landing components use this 5-step cycle instead:
+     1) gold-light fill + black text, 2) amber-core fill + black text,
+     3) bronze fill + cream-2 text, 4) near-black fill + amber-core text (inverted),
+     5) white fill + black text (second inversion, used sparingly). */
+  --color-marketing-cream-2: #fdf6e3;
+  --color-marketing-gold-pale: #f5dfa0;
+  --color-marketing-gold-light: #f2cb6b;
+  --color-marketing-amber-core: #f2b705;
+  --color-marketing-amber-deep: #d89a05;
+  --color-marketing-bronze: #b8860b;
+  --color-marketing-bronze-dark: #5c4510;
+  --color-marketing-near-black: #0b0b0a;
+  --color-marketing-true-black: #000000;
+  --color-marketing-warm-gray: #a6a29a;
+
+  /* Shared golden-ratio (Fibonacci, ~1.618) type scale for the marketing/landing
+     page. Sizes are applied via Tailwind arbitrary values (text-[3.5rem], etc.)
+     referencing these steps, rather than default Tailwind size classes or one-off
+     values, so type sizing stays uniform and proportional across every section. */
+  --font-size-display: 3.5rem; /* 56px — largest, hero H1 only */
+  --font-size-display-lg: 4.5rem; /* 72px — desktop-only hero H1, display x ~1.272 (root of 1.618) Fibonacci step */
+  --font-size-h2: 2.75rem; /* 44px — section H2s */
+  --font-size-h3: 1.7rem; /* 27px — sub-headings, large subcopy */
+  --font-size-lead: 1.375rem; /* 22px — intro/lead paragraph text */
+  --font-size-body: 1rem; /* 16px — card titles, standard body */
+  --font-size-small: 0.85rem; /* 13.6px — descriptions, fine print */
+  --font-size-micro: 0.75rem; /* 12px — eyebrow labels, badges */
 }
 
 :root {
   /* Dark baseline (mirrors the original hardcoded values). */
   --c-background: #111318;
   --c-surface: #1c1e26;
+  --c-shell: #050912;
+  /* Sidebar text/icon colors — scoped separately from --c-text-primary/--c-text-muted
+     because those tokens are tuned for the lighter --c-surface/--c-background contexts,
+     not the near-black shell. Dark values reproduce the previous literal
+     text-white / text-white/65 look exactly, so dark mode is unchanged. */
+  --c-shell-fg: #ffffff;
+  --c-shell-fg-muted: rgba(255, 255, 255, 0.65);
   --c-border: #2c2e38;
   --c-accent: #f97316;
   --c-accent-soft: #431407;
@@ -45,6 +127,14 @@
 :root[data-theme='light'] {
   --c-background: #f6f7f9;
   --c-surface: #ffffff;
+  /* Placeholder: mirrors --c-surface for now so light mode is unaffected by the
+     dark-mode sidebar/main-panel unification. A real light-mode shell tone is a
+     deferred follow-up, not a finished decision. */
+  --c-shell: #ffffff;
+  /* Mirrors --c-text-primary / --c-text-muted's light values — same colors already
+     vetted for readability on light backgrounds elsewhere in the app. */
+  --c-shell-fg: #1a1c22;
+  --c-shell-fg-muted: #5b6070;
   --c-border: #e3e5ec;
   --c-accent: #f97316;
   --c-accent-soft: #ffedd5;

@@ -4,7 +4,8 @@ import { THEMES, applyTheme, readTheme, resolveTheme } from '../lib/theme'
 
 // Client-side user preferences, persisted to localStorage (not synced across
 // devices). Single reader for the AWS-region default and the UI theme so the
-// Settings page, the project wizard, and the theme layer all agree.
+// Projects page, the sidebar theme toggle, the project wizard, and the theme
+// layer all agree.
 
 const REGION_KEY = 'clyro_preferred_region' // pre-existing key — kept for migration
 const DEFAULT_REGION = 'ap-south-1'
@@ -43,15 +44,6 @@ export function PreferencesProvider({ children }) {
   // Apply on mount and whenever the theme changes.
   useEffect(() => {
     applyTheme(theme)
-  }, [theme])
-
-  // While on 'system', react to OS light/dark switches live.
-  useEffect(() => {
-    if (theme !== 'system' || !window.matchMedia) return
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => applyTheme('system')
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
   }, [theme])
 
   const value = useMemo(
