@@ -1,6 +1,12 @@
 locals {
-  prefix       = "${var.project}-${var.environment}"
-  bucket_label = "${local.prefix}-${var.app_name}"
+  prefix = "${var.project}-${var.environment}"
+
+  # The account id is part of the bucket name because S3 names are globally
+  # unique across every AWS account, not just this one. "clyro-prod-frontend"
+  # was already taken by a since-abandoned account, so the first apply failed
+  # with BucketAlreadyExists. Suffixing matches what the backups bucket and the
+  # other tenants in this account already do.
+  bucket_label = "${local.prefix}-${var.app_name}-${var.account_id}"
   # Historically this module only ran once and every non-bucket name (OAC,
   # tags) was keyed off the bare prefix, not bucket_label. Preserve that exact
   # value when app_name is left at its default so the already-live main-site

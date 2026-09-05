@@ -141,3 +141,17 @@ resource "aws_ssm_parameter" "app_env_pending" {
     ignore_changes = [value]
   }
 }
+
+# Cognito identifiers, written once the pool exists so the frontends and the
+# backend can read them rather than having them pasted into a workflow file.
+resource "aws_ssm_parameter" "cognito_env" {
+  for_each = {
+    COGNITO_USER_POOL_ID = module.cognito.user_pool_id
+    COGNITO_CLIENT_ID    = module.cognito.client_id
+    COGNITO_DOMAIN       = module.cognito.domain
+  }
+
+  name  = "${local.ssm_base}/env/${each.key}"
+  type  = "String"
+  value = each.value
+}

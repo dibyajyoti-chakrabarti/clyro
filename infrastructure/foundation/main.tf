@@ -73,10 +73,7 @@ module "app" {
 
   ecr_repository_arns = [module.ecr.repo_arns["backend"]]
 
-  # Cognito lands in the next slice. Until the pool exists, the user-linking
-  # statement is scoped to a pool ARN that resolves to nothing, which grants
-  # nothing rather than granting everything.
-  cognito_user_pool_arn = "arn:aws:cognito-idp:${var.aws_region}:${var.account_id}:userpool/none"
+  cognito_user_pool_arn = module.cognito.user_pool_arn
 
   api_domain        = "api.${var.domain}"
   letsencrypt_email = var.letsencrypt_email
@@ -91,4 +88,83 @@ resource "aws_route53_record" "api" {
   type    = "A"
   ttl     = 300
   records = [module.app.public_ip]
+}
+
+# ── Frontends ────────────────────────────────────────────────────────────────
+#
+# Two instances of the same module: the main site on the apex plus www, and the
+# admin panel on its own subdomain. Separate origins on purpose, so an admin
+# token never shares an origin, or a JS bundle, with the user-facing app.
+#
+# Both are S3 behind CloudFront, which is the specific thing the previous AWS
+# account could not do and the reason Clyro moved here.
+
+module "frontend" {
+  source = "../modules/frontend"
+
+  project             = var.project
+  environment         = var.environment
+  domain              = var.domain
+  account_id          = var.account_id
+  acm_certificate_arn = one(module.acm_wildcard[*].certificate_arn)
+  route53_zone_id     = module.route53.zone_id
+}
+
+module "frontend_admin" {
+  source = "../modules/frontend"
+
+  project             = var.project
+  environment         = var.environment
+  domain              = "admin.${var.domain}"
+  account_id          = var.account_id
+  app_name            = "frontend-admin"
+  include_www         = false
+  acm_certificate_arn = one(module.acm_wildcard[*].certificate_arn)
+  route53_zone_id     = module.route53.zone_id
+}
+
+# ── Cognito ──────────────────────────────────────────────────────────────────
+module "cognito" {
+  source = "../modules/cognito"
+
+  project     = var.project
+  environment = var.environment
+  domain      = var.domain
+  aws_region  = var.aws_region
+
+  acm_certificate_arn = one(module.acm_wildcard[*].certificate_arn)
+  route53_zone_id     = module.route53.zone_id
+
+  # Read from SSM rather than passed in. Empty until someone puts real values
+  # in, which disables the Google IdP instead of blocking the whole pool.
+  google_client_id     = data.aws_ssm_parameter.google_client_id.value
+  google_client_secret = data.aws_ssm_parameter.google_client_secret.value
+
+  pre_signup_lambda_zip = "${path.module}/../modules/cognito/pre_signup.zip"
+
+  callback_urls = [
+    "https://${var.domain}/auth/callback",
+    "https://admin.${var.domain}/auth/callback",
+    "http://localhost:5173/auth/callback",
+  ]
+
+  logout_urls = [
+    "https://${var.domain}/",
+    "https://admin.${var.domain}/",
+    "http://localhost:5173/",
+  ]
+
+  # Not decoration. AWS refuses to create a Cognito custom domain unless the
+  # parent domain already resolves, and the apex A record is created by the
+  # frontend module. Without this, the first apply fails or succeeds depending
+  # on the order Terraform happens to pick.
+  depends_on = [module.frontend]
+}
+
+data "aws_ssm_parameter" "google_client_id" {
+  name = aws_ssm_parameter.runtime_secret["cognito/google-client-id"].name
+}
+
+data "aws_ssm_parameter" "google_client_secret" {
+  name = aws_ssm_parameter.runtime_secret["cognito/google-client-secret"].name
 }

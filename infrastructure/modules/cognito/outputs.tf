@@ -11,6 +11,10 @@ output "client_id" {
 }
 
 output "domain" {
-  description = "Cognito hosted UI domain (no https:// prefix)"
-  value       = "${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
+  description = "Cognito hosted UI domain, no scheme. The custom domain, not the amazoncognito.com one."
+  value       = aws_cognito_user_pool_domain.main.domain
+}
+
+output "google_enabled" {
+  value = local.google_enabled
 }

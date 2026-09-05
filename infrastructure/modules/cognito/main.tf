@@ -64,12 +64,58 @@ resource "aws_cognito_user_pool" "main" {
   tags = { Name = "${var.project}-users-${var.environment}" }
 }
 
+# auth.clyro.cloud, not clyro.auth.ap-south-1.amazoncognito.com.
+#
+# A custom domain keeps the hosted UI on the product's own name, which matters
+# for a login screen users are asked to trust, and it means the OAuth endpoints
+# do not move if the pool is ever rebuilt in another region.
+#
+# The certificate must live in us-east-1 even though the pool is in ap-south-1,
+# because a Cognito custom domain is itself fronted by CloudFront. The existing
+# wildcard certificate already covers auth.<domain>, so no new one is needed.
+#
+# AWS refuses to create this unless the PARENT domain already resolves, which
+# is why the caller passes a dependency on the frontend module: that module
+# creates the apex A record. This is an ordering requirement, not a preference,
+# and relying on luck here fails intermittently.
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = var.project
-  user_pool_id = aws_cognito_user_pool.main.id
+  domain          = "auth.${var.domain}"
+  certificate_arn = var.acm_certificate_arn
+  user_pool_id    = aws_cognito_user_pool.main.id
+}
+
+# Despite the attribute name, cloudfront_distribution_arn returns a CloudFront
+# *domain name*. The alias zone id is the fixed global CloudFront one.
+resource "aws_route53_record" "auth" {
+  zone_id = var.route53_zone_id
+  name    = "auth.${var.domain}"
+  type    = "A"
+
+  alias {
+    name                   = aws_cognito_user_pool_domain.main.cloudfront_distribution_arn
+    zone_id                = "Z2FDTNDATAQYW2"
+    evaluate_target_health = false
+  }
+}
+
+# Created only when credentials are actually supplied.
+#
+# These variables used to be required with no default, deliberately, because a
+# "REPLACE_ME" default once silently rewrote the live IdP's client_id and broke
+# sign-in for everyone. That danger is real but the cure was too strong: it made
+# the entire user pool unappliable until someone had been to the Google console,
+# so email sign-up and every other provider were blocked on Google.
+#
+# Gating on emptiness keeps the protection and drops the blockage. An empty
+# value means "not configured yet" and creates nothing; it can never overwrite
+# a live provider with a placeholder, because a placeholder creates no resource.
+locals {
+  google_enabled = var.google_client_id != "" && var.google_client_id != "PENDING"
 }
 
 resource "aws_cognito_identity_provider" "google" {
+  count = local.google_enabled ? 1 : 0
+
   user_pool_id  = aws_cognito_user_pool.main.id
   provider_name = "Google"
   provider_type = "Google"
@@ -103,7 +149,7 @@ resource "aws_cognito_user_pool_client" "web" {
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["email", "openid", "profile"]
   allowed_oauth_flows_user_pool_client = true
-  supported_identity_providers         = ["COGNITO", "Google"]
+  supported_identity_providers         = concat(["COGNITO"], local.google_enabled ? ["Google"] : [])
 
   callback_urls = var.callback_urls
   logout_urls   = var.logout_urls

@@ -3,18 +3,29 @@ variable "environment" { type = string }
 variable "domain" { type = string }
 variable "aws_region" { type = string }
 
-# Required, with no default on purpose. A "REPLACE_ME" default here is what let
-# a bare `terraform apply` silently rewrite the live Google IdP's client_id and
-# break sign-in; an omitted input must fail loudly at plan time instead.
+# Empty means "Google sign-in is not configured", and creates no identity
+# provider at all. See the note in main.tf: a placeholder can no longer
+# overwrite a live provider, because a placeholder builds nothing.
 variable "google_client_id" {
-  description = "Google OAuth client ID (from the cognito/google-oauth secret)"
+  description = "Google OAuth client id; empty or PENDING disables the Google IdP"
   type        = string
+  default     = ""
 }
 
 variable "google_client_secret" {
-  description = "Google OAuth client secret (from the cognito/google-oauth secret)"
+  description = "Google OAuth client secret"
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+variable "acm_certificate_arn" {
+  description = "Wildcard certificate in us-east-1, covering auth.<domain>"
+  type        = string
+}
+
+variable "route53_zone_id" {
+  type = string
 }
 
 variable "callback_urls" {
