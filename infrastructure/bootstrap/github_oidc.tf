@@ -24,14 +24,19 @@ locals {
   github_repo = "dibyajyoti-chakrabarti/clyro"
   account_id  = data.aws_caller_identity.current.account_id
 
-  # This account also runs Structra. Both projects tag every resource with
-  # Project, which is what the tag-based guardrail below keys on.
-  other_project = "structra"
-
-  # Structra's hosted zone and Cognito pool, denied by ARN because neither
-  # route53 nor cognito-idp evaluates resource tags on every relevant action.
-  structra_zone_id = "Z06774172J4OPAI03JK8V"
-  structra_pool_id = "ap-south-1_UXnuuw7VV"
+  # This account is shared. It runs Jan Saathi (jansaathi.co.in, an RDS
+  # instance, an EC2 box, two CloudFront distributions) and is also taking on
+  # Structra. Every project here, Clyro included, tags each resource with
+  # Project, which is what the guardrail below keys on.
+  #
+  # Hosted zones are the exception: route53 evaluates neither resource tags nor
+  # name prefixes, and a zone's id is not known until it exists, so foreign
+  # zones have to be denied one id at a time.
+  foreign_zone_ids = [
+    "Z03659202S6IG9Y440JH4", # jansaathi.co.in
+    "Z0289754SSFXLFSNJFFH",  # console.jansaathi.co.in
+    "Z048163752SZ07B44U3X",  # structra.cloud
+  ]
 }
 
 # Adopted, not created. An AWS account may hold exactly one OIDC provider per
@@ -127,7 +132,6 @@ data "aws_iam_policy_document" "terraform_build" {
     effect = "Allow"
     actions = [
       "ec2:*",         # VPC, subnets, security groups, the instance, EIP, EBS
-      "s3:*",          # frontend and asset buckets
       "route53:*",     # hosted zone and records
       "acm:*",         # certificates
       "ssm:*",         # parameters, plus SendCommand for container deploys
@@ -143,6 +147,19 @@ data "aws_iam_policy_document" "terraform_build" {
       "sts:GetCallerIdentity",
     ]
     resources = ["*"]
+  }
+
+  # S3 is allow-listed by name rather than granted on "*" and clawed back with
+  # a deny. Every bucket this project owns is clyro-prefixed, and a positive
+  # list needs no maintenance when another tenant arrives in the account.
+  statement {
+    sid     = "OwnBucketsOnly"
+    effect  = "Allow"
+    actions = ["s3:*"]
+    resources = [
+      "arn:aws:s3:::${local.project}-*",
+      "arn:aws:s3:::${local.project}-*/*",
+    ]
   }
 
   # Terraform reads SecureString parameter values during a plan, which needs
@@ -248,60 +265,80 @@ resource "aws_iam_role_policy" "terraform_build" {
 # "ec2:*" and "s3:*" on "*" would let a bad plan delete another product's
 # production infrastructure.
 data "aws_iam_policy_document" "terraform_guardrails" {
-  # The broad net. Both projects tag every resource with Project, so anything
-  # carrying Project=structra is off limits whatever the service.
+  # The broad net, and the one rule that does not need editing when another
+  # product moves into this account.
   #
-  # A tag condition only bites on actions that expose the tag, so this is the
-  # first layer and not the only one; the ARN-specific denials below cover the
-  # resources that matter most where tags are not evaluated.
+  # Every tenant tags its resources with Project, so anything carrying a Project
+  # tag that is not Clyro's is off limits, whatever the service and whoever owns
+  # it. Written as "not clyro" rather than a list of the neighbours, because a
+  # deny-list silently stops protecting the day someone adds a tenant and
+  # forgets to come back here.
+  #
+  # The Null check is what keeps this from denying everything. A resource that
+  # does not exist yet exposes no tags, so without it every create would be
+  # denied; with it, the rule applies only where a Project tag is actually
+  # present to read.
   statement {
-    sid       = "DenyAnythingTaggedStructra"
+    sid       = "DenyAnythingTaggedForAnotherProject"
     effect    = "Deny"
     actions   = ["*"]
     resources = ["*"]
 
     condition {
-      test     = "StringEquals"
+      test     = "StringNotEquals"
       variable = "aws:ResourceTag/Project"
-      values   = [local.other_project]
+      values   = [local.project]
+    }
+
+    condition {
+      test     = "Null"
+      variable = "aws:ResourceTag/Project"
+      values   = ["false"]
     }
   }
 
+  # Hosted zones carry no usable tag or name condition, so the neighbours' zones
+  # are named explicitly. Clyro's own zone is created by Terraform and is not in
+  # this list, so it stays writable.
   statement {
-    sid     = "DenyStructraBuckets"
+    sid       = "DenyForeignHostedZones"
+    effect    = "Deny"
+    actions   = ["route53:*"]
+    resources = [for id in local.foreign_zone_ids : "arn:aws:route53:::hostedzone/${id}"]
+  }
+
+  # S3 is allow-listed by name above, and denied by name here. Belt and braces
+  # on purpose: an earlier revision of this policy granted s3:* on "*" in the
+  # CoreServices block, which quietly overrode the narrow allow and left a
+  # neighbouring product's Terraform state bucket deletable. A NotResource deny
+  # fails safe whatever the allow side says.
+  statement {
+    sid     = "DenyForeignBuckets"
     effect  = "Deny"
     actions = ["s3:*"]
-    resources = [
-      "arn:aws:s3:::${local.other_project}-*",
-      "arn:aws:s3:::${local.other_project}-*/*",
+    not_resources = [
+      "arn:aws:s3:::${local.project}-*",
+      "arn:aws:s3:::${local.project}-*/*",
     ]
   }
 
+  # IAM roles are name-scoped in the allow above, but an explicit deny on
+  # everything outside the clyro- prefix closes the gap if that allow is ever
+  # widened by accident.
   statement {
-    sid       = "DenyStructraRoles"
-    effect    = "Deny"
-    actions   = ["iam:*"]
-    resources = ["arn:aws:iam::${local.account_id}:role/${local.other_project}-*"]
+    sid     = "DenyForeignRoles"
+    effect  = "Deny"
+    actions = ["iam:*"]
+    not_resources = [
+      "arn:aws:iam::${local.account_id}:role/${local.project}-*",
+      "arn:aws:iam::${local.account_id}:instance-profile/${local.project}-*",
+    ]
   }
 
-  statement {
-    sid       = "DenyStructraZone"
-    effect    = "Deny"
-    actions   = ["route53:*"]
-    resources = ["arn:aws:route53:::hostedzone/${local.structra_zone_id}"]
-  }
-
-  statement {
-    sid       = "DenyStructraUserPool"
-    effect    = "Deny"
-    actions   = ["cognito-idp:*"]
-    resources = ["arn:aws:cognito-idp:${local.region}:${local.account_id}:userpool/${local.structra_pool_id}"]
-  }
-
-  # Clyro runs Postgres in a container on the instance, by design, so it has no
-  # business calling RDS at all. The only RDS instance in this account is
-  # structra-prod-db. Denying the whole service is both accurate and the
-  # strongest possible protection for it.
+  # Clyro runs Postgres in a container on its own instance, by design, so it has
+  # no business calling RDS at all. This account holds jan-saathi-staging, and
+  # denying the whole service is both accurate and the strongest protection for
+  # it.
   statement {
     sid       = "DenyRDSEntirely"
     effect    = "Deny"
@@ -309,10 +346,9 @@ data "aws_iam_policy_document" "terraform_guardrails" {
     resources = ["*"]
   }
 
-  # Self-modification. Terraform running in CI must never be able to rewrite
-  # the role it is running as, or the state bucket policy, or the shared OIDC
-  # provider. All three are owned by the bootstrap layer, which is applied by
-  # hand.
+  # Self-modification. Terraform running in CI must never rewrite the role it is
+  # running as, the state bucket, or the shared OIDC provider. All three belong
+  # to the bootstrap layer, which is applied by hand.
   statement {
     sid    = "DenyEditingOwnRoleAndBootstrap"
     effect = "Deny"
@@ -330,9 +366,9 @@ data "aws_iam_policy_document" "terraform_guardrails" {
     ]
   }
 
-  # IAM users are the classic escape hatch: create one, give it a key, and the
-  # credential outlives the workflow and every condition on it. Nothing in this
-  # project uses IAM users, so the whole surface is denied.
+  # IAM users are the classic escape hatch: create one, give it an access key,
+  # and the credential outlives the workflow and every condition attached to it.
+  # Nothing in this project uses IAM users, so the surface is denied outright.
   statement {
     sid    = "DenyUserAndKeyCreation"
     effect = "Deny"
