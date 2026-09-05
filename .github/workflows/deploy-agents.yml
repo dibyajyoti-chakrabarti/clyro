@@ -16,9 +16,11 @@ name: Deploy Agents
 on:
   push:
     branches: [main]
+    # Only the Lambda sources. The AgentCore job is dispatch-only, so a push
+    # touching backend/agents/** has nothing to run here, and listing it made
+    # every agent-code change rebuild three container images for nothing.
     paths:
       - 'backend/mcp/**'
-      - 'backend/agents/**'
       - '.github/workflows/deploy-agents.yml'
   workflow_dispatch:
     inputs:
@@ -43,9 +45,6 @@ concurrency:
 jobs:
   mcp:
     name: MCP tool Lambdas
-    # A push touching only backend/agents does not need the Lambdas rebuilt,
-    # but telling those apart cheaply is not worth the branching: the build is
-    # a few minutes and the result is identical.
     if: github.event_name != 'workflow_dispatch' || inputs.target != 'agentcore'
     runs-on: ubuntu-latest
     environment: prod

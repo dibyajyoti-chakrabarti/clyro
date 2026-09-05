@@ -46,8 +46,10 @@ test.describe('Full provisioning + teardown (real AWS)', () => {
   test('drives Step 1 scan through Step 7 live and teardown with 0 unexpected issues', async ({ page }) => {
     // ── Login ──────────────────────────────────────────────────────────────
     await page.goto('/login');
-    await page.locator('input[type="email"]').fill(E2E_TEST_EMAIL);
-    await page.locator('input[type="password"]').fill(E2E_TEST_PASSWORD);
+    // By id, not by type: /login mounts the signup form too so the transition
+    // between them can animate, and a bare input[type="email"] matches both.
+    await page.locator('#email-address').fill(E2E_TEST_EMAIL);
+    await page.locator('#password').fill(E2E_TEST_PASSWORD);
     await page.locator('button', { hasText: 'Sign In' }).click();
     await expect(page).toHaveURL(/\/app\/dashboard/, { timeout: 15_000 });
 
