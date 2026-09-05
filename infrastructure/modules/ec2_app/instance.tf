@@ -109,6 +109,50 @@ resource "aws_dlm_lifecycle_policy" "daily" {
   }
 }
 
+# ── Database volume ──────────────────────────────────────────────────────────
+#
+# Postgres data lives on its own EBS volume, deliberately not on the root disk.
+#
+# The root volume is delete_on_termination, and user_data_replace_on_change
+# means any edit to cloud-init replaces the instance. Together those two turned
+# every configuration change into "destroy the production database", silently
+# and with no warning in the plan beyond a routine-looking replacement. This
+# instance was replaced three times on its first day.
+#
+# A separate volume survives instance replacement, so the box stays disposable
+# while the data does not. That is the property worth having, and it is the
+# difference between the plan's "restore from a snapshot" story being a
+# contingency and being a routine part of deploying.
+data "aws_subnet" "this" {
+  id = var.subnet_id
+}
+
+resource "aws_ebs_volume" "data" {
+  availability_zone = data.aws_subnet.this.availability_zone
+  size              = var.data_volume_size
+  type              = "gp3"
+  encrypted         = true
+
+  tags = { Name = "${local.prefix}-data" }
+
+  # Terraform will not silently discard the database. Removing this volume has
+  # to be a deliberate act, not a side effect of some other change.
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_volume_attachment" "data" {
+  device_name = "/dev/sdf"
+  volume_id   = aws_ebs_volume.data.id
+  instance_id = aws_instance.app.id
+
+  # On replacement, detach from the old instance rather than failing. The
+  # filesystem is not reformatted on the way back in; cloud-init only formats a
+  # volume that has no filesystem at all.
+  force_detach = true
+}
+
 # ── The instance ─────────────────────────────────────────────────────────────
 
 resource "aws_instance" "app" {
@@ -135,6 +179,7 @@ resource "aws_instance" "app" {
   }
 
   user_data = templatefile("${path.module}/templates/cloud-init.yaml.tftpl", {
+    data_volume_id    = aws_ebs_volume.data.id
     aws_region        = var.aws_region
     ssm_prefix        = "/${var.project}/${var.environment}"
     backend_image     = var.backend_image

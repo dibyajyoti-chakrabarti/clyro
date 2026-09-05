@@ -31,6 +31,46 @@ write_files:
       swapon /swapfile
       echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
+  # Mount the Postgres data volume. Formats ONLY a volume that has no
+  # filesystem, so a reattached volume carrying a live database is never
+  # touched. Getting this wrong destroys the data the volume exists to protect,
+  # which is why it checks rather than assuming a fresh disk.
+  - path: /opt/clyro/mount-data.sh
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      MOUNT=/mnt/clyro-data
+
+      # Resolved by volume id, not by device name. On Nitro instances /dev/sdf
+      # is a hint, not a promise: the kernel presents NVMe names in attach
+      # order, so a device path can point at the wrong disk after a reattach.
+      SERIAL="$(echo "${data_volume_id}" | tr -d -)"
+      DEV="/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_$${SERIAL}"
+
+      # The attachment is made after the instance boots, so on a first boot the
+      # device genuinely is not there yet.
+      for _ in $(seq 1 60); do
+        [ -e "$DEV" ] && break
+        sleep 2
+      done
+      if [ ! -e "$DEV" ]; then
+        echo "data volume ${data_volume_id} never appeared" >&2
+        exit 1
+      fi
+
+      if ! blkid "$DEV" >/dev/null 2>&1; then
+        echo "no filesystem on $DEV, creating one (first boot for this volume)"
+        mkfs.ext4 -L clyro-data "$DEV"
+      else
+        echo "filesystem already present on $DEV, leaving it alone"
+      fi
+
+      mkdir -p "$MOUNT"
+      grep -q "$MOUNT" /etc/fstab || echo "LABEL=clyro-data $MOUNT ext4 defaults,nofail 0 2" >> /etc/fstab
+      mountpoint -q "$MOUNT" || mount "$MOUNT"
+      mkdir -p "$MOUNT/postgres"
+
   - path: /opt/clyro/.env
     permissions: '0640'
     content: |
@@ -60,7 +100,10 @@ write_files:
             POSTGRES_DB: $${POSTGRES_DB}
             POSTGRES_PASSWORD: $${POSTGRES_PASSWORD}
           volumes:
-            - db_data:/var/lib/postgresql/data
+            # A bind mount onto the separate EBS volume, not a named docker
+            # volume. A named volume lives under /var/lib/docker on the root
+            # disk, which is deleted when the instance is replaced.
+            - /mnt/clyro-data/postgres:/var/lib/postgresql/data
           healthcheck:
             test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
             interval: 5s
@@ -145,9 +188,6 @@ write_files:
             - /opt/clyro/nginx.conf:/etc/nginx/conf.d/default.conf:ro
             - /etc/letsencrypt:/etc/letsencrypt:ro
             - /var/www/certbot:/var/www/certbot:ro
-
-      volumes:
-        db_data:
 
   # Served over plain HTTP until certbot has a certificate, then rewritten by
   # the certbot deploy hook below. Starting with the TLS server block present
@@ -294,7 +334,10 @@ write_files:
       set -euo pipefail
       set -a; . /opt/clyro/.env; set +a
 
-      POSTGRES_PASSWORD="$(aws ssm get-parameter \
+      # Exported, not just assigned. docker compose interpolates
+      # $${POSTGRES_PASSWORD} while parsing the compose file, and without the
+      # export it warned on every run and substituted a blank string.
+      export POSTGRES_PASSWORD="$(aws ssm get-parameter \
         --name "$CLYRO_SSM_PREFIX/db/password" --with-decryption \
         --region "$AWS_REGION" --query Parameter.Value --output text)"
 
@@ -339,6 +382,8 @@ write_files:
 
 runcmd:
   - /opt/clyro/setup-swap.sh
+  # Before docker starts, so postgres never writes to the root disk by accident.
+  - /opt/clyro/mount-data.sh
   - systemctl enable --now docker
   - systemctl enable --now amazon-ssm-agent
   - systemctl enable --now crond
