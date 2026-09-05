@@ -30,6 +30,8 @@ FORCE=0
 GITHUB_PEM=""
 GITHUB_APP_ID=""
 GITHUB_APP_NAME=""
+GITHUB_OAUTH_CLIENT_ID=""
+GITHUB_OAUTH_CLIENT_SECRET=""
 GOOGLE_CLIENT_ID=""
 GOOGLE_CLIENT_SECRET=""
 
@@ -39,6 +41,8 @@ while [[ $# -gt 0 ]]; do
     --github-pem)            GITHUB_PEM="$2"; shift 2 ;;
     --github-app-id)         GITHUB_APP_ID="$2"; shift 2 ;;
     --github-app-name)       GITHUB_APP_NAME="$2"; shift 2 ;;
+    --github-oauth-client-id)     GITHUB_OAUTH_CLIENT_ID="$2"; shift 2 ;;
+    --github-oauth-client-secret) GITHUB_OAUTH_CLIENT_SECRET="$2"; shift 2 ;;
     --google-client-id)      GOOGLE_CLIENT_ID="$2"; shift 2 ;;
     --google-client-secret)  GOOGLE_CLIENT_SECRET="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -118,8 +122,23 @@ put_plain() {
 }
 
 put_plain "${PREFIX}/env/GITHUB_APP_ID"   "$GITHUB_APP_ID"   "0"
+# The GitHub App doubles as the OAuth client for sign-in, so this is the same
+# App's client_id rather than a separate OAuth App's. Not secret; the matching
+# secret below is.
+put_plain "${PREFIX}/env/GITHUB_OAUTH_CLIENT_ID" "$GITHUB_OAUTH_CLIENT_ID" "PENDING"
 put_plain "${PREFIX}/env/GITHUB_APP_NAME" "$GITHUB_APP_NAME" "PENDING"
 
+put "${PREFIX}/github/oauth-client-secret"   "$GITHUB_OAUTH_CLIENT_SECRET"
+
+# ── GitHub OIDC shim ─────────────────────────────────────────────────────────
+#
+# All three are generated here rather than declared in Terraform, so the RSA
+# key never lands in state. A tls_private_key resource would write it there in
+# cleartext, and anyone able to read the state bucket could then mint identities
+# the application would accept.
+put "${PREFIX}/oidc/signing-key" "$(openssl genrsa 2048 2>/dev/null)"
+put "${PREFIX}/oidc/client-secret" "$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')"
+put_plain "${PREFIX}/env/OIDC_CLIENT_ID" "clyro-cognito-$(python3 -c 'import secrets;print(secrets.token_hex(8))')" "PENDING"
 put "${PREFIX}/cognito/google-client-id"     "$GOOGLE_CLIENT_ID"
 put "${PREFIX}/cognito/google-client-secret" "$GOOGLE_CLIENT_SECRET"
 

@@ -11,3 +11,6 @@ dns_delegated = true
 vpc_cidr            = "10.20.0.0/16"
 public_subnet_cidrs = ["10.20.1.0/24", "10.20.2.0/24"]
 availability_zones  = ["ap-south-1a", "ap-south-1b"]
+
+# Google sign-in is configured and live.
+google_enabled = true

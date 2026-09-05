@@ -95,3 +95,14 @@ variable "enable_cloudfront_aliases" {
   type    = bool
   default = true
 }
+
+# Whether the Google identity provider exists. The credentials themselves live
+# in SSM and never appear here; this only says "they have been supplied".
+#
+# An explicit flag rather than an inferred one, for the reason spelled out
+# beside the cognito module: a count that depends on reading a parameter cannot
+# be planned whenever that parameter is being created or changed.
+variable "google_enabled" {
+  type    = bool
+  default = false
+}

@@ -16,8 +16,11 @@ resolves the actual values once per cold start.
 Where each value lives, and why they are not all in one place
 ------------------------------------------------------------
 * SSM Parameter Store SecureString (`$CLYRO_SSM_PREFIX/...`)
-    - `django/secret-key`
-    - `github/app-pem`
+    - `django/secret-key`      (required)
+    - `github/app-pem`         (required)
+    - `oidc/signing-key`       (optional, GitHub sign-in)
+    - `oidc/client-secret`     (optional, GitHub sign-in)
+    - `github/oauth-client-secret` (optional, GitHub sign-in)
   Only the application reads these, so they live in Parameter Store, which is
   free for standard parameters (Secrets Manager bills $0.40/secret/month).
 
@@ -64,25 +67,39 @@ def _fetch_ssm_parameters(prefix: str) -> dict[str, str]:
     """
     import boto3  # imported lazily so local dev never pays for it
 
-    names = {
+    required = {
         "secret_key": f"{prefix}/django/secret-key",
         "github_pem": f"{prefix}/github/app-pem",
     }
+
+    # Optional because each one turns a feature on rather than keeping the
+    # process alive. A backend that cannot sign an OIDC token is a backend
+    # without GitHub sign-in; a backend with no SECRET_KEY is not meaningfully
+    # running at all. Refusing to boot over an unconfigured optional feature
+    # would mean the app could never start before every integration existed.
+    optional = {
+        "oidc_signing_key": f"{prefix}/oidc/signing-key",
+        "oidc_client_secret": f"{prefix}/oidc/client-secret",
+        "github_oauth_client_secret": f"{prefix}/github/oauth-client-secret",
+    }
+
+    names = {**required, **optional}
     client = boto3.client("ssm", region_name=_region())
     response = client.get_parameters(
         Names=list(names.values()), WithDecryption=True
     )
 
-    invalid = response.get("InvalidParameters") or []
-    if invalid:
+    invalid = set(response.get("InvalidParameters") or [])
+    missing_required = invalid & set(required.values())
+    if missing_required:
         raise ImproperlyConfigured(
             "Missing SSM parameters: "
-            + ", ".join(sorted(invalid))
-            + " — populate them with infrastructure/scripts/migrate-secrets-to-ssm.sh"
+            + ", ".join(sorted(missing_required))
+            + " — populate them with infrastructure/scripts/put-secrets.sh"
         )
 
     by_name = {p["Name"]: p["Value"] for p in response["Parameters"]}
-    return {key: by_name[path] for key, path in names.items()}
+    return {key: by_name.get(path, "") for key, path in names.items()}
 
 
 def _fetch_db_password(secret_arn: str) -> str:
@@ -144,6 +161,16 @@ def load_into_environ() -> None:
                 handle.write(parameters["github_pem"])
             os.chmod(_PEM_PATH, 0o600)
             os.environ["GITHUB_APP_PRIVATE_KEY_PATH"] = _PEM_PATH
+
+        # setdefault throughout, so anything already in the environment wins
+        # and a local override keeps working.
+        for key, name in (
+            ("oidc_signing_key", "OIDC_SIGNING_KEY"),
+            ("oidc_client_secret", "OIDC_CLIENT_SECRET"),
+            ("github_oauth_client_secret", "GITHUB_OAUTH_CLIENT_SECRET"),
+        ):
+            if parameters.get(key):
+                os.environ.setdefault(name, parameters[key])
 
     db_password_arn = os.environ.get("CLYRO_DB_PASSWORD_SECRET_ARN")
     if db_password_arn and not os.environ.get("DATABASE_URL"):

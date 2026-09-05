@@ -110,7 +110,11 @@ resource "aws_route53_record" "auth" {
 # value means "not configured yet" and creates nothing; it can never overwrite
 # a live provider with a placeholder, because a placeholder creates no resource.
 locals {
-  google_enabled = var.google_client_id != "" && var.google_client_id != "PENDING"
+  # Only the caller's flag. Adding "and the credential looks real" here would
+  # put a value read from SSM back into a count, which is exactly what cannot
+  # be planned. The placeholder guard lives in a precondition below instead,
+  # where it runs at apply time and cannot make the count unknown.
+  google_enabled = var.google_enabled
 }
 
 resource "aws_cognito_identity_provider" "google" {
@@ -137,6 +141,17 @@ resource "aws_cognito_identity_provider" "google" {
     name     = "name"
     picture  = "picture"
     username = "sub"
+  }
+
+  # The original failure this module guards against: a "REPLACE_ME" default
+  # silently rewrote the live client_id and broke sign-in for everyone. Failing
+  # the apply is the right response to being handed a placeholder, and doing it
+  # here rather than in the count keeps the plan computable.
+  lifecycle {
+    precondition {
+      condition     = var.google_client_id != "" && var.google_client_id != "PENDING"
+      error_message = "google_enabled is true but no Google client id was supplied. Populate /clyro/prod/cognito/google-client-id with scripts/put-secrets.sh, or set google_enabled = false."
+    }
   }
 }
 

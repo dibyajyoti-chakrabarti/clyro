@@ -36,6 +36,20 @@ locals {
     # rather than owning them. They were previously a single JSON blob in
     # Secrets Manager that Terraform decoded at plan time; a plan that could
     # not read it failed before it could show a diff.
+    # The GitHub App identifies users as well as reading repositories, so this
+    # is that same App's client secret, not a separate OAuth App's. GitHub Apps
+    # ignore the OAuth scope parameter entirely: what the token can read is
+    # decided by the App's configured permissions, which is why sign-in needs
+    # the Account "Email addresses" permission rather than a user:email scope.
+    "github/oauth-client-secret" = "Client secret of the GitHub OAuth App used for sign-in"
+
+    # The GitHub OIDC shim (backend/app/oidc/). The signing key lives here and
+    # NOT in Terraform state: a tls_private_key resource would write the key
+    # into state in cleartext, where anyone who can read the state bucket could
+    # mint identities. Generated once by scripts/put-secrets.sh.
+    "oidc/signing-key"   = "RSA private key signing the shim's ID tokens"
+    "oidc/client-secret" = "Secret Cognito uses to authenticate to the shim"
+
     "cognito/google-client-id"     = "Google OAuth client id for the Cognito IdP"
     "cognito/google-client-secret" = "Google OAuth client secret for the Cognito IdP"
   }
@@ -116,8 +130,13 @@ locals {
   # integer. Zero is also the setting's own default, which reads as "the GitHub
   # App integration is not configured yet" rather than as a broken value.
   app_env_pending = {
-    GITHUB_APP_ID   = "0"
-    GITHUB_APP_NAME = "PENDING"
+    GITHUB_APP_ID          = "0"
+    GITHUB_APP_NAME        = "PENDING"
+    GITHUB_OAUTH_CLIENT_ID = "PENDING"
+
+    # Cognito's client id at the shim. Generated rather than chosen, and paired
+    # with oidc/client-secret above.
+    OIDC_CLIENT_ID = "PENDING"
   }
 }
 

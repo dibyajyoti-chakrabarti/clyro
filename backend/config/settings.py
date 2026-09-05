@@ -177,6 +177,29 @@ GITHUB_APP_PRIVATE_KEY_PATH = (
     else BASE_DIR / _github_app_private_key_path
 )
 
+# ── GitHub OIDC shim (app/oidc/) ────────────────────────────────────────────
+#
+# Lets Cognito federate GitHub sign-in, which it cannot do directly because
+# GitHub speaks OAuth2 and not OIDC. The issuer is the public URL prefix these
+# views are mounted at; changing it invalidates every token already issued and
+# has to be changed in the Cognito provider at the same time.
+OIDC_ISSUER = env('OIDC_ISSUER', default='https://api.clyro.cloud/oidc/github')
+
+# Credentials Cognito uses to authenticate to us. Generated for this purpose
+# and unrelated to GitHub's.
+OIDC_CLIENT_ID = env('OIDC_CLIENT_ID', default='')
+OIDC_CLIENT_SECRET = env('OIDC_CLIENT_SECRET', default='')
+
+# RSA private key that signs the ID tokens, resolved from SSM at start up.
+OIDC_SIGNING_KEY = env('OIDC_SIGNING_KEY', default='')
+
+# The OAuth App we present to GitHub. Separate from the GitHub App that reads
+# repositories, so rotating sign-in cannot disturb repository access, and so
+# email arrives via the user:email scope rather than an App permission that
+# existing installations would have to re-approve.
+GITHUB_OAUTH_CLIENT_ID = env('GITHUB_OAUTH_CLIENT_ID', default='')
+GITHUB_OAUTH_CLIENT_SECRET = env('GITHUB_OAUTH_CLIENT_SECRET', default='')
+
 AWS_PROFILE = env('AWS_PROFILE', default='default')
 AWS_REGION = env('AWS_REGION', default='us-east-1')
 CLYRO_AWS_ACCOUNT_ID = env('CLYRO_AWS_ACCOUNT_ID')

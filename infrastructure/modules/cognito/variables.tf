@@ -6,6 +6,12 @@ variable "aws_region" { type = string }
 # Empty means "Google sign-in is not configured", and creates no identity
 # provider at all. See the note in main.tf: a placeholder can no longer
 # overwrite a live provider, because a placeholder builds nothing.
+variable "google_enabled" {
+  description = "Whether to create the Google identity provider at all"
+  type        = bool
+  default     = false
+}
+
 variable "google_client_id" {
   description = "Google OAuth client id; empty or PENDING disables the Google IdP"
   type        = string

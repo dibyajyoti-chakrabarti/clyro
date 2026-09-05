@@ -137,10 +137,20 @@ module "cognito" {
   acm_certificate_arn = one(module.acm_wildcard[*].certificate_arn)
   route53_zone_id     = module.route53.zone_id
 
-  # Read from SSM rather than passed in. Empty until someone puts real values
-  # in, which disables the Google IdP instead of blocking the whole pool.
-  google_client_id     = data.aws_ssm_parameter.google_client_id.value
-  google_client_secret = data.aws_ssm_parameter.google_client_secret.value
+  # Credentials come from SSM so they never enter a tfvars file, but whether
+  # the provider exists at all is an explicit variable rather than something
+  # inferred from the parameter's value.
+  #
+  # Inferring it read the parameter and used the result in a count. That works
+  # only while the parameter already exists and nothing about it is changing:
+  # Terraform defers a data source read whenever it depends on a resource being
+  # modified, and a deferred read makes the count unknown at plan time. Merely
+  # adding an unrelated secret to the same for_each map was enough to break the
+  # plan, and a fresh account would never have planned at all, since the
+  # parameter does not exist before the first apply.
+  google_enabled       = var.google_enabled
+  google_client_id     = var.google_enabled ? one(data.aws_ssm_parameter.google_client_id[*].value) : ""
+  google_client_secret = var.google_enabled ? one(data.aws_ssm_parameter.google_client_secret[*].value) : ""
 
   pre_signup_lambda_zip = "${path.module}/../modules/cognito/pre_signup.zip"
 
@@ -163,10 +173,23 @@ module "cognito" {
   depends_on = [module.frontend]
 }
 
+# Literal paths, not references to the aws_ssm_parameter resources.
+#
+# Referencing the resource makes Terraform defer the read whenever anything
+# about that resource is changing, and a deferred read leaves provider_details
+# unknown, so every plan proposed rewriting a working identity provider with
+# values it could not show. The paths are stable and owned by this same file,
+# so the indirection bought nothing.
+#
+# Bootstrap order on a fresh account: apply with google_enabled = false, which
+# creates the parameters and reads nothing; populate them with
+# scripts/put-secrets.sh; then set google_enabled = true.
 data "aws_ssm_parameter" "google_client_id" {
-  name = aws_ssm_parameter.runtime_secret["cognito/google-client-id"].name
+  count = var.google_enabled ? 1 : 0
+  name  = "${local.ssm_base}/cognito/google-client-id"
 }
 
 data "aws_ssm_parameter" "google_client_secret" {
-  name = aws_ssm_parameter.runtime_secret["cognito/google-client-secret"].name
+  count = var.google_enabled ? 1 : 0
+  name  = "${local.ssm_base}/cognito/google-client-secret"
 }

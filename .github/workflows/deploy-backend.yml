@@ -25,7 +25,10 @@ permissions:
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: clyro-backend
-  API_HEALTH_URL: https://api.clyro.cloud/
+  # A real health endpoint, not the site root. core.views.health_check opens a
+  # database cursor, so a 200 means Django is up AND Postgres is reachable,
+  # where the root path only proved something answered.
+  API_HEALTH_URL: https://api.clyro.cloud/api/health/
 
 concurrency:
   group: deploy-backend
@@ -148,7 +151,8 @@ jobs:
             CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$API_HEALTH_URL" || echo 000)
             echo "attempt $i: $CODE"
             case "$CODE" in
-              200|301|302|401|403|404) echo "API responding with $CODE"; exit 0 ;;
+              200) echo "API healthy, database reachable"; exit 0 ;;
+              503) echo "attempt $i: Django up, database unreachable, retrying" ;;
               400) echo "::error::400 from Django, usually ALLOWED_HOSTS not covering the request host"; exit 1 ;;
             esac
             sleep 10
