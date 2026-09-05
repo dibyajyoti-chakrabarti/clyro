@@ -25,11 +25,13 @@ test.describe('Navigation', () => {
 
   test('Free and Pro CTA buttons on pricing link to /signup', async ({ page }) => {
     await page.goto('/pricing');
+    // count() does not auto-wait, so without this the tiers were counted before
+    // React had rendered them and the assertion saw zero.
+    await page.waitForLoadState('networkidle');
 
-    // Free and Pro tiers link to /signup
+    // Free and Pro tiers link to /signup, as does the navbar.
     const signupLinks = page.locator('a[href="/signup"]');
-    const count = await signupLinks.count();
-    expect(count).toBeGreaterThanOrEqual(2);
+    expect(await signupLinks.count()).toBeGreaterThanOrEqual(2);
 
     // Enterprise tier links to mailto
     const enterpriseLink = page.locator('a[href="mailto:hello@clyro.io"]');

@@ -7,9 +7,18 @@ test.describe('Smoke tests', () => {
     await expect(page).toHaveTitle('Clyro');
   });
 
-  test('backend health check returns 200', async ({ request }) => {
-    const response = await request.get('http://localhost:8000/api/hello');
+  // The API host was hardcoded to localhost, so this failed against any
+  // deployed environment. Derive it from the base URL instead: clyro.cloud is
+  // served by api.clyro.cloud, and locally the backend is on port 8000.
+  // Django is mounted under /api/, so /health/ 404s and /api/health/ is real.
+  test('backend health check returns 200', async ({ request, baseURL }) => {
+    const api = (baseURL || '').includes('localhost')
+      ? 'http://localhost:8000'
+      : (baseURL || '').replace('//', '//api.');
+
+    const response = await request.get(`${api}/api/health/`);
     expect(response.status()).toBe(200);
+    expect(await response.json()).toEqual({ status: 'ok' });
   });
 
   test('no console errors on landing page', async ({ page }) => {

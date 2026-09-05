@@ -11,12 +11,12 @@ test.describe('Login page', () => {
     await expect(heading).toHaveText('Welcome back');
   });
 
+  // /login and /signup are one page: both forms stay mounted so the transition
+  // between them can animate. A bare input[type="email"] therefore matches two
+  // elements and trips strict mode, so every field here is addressed by its id.
   test('login form has email and password fields', async ({ page }) => {
-    const emailInput = page.locator('input[type="email"]');
-    const passwordInput = page.locator('input[type="password"]');
-
-    await expect(emailInput).toBeVisible();
-    await expect(passwordInput).toBeVisible();
+    await expect(page.locator('#email-address')).toBeVisible();
+    await expect(page.locator('#password')).toBeVisible();
   });
 
   test('Google OAuth button is present', async ({ page }) => {
@@ -25,10 +25,12 @@ test.describe('Login page', () => {
     await expect(googleButton).toBeEnabled();
   });
 
-  test('GitHub OAuth button is present but disabled', async ({ page }) => {
+  // GitHub sign-in shipped once the OIDC shim was federated into Cognito, so
+  // this button is live. It used to be asserted disabled.
+  test('GitHub OAuth button is present and enabled', async ({ page }) => {
     const githubButton = page.locator('button', { hasText: 'Continue with GitHub' });
     await expect(githubButton).toBeVisible();
-    await expect(githubButton).toBeDisabled();
+    await expect(githubButton).toBeEnabled();
   });
 
   test('empty form submission stays on login page', async ({ page }) => {
@@ -54,9 +56,11 @@ test.describe('Signup page', () => {
     const heading = page.locator('h2');
     await expect(heading).toHaveText('Create your account');
 
-    // Check all form fields are present
-    await expect(page.locator('input[type="email"]')).toBeVisible();
-    await expect(page.locator('input[type="password"]').first()).toBeVisible();
+    // Scoped by id for the same reason as the login form above.
+    await expect(page.locator('#full-name')).toBeVisible();
+    await expect(page.locator('#work-email')).toBeVisible();
+    await expect(page.locator('#create-password')).toBeVisible();
+    await expect(page.locator('#confirm-password')).toBeVisible();
 
     const signUpButton = page.locator('button', { hasText: 'Sign Up' });
     await expect(signUpButton).toBeVisible();
