@@ -1,6 +1,5 @@
 provider "aws" {
-  region  = "ap-south-1"
-  profile = "clyro"
+  region = var.aws_region
 
   default_tags {
     tags = {
@@ -12,11 +11,12 @@ provider "aws" {
   }
 }
 
-# CloudFront ACM certificates must live in us-east-1
+# ACM certificates used by CloudFront must live in us-east-1, regardless of
+# where everything else runs. The Cognito custom domain has the same
+# constraint, because it is itself fronted by CloudFront.
 provider "aws" {
-  alias   = "useast1"
-  region  = "us-east-1"
-  profile = "clyro"
+  alias  = "useast1"
+  region = "us-east-1"
 
   default_tags {
     tags = {

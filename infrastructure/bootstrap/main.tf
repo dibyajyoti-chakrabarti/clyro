@@ -1,3 +1,16 @@
+# Bootstrap: the S3 bucket that holds every other layer's remote state.
+#
+# This layer keeps its state on local disk, because it is the thing that
+# creates the remote backend. It is applied once and then left alone.
+#
+# Credentials come from the AWS_PROFILE environment variable, not a hardcoded
+# `profile` argument. The previous version pinned profile = "clyro", which does
+# not exist on any current machine, so every plan failed before it started.
+# Run this layer as:
+#
+#   export AWS_PROFILE=home
+#   terraform -chdir=infrastructure/bootstrap apply
+
 terraform {
   required_version = ">= 1.6"
   required_providers {
@@ -10,20 +23,26 @@ terraform {
 }
 
 provider "aws" {
-  region  = "ap-south-1"
-  profile = "clyro"
+  region = local.region
 }
+
+data "aws_caller_identity" "current" {}
 
 locals {
   project = "clyro"
   env     = "prod"
-  bucket  = "${local.project}-terraform-state-${local.env}"
-  table   = "${local.project}-terraform-locks-${local.env}"
+  region  = "ap-south-1"
+
+  # Account 469465348250 also hosts an unrelated product (Structra), so every
+  # name this project creates carries the clyro- prefix. The account id and
+  # region are in the bucket name because S3 names are globally unique.
+  bucket = "${local.project}-tfstate-${data.aws_caller_identity.current.account_id}-${local.region}"
 
   tags = {
     Project     = local.project
     Environment = local.env
     ManagedBy   = "Terraform"
+    Layer       = "bootstrap"
   }
 }
 
@@ -57,15 +76,30 @@ resource "aws_s3_bucket_public_access_block" "state" {
   restrict_public_buckets = true
 }
 
-resource "aws_dynamodb_table" "locks" {
-  name         = local.table
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
+# Versioning is on so a corrupted state can be rolled back, but every applied
+# change writes a new version and nothing ever removes the old ones. Without
+# this rule the bucket grows without limit; 90 days is far longer than any
+# realistic "roll back the state file" window.
+resource "aws_s3_bucket_lifecycle_configuration" "state" {
+  bucket = aws_s3_bucket.state.id
 
-  attribute {
-    name = "LockID"
-    type = "S"
+  rule {
+    id     = "expire-noncurrent-state-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
   }
-
-  tags = local.tags
 }
+
+# The DynamoDB lock table that used to live here is gone. Terraform 1.10+
+# supports S3-native state locking via `use_lockfile = true`, which the
+# foundation backend already sets, so the table was a second billed resource
+# doing a job S3 now does by itself.
