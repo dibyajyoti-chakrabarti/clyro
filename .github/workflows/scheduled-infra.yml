@@ -1,0 +1,91 @@
+name: Scheduled Infra
+
+# Stops the box overnight and starts it again in the morning.
+#
+# This replaces two separate workflows that scaled an ECS service, stopped an
+# RDS instance and stopped a NAT box. None of those exist any more, which is
+# why both had been failing every single run. With one instance the whole thing
+# is one API call in each direction.
+#
+# The instance is resolved by tag, never from a repository secret. A hardcoded
+# EC2_INSTANCE_ID went stale when the box was replaced and broke the nightly
+# shutdown silently for weeks.
+
+on:
+  schedule:
+    # Times are UTC. 03:30 UTC is 09:00 IST, 15:30 UTC is 21:00 IST.
+    - cron: '30 3 * * *'
+    - cron: '30 15 * * *'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        required: true
+        default: start
+        type: choice
+        options: [start, stop]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  INSTANCE_NAME: clyro-prod-app
+
+concurrency:
+  group: scheduled-infra
+  cancel-in-progress: false
+
+jobs:
+  toggle:
+    name: Start or stop the instance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Decide action
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ACTION="${{ inputs.action }}"
+          elif [ "${{ github.event.schedule }}" = "30 3 * * *" ]; then
+            ACTION=start
+          else
+            ACTION=stop
+          fi
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "Action: $ACTION"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Toggle
+        run: |
+          set -euo pipefail
+          ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=${INSTANCE_NAME}" \
+                      "Name=instance-state-name,Values=running,stopped,stopping,pending" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+
+          if [ "$ID" = "None" ] || [ -z "$ID" ]; then
+            echo "::error::No instance tagged Name=${INSTANCE_NAME}"
+            exit 1
+          fi
+
+          STATE=$(aws ec2 describe-instances --instance-ids "$ID" \
+            --query 'Reservations[0].Instances[0].State.Name' --output text)
+          echo "$ID is currently $STATE"
+
+          # Both calls are idempotent, but skipping the no-op keeps the log
+          # honest about whether anything actually changed.
+          case "${{ steps.decide.outputs.action }}:$STATE" in
+            start:running) echo "Already running, nothing to do" ;;
+            stop:stopped)  echo "Already stopped, nothing to do" ;;
+            start:*)       aws ec2 start-instances --instance-ids "$ID" >/dev/null
+                           echo "Starting; the Elastic IP reattaches on its own, so DNS does not change" ;;
+            stop:*)        aws ec2 stop-instances --instance-ids "$ID" >/dev/null
+                           echo "Stopping" ;;
+          esac

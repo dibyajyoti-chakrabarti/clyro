@@ -1,10 +1,20 @@
 name: Deploy Backend
 
+# Builds the Django image, pushes it to ECR, then asks the instance to pull and
+# restart through SSM. No inbound port is opened and no SSH key exists: the
+# deploy is a Systems Manager command, and the role that runs it can send that
+# one document to that one instance and nothing else.
+
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:
     inputs:
       image_tag:
-        description: Docker image tag (defaults to short SHA)
+        description: Image tag (defaults to the short SHA)
         required: false
         default: ""
 
@@ -14,16 +24,18 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  ECR_REGISTRY: 321613317660.dkr.ecr.ap-south-1.amazonaws.com
   ECR_REPOSITORY: clyro-backend
-  FUNCTION_NAME: clyro-prod-backend
-  ECS_CLUSTER: clyro-prod-celery-cluster
-  ECS_SERVICE: clyro-prod-celery-worker
+  API_HEALTH_URL: https://api.clyro.cloud/
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Build, Push & Deploy to Lambda
+    name: Build, push, restart
     runs-on: ubuntu-latest
+    environment: prod
 
     steps:
       - name: Checkout
@@ -32,109 +44,116 @@ jobs:
       - name: Resolve image tag
         id: tag
         run: |
-          TAG="${{ github.event.inputs.image_tag }}"
-          if [ -z "$TAG" ]; then
-            TAG="${{ github.sha }}"
-            TAG="${TAG:0:7}"
-          fi
+          TAG="${{ inputs.image_tag }}"
+          [ -z "$TAG" ] && TAG="${GITHUB_SHA:0:7}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Using image tag: $TAG"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.GH_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to ECR
-        id: login-ecr
+      - name: Resolve instance and registry
+        id: infra
+        run: |
+          # Read from AWS rather than from repository secrets. A hardcoded
+          # instance id went stale when the box was last replaced and broke the
+          # scheduled shutdown silently for weeks.
+          ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=clyro-prod-app" \
+                      "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [ "$ID" = "None" ] || [ -z "$ID" ]; then
+            echo "No running clyro-prod-app instance found" >&2
+            exit 1
+          fi
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          echo "instance_id=$ID" >> "$GITHUB_OUTPUT"
+          echo "registry=${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build & push Lambda image
-        working-directory: backend
-        env:
-          IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
-          TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          docker build -f Dockerfile.lambda -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
-          docker push "$IMAGE:$TAG"
-          docker push "$IMAGE:latest"
-          echo "✓ Pushed $IMAGE:$TAG"
+      # The instance is Graviton, so the image has to be arm64. GitHub's hosted
+      # runners are x86, hence QEMU. It is slow (several minutes for a Python
+      # dependency install), and the faster fix later is an arm64 runner rather
+      # than dropping back to an x86 instance.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
-      - name: Update Lambda function code
-        env:
-          IMAGE: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}
-          TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          aws lambda update-function-code \
-            --function-name "${{ env.FUNCTION_NAME }}" \
-            --image-uri "$IMAGE:$TAG" \
-            --output json | jq '{FunctionName, LastUpdateStatus}'
-          aws lambda wait function-updated --function-name "${{ env.FUNCTION_NAME }}"
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Switch Lambda to migration handler
-        run: |
-          aws lambda update-function-configuration \
-            --function-name "${{ env.FUNCTION_NAME }}" \
-            --image-config '{"Command":["migrate_handler.handler"]}' \
-            --output json | jq '{FunctionName, LastUpdateStatus}'
-          aws lambda wait function-updated --function-name "${{ env.FUNCTION_NAME }}"
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.infra.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
+            ${{ steps.infra.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          # Layer cache in the registry itself, so a dependency install is not
+          # repeated on every deploy that only changes application code.
+          cache-from: type=registry,ref=${{ steps.infra.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache
+          cache-to: type=registry,ref=${{ steps.infra.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache,mode=max
 
-      - name: Run migrations
+      # Reuses the same script cloud-init wrote and runs on first boot, so the
+      # deploy path and the build-from-scratch path cannot drift apart.
+      - name: Restart containers on the instance
+        id: restart
         run: |
-          aws lambda invoke \
-            --function-name "${{ env.FUNCTION_NAME }}" \
-            --payload '{}' \
-            --cli-binary-format raw-in-base64-out \
-            /tmp/migrate-result.json
-          cat /tmp/migrate-result.json
-          if grep -q '"errorMessage"' /tmp/migrate-result.json; then
-            echo "Migration invocation failed" >&2
+          CMD=$(aws ssm send-command \
+            --instance-ids "${{ steps.infra.outputs.instance_id }}" \
+            --document-name AWS-RunShellScript \
+            --timeout-seconds 600 \
+            --comment "deploy ${{ steps.tag.outputs.tag }}" \
+            --parameters 'commands=["/opt/clyro/up.sh"]' \
+            --query 'Command.CommandId' --output text)
+          echo "Command: $CMD"
+          aws ssm wait command-executed \
+            --command-id "$CMD" \
+            --instance-id "${{ steps.infra.outputs.instance_id }}" || true
+          STATUS=$(aws ssm get-command-invocation --command-id "$CMD" \
+            --instance-id "${{ steps.infra.outputs.instance_id }}" \
+            --query Status --output text)
+          aws ssm get-command-invocation --command-id "$CMD" \
+            --instance-id "${{ steps.infra.outputs.instance_id }}" \
+            --query StandardOutputContent --output text
+          if [ "$STATUS" != "Success" ]; then
+            echo "::error::SSM command finished as $STATUS"
+            aws ssm get-command-invocation --command-id "$CMD" \
+              --instance-id "${{ steps.infra.outputs.instance_id }}" \
+              --query StandardErrorContent --output text
             exit 1
           fi
 
-      - name: Revert Lambda to API handler
+      # A deploy that pushed an image and restarted a container it cannot reach
+      # has not deployed anything. compose up returning 0 only means the
+      # container started, not that Django is answering.
+      - name: Wait for the API to answer
+        run: |
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$API_HEALTH_URL" || echo 000)
+            echo "attempt $i: $CODE"
+            case "$CODE" in
+              2*|3*|40*) echo "API responding with $CODE"; exit 0 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::API never responded after 5 minutes"
+          exit 1
+
+      - name: Summary
         if: always()
         run: |
-          aws lambda update-function-configuration \
-            --function-name "${{ env.FUNCTION_NAME }}" \
-            --image-config '{"Command":["lambda_handler.handler"]}' \
-            --output json | jq '{FunctionName, LastUpdateStatus}'
-          aws lambda wait function-updated --function-name "${{ env.FUNCTION_NAME }}"
-
-      # The celery worker runs the SAME image as the Lambda but is deployed by
-      # ECS, which had no step here at all — so it kept running whatever
-      # `latest` pointed at when its task last started. It drifted to two weeks
-      # behind the Lambda and started throwing
-      #   KeyError: 'app.tasks.run_delete_project_task'
-      # on tasks the newer Lambda enqueued. The task definition tracks the
-      # mutable `latest` tag that the build step above just re-pushed, so
-      # forcing a new deployment is all that's needed to pull the worker back
-      # in step with the API.
-      - name: Redeploy celery worker on the new image
-        run: |
-          DESIRED=$(aws ecs describe-services \
-            --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}" \
-            --query 'services[0].desiredCount' --output text)
-          if [ "$DESIRED" = "0" ]; then
-            echo "celery worker is scaled to 0 (outside the 9AM-9PM window) — "
-            echo "skipping force-deploy; it will start on the new image at 9AM."
-            exit 0
-          fi
-          aws ecs update-service \
-            --cluster "${{ env.ECS_CLUSTER }}" \
-            --service "${{ env.ECS_SERVICE }}" \
-            --force-new-deployment \
-            --query 'service.{name:serviceName,desired:desiredCount}'
-          echo "Waiting for the worker to reach steady state…"
-          aws ecs wait services-stable \
-            --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}"
-          echo "✓ celery worker redeployed"
-
-      - name: Verify deployed image
-        run: |
-          aws lambda get-function --function-name "${{ env.FUNCTION_NAME }}" \
-            --query 'Code.ImageUri' --output text
-          aws ecs describe-services \
-            --cluster "${{ env.ECS_CLUSTER }}" --services "${{ env.ECS_SERVICE }}" \
-            --query 'services[0].{desired:desiredCount,running:runningCount,taskDef:taskDefinition}'
+          {
+            echo "### Backend deploy"
+            echo
+            echo "- Tag: \`${{ steps.tag.outputs.tag }}\`"
+            echo "- Instance: \`${{ steps.infra.outputs.instance_id }}\`"
+            echo "- Endpoint: ${API_HEALTH_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
