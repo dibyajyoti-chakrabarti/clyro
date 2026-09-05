@@ -1,0 +1,143 @@
+name: Deploy Agents
+
+# The agentic layer: the three MCP tool Lambdas, and the two AgentCore runtimes
+# that Step 3 (canvas) and Step 4 (IaC) call.
+#
+# This exists because the agents were the one part of the estate that had no CI
+# path at all. Everything else moved to Terraform plus Actions during the
+# account migration; the agents stayed a laptop script, so when the account
+# changed they simply did not come with it. Rebuilding them by hand is how they
+# get missed a second time.
+#
+# The MCP job runs first and on its own, because the AgentCore gateway targets
+# the Lambda ARNs it prints. Both jobs are idempotent: re-running creates what
+# is absent and updates what is present.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/mcp/**'
+      - 'backend/agents/**'
+      - '.github/workflows/deploy-agents.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: What to deploy
+        required: true
+        default: mcp
+        type: choice
+        options: [mcp, agentcore, both]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+
+concurrency:
+  group: deploy-agents
+  cancel-in-progress: false
+
+jobs:
+  mcp:
+    name: MCP tool Lambdas
+    # A push touching only backend/agents does not need the Lambdas rebuilt,
+    # but telling those apart cheaply is not worth the branching: the build is
+    # a few minutes and the result is identical.
+    if: github.event_name != 'workflow_dispatch' || inputs.target != 'agentcore'
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # The Terraform role, not the deploy role. The deploy role can push
+          # to exactly one ECR repository and cannot touch Lambda or IAM, which
+          # is correct for a container restart and useless here.
+          role-to-assume: ${{ secrets.GH_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy the MCP Lambdas
+        working-directory: backend/mcp
+        run: ./deploy_mcp.sh
+
+      - name: Publish the Lambda ARNs
+        working-directory: backend/mcp
+        run: |
+          set -euo pipefail
+          # deploy_mcp.sh writes arns.env. Park the ARNs in SSM so the
+          # AgentCore job, and a human reading the console, can find them
+          # without re-deriving them from the account id.
+          while IFS='=' read -r KEY VALUE; do
+            [ -z "${KEY:-}" ] && continue
+            # CLYRO_MCP_PRICING_ARN -> /clyro/prod/mcp/pricing
+            NAME=$(echo "$KEY" | sed 's/^CLYRO_MCP_//; s/_ARN$//' | tr 'A-Z' 'a-z')
+            aws ssm put-parameter \
+              --name "/clyro/prod/mcp/${NAME}" \
+              --value "$VALUE" --type String --overwrite >/dev/null
+            echo "published /clyro/prod/mcp/${NAME}"
+          done < arns.env
+
+      - name: Smoke-test each Lambda
+        run: |
+          set -euo pipefail
+          # A Lambda that deploys but cannot be invoked is not deployed. This
+          # only proves the image starts and the runtime answers; the tool
+          # contract itself is exercised by the wizard tests.
+          FAILED=0
+          for NAME in pricing cfn docs; do
+            FN="clyro-mcp-${NAME}"
+            printf '%-24s ' "$FN"
+            if aws lambda invoke --function-name "$FN" \
+                 --payload '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+                 --cli-binary-format raw-in-base64-out \
+                 /tmp/out.json >/tmp/meta.json 2>/tmp/err.txt; then
+              if grep -q FunctionError /tmp/meta.json; then
+                echo "invoked but the handler errored"
+                head -c 400 /tmp/out.json; echo
+                FAILED=1
+              else
+                echo "ok"
+              fi
+            else
+              echo "invoke failed"
+              head -c 400 /tmp/err.txt; echo
+              FAILED=1
+            fi
+          done
+          exit $FAILED
+
+  agentcore:
+    name: AgentCore runtimes
+    if: github.event_name == 'workflow_dispatch' && inputs.target != 'mcp'
+    needs: [mcp]
+    # `needs` alone would skip this job whenever the MCP job is skipped, which
+    # is exactly the agentcore-only case this input exists for.
+    #
+    # NOTE: this job is a placeholder and deliberately fails. The AgentCore
+    # deploy still depends on the `agentcore` CLI generating a project scaffold
+    # (agentcore.json and the CDK lib/) that is gitignored, so there is nothing
+    # in the repository for CI to apply. Committing the generated scaffold, or
+    # replacing it with Terraform, is the decision that unblocks this. Failing
+    # loudly beats a green job that deployed nothing.
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Not yet wired
+        run: |
+          echo "::error::The AgentCore deploy has no committed scaffold to apply."
+          echo "backend/agents/*/agentcore/ holds only agentcore.json.example;"
+          echo "the working agentcore.json and the CDK lib/ are gitignored, so"
+          echo "they exist on whichever laptop last ran 'agentcore create'."
+          echo
+          echo "Unblock by either committing the generated scaffold with the"
+          echo "account id read from SSM at deploy time, or by expressing the"
+          echo "runtimes and gateway as Terraform in the foundation layer."
+          exit 1

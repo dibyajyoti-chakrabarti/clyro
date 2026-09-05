@@ -4,7 +4,7 @@
 # functions, their IAM roles, and their ECR repos (images included). Idempotent:
 # anything already gone is skipped. Also removes the local arns.env.
 #
-# This only deletes the crylo-mcp-{pricing,cfn,docs} resources by exact name —
+# This only deletes the clyro-mcp-{pricing,cfn,docs} resources by exact name —
 # it never touches anything else in the account.
 #
 # Usage:
@@ -29,7 +29,7 @@ mask() { printf '%s' "$1" | sed "s/${ACCOUNT_ID}/${ACCOUNT_MASKED}/g"; }
 echo "==> Account ${ACCOUNT_MASKED}  Region ${AWS_REGION}"
 echo "==> Will DELETE these resources (Lambda + role + ECR repo each):"
 for name in "${NAMES[@]}"; do
-  echo "      crylo-mcp-${name}  /  crylo-mcp-${name}-role  /  ecr:crylo-mcp-${name}"
+  echo "      clyro-mcp-${name}  /  clyro-mcp-${name}-role  /  ecr:clyro-mcp-${name}"
 done
 
 if [[ "$ASSUME_YES" != "1" ]]; then
@@ -55,9 +55,9 @@ delete_role() {
 }
 
 for name in "${NAMES[@]}"; do
-  fn="crylo-mcp-${name}"
-  role="crylo-mcp-${name}-role"
-  repo="crylo-mcp-${name}"
+  fn="clyro-mcp-${name}"
+  role="clyro-mcp-${name}-role"
+  repo="clyro-mcp-${name}"
 
   echo ""
   echo "==> [${name}] teardown"

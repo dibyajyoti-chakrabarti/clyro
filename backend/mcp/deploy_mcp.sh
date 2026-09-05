@@ -87,9 +87,9 @@ ensure_role() {
 # deploy_one <dir> <repo/function suffix> <inline_policy_json_or_empty>
 deploy_one() {
   local dir="$1" name="$2" inline_policy="$3"
-  local repo="crylo-mcp-${name}"
-  local fn="crylo-mcp-${name}"
-  local role="crylo-mcp-${name}-role"
+  local repo="clyro-mcp-${name}"
+  local fn="clyro-mcp-${name}"
+  local role="clyro-mcp-${name}-role"
   local image_uri="${ECR_REGISTRY}/${repo}:latest"
 
   echo ""
@@ -159,7 +159,7 @@ deploy_one() {
   fn_arn="$(aws lambda get-function --function-name "$fn" \
             --query Configuration.FunctionArn --output text)"
   echo "    => ${name} Lambda ARN: $(mask "$fn_arn")"
-  echo "CRYLO_MCP_${name^^}_ARN=${fn_arn}" >> "$ARNS_OUT"
+  echo "CLYRO_MCP_${name^^}_ARN=${fn_arn}" >> "$ARNS_OUT"
 }
 
 # ---- least-priv inline policies --------------------------------------------

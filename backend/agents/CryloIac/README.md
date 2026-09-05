@@ -39,5 +39,5 @@ agentcore deploy
 
 After deploy, bind **`CryloIacGw`** to the `IacArchitect` runtime so
 `AGENTCORE_GATEWAY_CRYLOIACGW_URL` is injected, and set `IAC_RUNTIME_ARN` in
-`backend/.env.local`. The `crylo-mcp-cfn` Lambda must be redeployed too (its
+`backend/.env.local`. The `clyro-mcp-cfn` Lambda must be redeployed too (its
 `ALLOWED_TOOLS` now permits the full toolset).

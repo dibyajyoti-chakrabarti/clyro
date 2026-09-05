@@ -143,15 +143,15 @@ source ../../mcp/arns.env
 agentcore add gateway --name CryloCanvasGw --authorizer-type NONE
 
 agentcore add gateway-target --gateway CryloCanvasGw --name pricing \
-  --type lambda-function-arn --lambda-arn "$CRYLO_MCP_PRICING_ARN" \
+  --type lambda-function-arn --lambda-arn "$CLYRO_MCP_PRICING_ARN" \
   --tool-schema-file ../../mcp/pricing/tools.json
 
 agentcore add gateway-target --gateway CryloCanvasGw --name cfn \
-  --type lambda-function-arn --lambda-arn "$CRYLO_MCP_CFN_ARN" \
+  --type lambda-function-arn --lambda-arn "$CLYRO_MCP_CFN_ARN" \
   --tool-schema-file ../../mcp/cfn/tools.json
 
 agentcore add gateway-target --gateway CryloCanvasGw --name docs \
-  --type lambda-function-arn --lambda-arn "$CRYLO_MCP_DOCS_ARN" \
+  --type lambda-function-arn --lambda-arn "$CLYRO_MCP_DOCS_ARN" \
   --tool-schema-file ../../mcp/docs/tools.json
 
 agentcore deploy        # Reasoning picks up AGENTCORE_GATEWAY_CRYLOCANVASGW_URL

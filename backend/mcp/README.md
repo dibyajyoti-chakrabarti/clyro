@@ -32,7 +32,7 @@ tools (see each `tools.json`):
 ## How a call flows
 
 ```
-Reasoning agent ──MCP──► AgentCore Gateway ──Lambda invoke──► crylo-mcp-<name>
+Reasoning agent ──MCP──► AgentCore Gateway ──Lambda invoke──► clyro-mcp-<name>
                                                                   │
    event = tool arguments JSON                                    │ handler.py:
    context.client_context.custom["bedrockAgentCoreToolName"]      │  - strip "<target>___" prefix
@@ -81,8 +81,8 @@ Optional: run a built image under the Lambda Runtime Interface Emulator and
 invoke it with a client-context header:
 
 ```bash
-docker build --platform linux/amd64 -t crylo-mcp-docs:test backend/mcp/docs
-docker run -d --name rie -p 9009:8080 crylo-mcp-docs:test
+docker build --platform linux/amd64 -t clyro-mcp-docs:test backend/mcp/docs
+docker run -d --name rie -p 9009:8080 clyro-mcp-docs:test
 CC=$(printf '{"custom":{"bedrockAgentCoreToolName":"docs___search_documentation"}}' | base64 -w0)
 curl -s -XPOST localhost:9009/2015-03-31/functions/function/invocations \
   -H "X-Amz-Client-Context: $CC" -d '{"search_phrase":"S3","limit":1}'
@@ -103,15 +103,15 @@ cd backend/mcp
 ```
 
 The script is idempotent (create on first run, update after). It builds each
-image for `linux/amd64`, pushes to ECR (`crylo-mcp-<name>`), creates a
-least-priv role (`crylo-mcp-<name>-role`), creates/updates the Lambda
-(`crylo-mcp-<name>`), allows the AgentCore Gateway service principal to invoke
+image for `linux/amd64`, pushes to ECR (`clyro-mcp-<name>`), creates a
+least-priv role (`clyro-mcp-<name>-role`), creates/updates the Lambda
+(`clyro-mcp-<name>`), allows the AgentCore Gateway service principal to invoke
 it, and writes the 3 ARNs to `backend/mcp/arns.env`:
 
 ```
-CRYLO_MCP_PRICING_ARN=arn:aws:lambda:ap-south-1:...:function:crylo-mcp-pricing
-CRYLO_MCP_CFN_ARN=arn:aws:lambda:ap-south-1:...:function:crylo-mcp-cfn
-CRYLO_MCP_DOCS_ARN=arn:aws:lambda:ap-south-1:...:function:crylo-mcp-docs
+CLYRO_MCP_PRICING_ARN=arn:aws:lambda:ap-south-1:...:function:clyro-mcp-pricing
+CLYRO_MCP_CFN_ARN=arn:aws:lambda:ap-south-1:...:function:clyro-mcp-cfn
+CLYRO_MCP_DOCS_ARN=arn:aws:lambda:ap-south-1:...:function:clyro-mcp-docs
 ```
 
 > Region: defaults to **ap-south-1** (Mumbai) — verified to support Lambda, ECR,
@@ -136,13 +136,13 @@ After creating the gateway (`agentcore add gateway --name CryloCanvasGw`):
 
 ```bash
 agentcore add gateway-target --gateway CryloCanvasGw \
-  --type lambda-function-arn --arn "$CRYLO_MCP_PRICING_ARN" \
+  --type lambda-function-arn --arn "$CLYRO_MCP_PRICING_ARN" \
   --schema backend/mcp/pricing/tools.json
 agentcore add gateway-target --gateway CryloCanvasGw \
-  --type lambda-function-arn --arn "$CRYLO_MCP_CFN_ARN" \
+  --type lambda-function-arn --arn "$CLYRO_MCP_CFN_ARN" \
   --schema backend/mcp/cfn/tools.json
 agentcore add gateway-target --gateway CryloCanvasGw \
-  --type lambda-function-arn --arn "$CRYLO_MCP_DOCS_ARN" \
+  --type lambda-function-arn --arn "$CLYRO_MCP_DOCS_ARN" \
   --schema backend/mcp/docs/tools.json
 ```
 

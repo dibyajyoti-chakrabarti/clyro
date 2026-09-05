@@ -41,5 +41,5 @@ returned template (cfn-lint in-process) as the authoritative validation.
 
 `agentcore deploy` deploys the runtime and the `CryloIacGw` gateway. Bind that
 gateway to this runtime so its MCP URL (`AGENTCORE_GATEWAY_CRYLOIACGW_URL`) is
-injected, then set `IAC_RUNTIME_ARN` in `backend/.env.local`. The `crylo-mcp-cfn`
+injected, then set `IAC_RUNTIME_ARN` in `backend/.env.local`. The `clyro-mcp-cfn`
 Lambda must be redeployed too (its `ALLOWED_TOOLS` now permits the full toolset).

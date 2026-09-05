@@ -1,21 +1,17 @@
-name: Scheduled Infra
+name: Infra Power
 
-# Stops the box overnight and starts it again in the morning.
+# Starts and stops the one EC2 box, on request only.
 #
-# This replaces two separate workflows that scaled an ECS service, stopped an
-# RDS instance and stopped a NAT box. None of those exist any more, which is
-# why both had been failing every single run. With one instance the whole thing
-# is one API call in each direction.
+# This used to run on a 09:00 / 21:00 IST cron. The schedule is gone: a box
+# that stops itself overnight kept ending demos and test runs midway, and
+# nobody could tell a deliberate shutdown from a failure. Power is now an
+# explicit act, so the box stays exactly as it was last left.
 #
 # The instance is resolved by tag, never from a repository secret. A hardcoded
 # EC2_INSTANCE_ID went stale when the box was replaced and broke the nightly
 # shutdown silently for weeks.
 
 on:
-  schedule:
-    # Times are UTC. 03:30 UTC is 09:00 IST, 15:30 UTC is 21:00 IST.
-    - cron: '30 3 * * *'
-    - cron: '30 15 * * *'
   workflow_dispatch:
     inputs:
       action:
@@ -34,7 +30,7 @@ env:
   INSTANCE_NAME: clyro-prod-app
 
 concurrency:
-  group: scheduled-infra
+  group: infra-power
   cancel-in-progress: false
 
 jobs:
@@ -43,19 +39,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Decide action
-        id: decide
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ACTION="${{ inputs.action }}"
-          elif [ "${{ github.event.schedule }}" = "30 3 * * *" ]; then
-            ACTION=start
-          else
-            ACTION=stop
-          fi
-          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
-          echo "Action: $ACTION"
-
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -81,7 +64,7 @@ jobs:
 
           # Both calls are idempotent, but skipping the no-op keeps the log
           # honest about whether anything actually changed.
-          case "${{ steps.decide.outputs.action }}:$STATE" in
+          case "${{ inputs.action }}:$STATE" in
             start:running) echo "Already running, nothing to do" ;;
             stop:stopped)  echo "Already stopped, nothing to do" ;;
             start:*)       aws ec2 start-instances --instance-ids "$ID" >/dev/null

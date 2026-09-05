@@ -31,7 +31,7 @@
           "name": "cfn",
           "targetType": "lambdaFunctionArn",
           "lambdaFunctionArn": {
-            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:crylo-mcp-cfn",
+            "lambdaArn": "arn:aws:lambda:ap-south-1:<ACCOUNT_ID>:function:clyro-mcp-cfn",
             "toolSchemaFile": "../../mcp/cfn/tools.iac.json"
           }
         }

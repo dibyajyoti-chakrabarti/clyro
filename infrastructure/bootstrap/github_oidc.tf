@@ -142,6 +142,17 @@ data "aws_iam_policy_document" "terraform_build" {
       "logs:*",        # log groups for the above
       "cloudwatch:*",  # alarms
       "dlm:*",         # nightly EBS snapshot lifecycle policy
+
+      # The agentic layer. Its runtimes, gateways and memory are the product's
+      # AI spine, and none of it survived the account move, so CI has to be
+      # able to rebuild it rather than leaving one estate to a laptop.
+      "bedrock-agentcore:*",
+      "bedrock:GetFoundationModel",
+      "bedrock:ListFoundationModels",
+
+      # The pricing MCP tool's own Lambda calls this; CI reads it to smoke-test
+      # the tool after a deploy.
+      "pricing:GetProducts",
       "kms:Describe*", # reading the aws/ssm managed key
       "tag:GetResources",
       "sts:GetCallerIdentity",
@@ -247,6 +258,9 @@ data "aws_iam_policy_document" "terraform_build" {
         "ec2.amazonaws.com",
         "lambda.amazonaws.com",
         "dlm.amazonaws.com",
+        # AgentCore runtimes and gateways run under an execution role that CI
+        # passes to them at create time.
+        "bedrock-agentcore.amazonaws.com",
       ]
     }
   }
