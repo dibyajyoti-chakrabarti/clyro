@@ -1,24 +1,65 @@
+# ── Runtime configuration and secrets ────────────────────────────────────────
+#
+# Everything lives in SSM Parameter Store. Standard parameters are free, where
+# Secrets Manager bills $0.40 per secret per month, and the application is the
+# only consumer.
+#
+# The old design split these across both services and kept the database
+# password in Secrets Manager for a specific reason: it was the `password`
+# argument of an aws_db_instance, so moving it would have rotated the master
+# password on a live database. That reason is gone. Postgres now runs as a
+# container on the instance, so nothing in AWS owns the password and there is
+# no longer anything to keep in Secrets Manager. All four Secrets Manager
+# secrets the old foundation created are deleted.
+#
+# Terraform owns each parameter but NOT its value. `ignore_changes` on value
+# means an apply will never overwrite what is actually stored, which is what
+# makes the placeholder below safe: the parameter is created empty-ish here and
+# filled in out of band, once, with scripts/put-secrets.sh.
+
 locals {
-  ssm_base = "/${var.project}/${var.environment}"
+  # Secrets the application reads at start up. Terraform creates the container
+  # and never the content.
+  #
+  # The first two paths are load-bearing: backend/config/aws_secrets.py builds
+  # them by appending "/django/secret-key" and "/github/app-pem" to
+  # CLYRO_SSM_PREFIX. Renaming either one breaks the backend at import time.
+  runtime_secrets = {
+    "django/secret-key" = "Django SECRET_KEY"
+    "github/app-pem"    = "GitHub App private key, PEM encoded"
+
+    # Consumed by the postgres container and by the Django DATABASE_URL. Under
+    # the old design this was an RDS master password in Secrets Manager.
+    "db/password" = "Postgres password for the containerised database"
+
+    # Minted by hand in the Google Cloud Console, so Terraform reads these
+    # rather than owning them. They were previously a single JSON blob in
+    # Secrets Manager that Terraform decoded at plan time; a plan that could
+    # not read it failed before it could show a diff.
+    "cognito/google-client-id"     = "Google OAuth client id for the Cognito IdP"
+    "cognito/google-client-secret" = "Google OAuth client secret for the Cognito IdP"
+  }
 }
 
-resource "aws_ssm_parameter" "cognito_user_pool_id" {
-  name  = "${local.ssm_base}/cognito/user_pool_id"
-  type  = "String"
-  value = module.cognito.user_pool_id
+resource "aws_ssm_parameter" "runtime_secret" {
+  for_each = local.runtime_secrets
+
+  name        = "${local.ssm_base}/${each.key}"
+  description = "${each.value} — value managed out of band, not by Terraform"
+  type        = "SecureString"
+  value       = "PENDING"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
-resource "aws_ssm_parameter" "cognito_client_id" {
-  name  = "${local.ssm_base}/cognito/client_id"
-  type  = "String"
-  value = module.cognito.client_id
-}
-
-resource "aws_ssm_parameter" "cognito_domain" {
-  name  = "${local.ssm_base}/cognito/domain"
-  type  = "String"
-  value = module.cognito.domain
-}
+# ── Non-secret configuration ─────────────────────────────────────────────────
+#
+# Plain String parameters, owned by Terraform value and all, because they are
+# derived from settings in this repo rather than entered by a human. The
+# Cognito and ECR parameters that used to sit here come back in the next phase,
+# when the resources they point at exist again.
 
 resource "aws_ssm_parameter" "aws_region" {
   name  = "${local.ssm_base}/aws/region"
@@ -36,49 +77,4 @@ resource "aws_ssm_parameter" "app_url" {
   name  = "${local.ssm_base}/app/url"
   type  = "String"
   value = "https://${var.domain}"
-}
-
-resource "aws_ssm_parameter" "ecr_backend_url" {
-  name  = "${local.ssm_base}/ecr/backend_url"
-  type  = "String"
-  value = module.ecr.repo_urls["backend"]
-}
-
-# ── Runtime secrets (SecureString) ──────────────────────────────────────────
-#
-# Read at cold start by backend/config/aws_secrets.py. They live here rather
-# than in Secrets Manager because only the application consumes them, and
-# standard Parameter Store parameters are free where Secrets Manager bills
-# $0.40/secret/month. (The RDS master password stays in Secrets Manager: it is
-# the `password` argument of the aws_db_instance itself, so relocating it would
-# rotate the master password on a live database.)
-#
-# Terraform owns the parameter, NOT its value — `ignore_changes` means an apply
-# will never overwrite what is actually stored. This is why the placeholder
-# below is safe, unlike the "REPLACE_ME" default that used to sit on the Cognito
-# Google client_id: that one had no ignore_changes, so every apply really did
-# write it over the live value.
-#
-# Populate both, once, with:
-#   infrastructure/scripts/migrate-secrets-to-ssm.sh
-resource "aws_ssm_parameter" "django_secret_key" {
-  name        = "${local.ssm_base}/django/secret-key"
-  description = "Django SECRET_KEY — value managed out-of-band, not by Terraform"
-  type        = "SecureString"
-  value       = "PENDING_MIGRATION"
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
-
-resource "aws_ssm_parameter" "github_app_pem" {
-  name        = "${local.ssm_base}/github/app-pem"
-  description = "GitHub App private key PEM — value managed out-of-band, not by Terraform"
-  type        = "SecureString"
-  value       = "PENDING_MIGRATION"
-
-  lifecycle {
-    ignore_changes = [value]
-  }
 }

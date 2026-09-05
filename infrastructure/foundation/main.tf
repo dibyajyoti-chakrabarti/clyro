@@ -1,41 +1,31 @@
-module "networking" {
-  source = "../modules/networking"
+# ── Phase 1: DNS, certificates, and secret storage ───────────────────────────
+#
+# Everything that has to exist and be verified before any compute is worth
+# building: the hosted zone, the delegation from the registrar, one wildcard
+# certificate, and the parameters the application reads at start up.
+#
+# The EC2 box, Cognito, the frontends and the CI deploy role land in the next
+# phase, against the single-instance design.
 
-  project             = var.project
-  environment         = var.environment
-  vpc_cidr            = var.vpc_cidr
-  public_subnet_cidrs = var.public_subnet_cidrs
-  private_app_cidrs   = var.private_app_cidrs
-  private_data_cidrs  = var.private_data_cidrs
-  availability_zones  = var.availability_zones
-}
-
-module "monitoring" {
-  source = "../modules/monitoring"
-
-  project     = var.project
-  environment = var.environment
-  account_id  = var.account_id
-  aws_region  = var.aws_region
-}
-
-module "ecr" {
-  source = "../modules/ecr"
-
-  project     = var.project
-  environment = var.environment
-  repos       = ["backend", "mcp-pricing", "mcp-cfn", "mcp-docs"]
-}
-
-# Route53 — create first; zone_id feeds ACM validation
+# The zone must exist before anything can validate against it, and its
+# nameservers are what get pasted into the registrar.
 module "route53" {
   source = "../modules/route53"
   domain = var.domain
 }
 
-# ACM cert for CloudFront — must be in us-east-1
-module "acm_cloudfront" {
+# One certificate covers every hostname this project serves through CloudFront
+# or Cognito: the apex, www., admin., and auth. The old design also issued a
+# second certificate in ap-south-1 for the API Gateway custom domain. There is
+# no API Gateway any more, and nginx on the instance gets its own certificate
+# from Let's Encrypt, so that second certificate is gone.
+#
+# us-east-1 is not a preference. CloudFront and Cognito custom domains read
+# certificates only from that region.
+module "acm_wildcard" {
   source = "../modules/acm"
+  count  = var.dns_delegated ? 1 : 0
+
   providers = {
     aws = aws.useast1
   }
@@ -43,87 +33,4 @@ module "acm_cloudfront" {
   domain          = var.domain
   sans            = ["*.${var.domain}"]
   route53_zone_id = module.route53.zone_id
-}
-
-# ACM cert for API Gateway custom domain — ap-south-1
-module "acm_apigw" {
-  source = "../modules/acm"
-
-  domain          = "api.${var.domain}"
-  sans            = []
-  route53_zone_id = module.route53.zone_id
-}
-
-module "frontend" {
-  source = "../modules/frontend"
-
-  project             = var.project
-  environment         = var.environment
-  domain              = var.domain
-  acm_certificate_arn = module.acm_cloudfront.certificate_arn
-  route53_zone_id     = module.route53.zone_id
-}
-
-# Admin panel — separate app/bundle/port from the main site, deployed to its
-# own subdomain. Reuses the wildcard ACM cert (SANs include "*.<domain>") and
-# the same Route53 zone; no "www.admin.<domain>" alias needed.
-module "frontend_admin" {
-  source = "../modules/frontend"
-
-  project             = var.project
-  environment         = var.environment
-  domain              = "admin.${var.domain}"
-  app_name            = "frontend-admin"
-  include_www         = false
-  acm_certificate_arn = module.acm_cloudfront.certificate_arn
-  route53_zone_id     = module.route53.zone_id
-}
-
-module "cognito" {
-  source = "../modules/cognito"
-
-  project               = var.project
-  environment           = var.environment
-  domain                = var.domain
-  aws_region            = var.aws_region
-  google_client_id      = local.google_oauth["client_id"]
-  google_client_secret  = local.google_oauth["client_secret"]
-  pre_signup_lambda_zip = local.pre_signup_zip
-
-  callback_urls = [
-    "https://${var.domain}/auth/callback",
-    "http://localhost:5173/auth/callback",
-  ]
-
-  logout_urls = [
-    "https://${var.domain}/",
-    "http://localhost:5173/",
-  ]
-}
-
-module "api_gateway" {
-  source = "../modules/api_gateway"
-
-  project                   = var.project
-  environment               = var.environment
-  domain                    = var.domain
-  acm_certificate_arn       = module.acm_apigw.certificate_arn
-  route53_zone_id           = module.route53.zone_id
-  api_gateway_log_group_arn = module.monitoring.api_gateway_log_group_arn
-}
-
-module "lambda_mcp" {
-  source = "../modules/lambda"
-
-  project     = var.project
-  environment = var.environment
-  account_id  = var.account_id
-  aws_region  = var.aws_region
-  enabled     = var.deploy_mcp_lambdas
-
-  ecr_repo_urls = {
-    "mcp-pricing" = module.ecr.repo_urls["mcp-pricing"]
-    "mcp-cfn"     = module.ecr.repo_urls["mcp-cfn"]
-    "mcp-docs"    = module.ecr.repo_urls["mcp-docs"]
-  }
 }

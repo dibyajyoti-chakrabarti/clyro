@@ -1,139 +1,27 @@
-# ── Networking ────────────────────────────────────────────────────────────────
-output "vpc_id" {
-  value = module.networking.vpc_id
-}
-
-output "public_subnet_ids" {
-  value = module.networking.public_subnet_ids
-}
-
-output "private_app_subnet_ids" {
-  value = module.networking.private_app_subnet_ids
-}
-
-output "private_data_subnet_ids" {
-  value = module.networking.private_data_subnet_ids
-}
-
-output "lambda_sg_id" {
-  value = module.networking.lambda_sg_id
-}
-
-output "rds_sg_id" {
-  value = module.networking.rds_sg_id
-}
-
-output "nat_instance_id" {
-  description = "EC2 instance ID of the stoppable NAT instance — set as GitHub secret EC2_INSTANCE_ID"
-  value       = module.networking.nat_instance_id
-}
-
-# ── ECR ───────────────────────────────────────────────────────────────────────
-output "ecr_backend_url" {
-  value = module.ecr.repo_urls["backend"]
-}
-
-output "ecr_mcp_pricing_url" {
-  value = module.ecr.repo_urls["mcp-pricing"]
-}
-
-output "ecr_mcp_cfn_url" {
-  value = module.ecr.repo_urls["mcp-cfn"]
-}
-
-output "ecr_mcp_docs_url" {
-  value = module.ecr.repo_urls["mcp-docs"]
-}
-
-# ── Cognito ───────────────────────────────────────────────────────────────────
-output "cognito_user_pool_id" {
-  value = module.cognito.user_pool_id
-}
-
-output "cognito_client_id" {
-  value = module.cognito.client_id
-}
-
-output "cognito_domain" {
-  description = "Cognito hosted UI domain (no https:// prefix)"
-  value       = module.cognito.domain
-}
-
-output "cognito_user_pool_arn" {
-  value = module.cognito.user_pool_arn
-}
-
-# ── Route53 ───────────────────────────────────────────────────────────────────
+# ── Route53 ──────────────────────────────────────────────────────────────────
 output "route53_zone_id" {
   value = module.route53.zone_id
 }
 
 output "route53_name_servers" {
-  description = "Copy these 4 NS records into GoDaddy custom nameservers"
+  description = "Set these four as the custom nameservers on the clyro.cloud registration, then set dns_delegated = true"
   value       = module.route53.name_servers
 }
 
-# ── API Gateway ───────────────────────────────────────────────────────────────
-output "api_gateway_id" {
-  value = module.api_gateway.api_id
+# ── ACM ──────────────────────────────────────────────────────────────────────
+output "acm_certificate_arn" {
+  description = "Wildcard certificate in us-east-1, for CloudFront and the Cognito custom domain. Null until dns_delegated is true."
+  value       = one(module.acm_wildcard[*].certificate_arn)
 }
 
-output "api_gateway_execution_arn" {
-  value = module.api_gateway.execution_arn
-}
-
-# ── IAM ───────────────────────────────────────────────────────────────────────
-output "backend_lambda_role_arn" {
-  value = aws_iam_role.backend_lambda.arn
-}
-
-# ── Secrets Manager ───────────────────────────────────────────────────────────
-output "db_password_secret_arn" {
-  value = aws_secretsmanager_secret.db_password.arn
-}
-
-output "django_secret_key_secret_arn" {
-  value = aws_secretsmanager_secret.django_secret_key.arn
-}
-
-output "github_app_pem_secret_arn" {
-  value = aws_secretsmanager_secret.github_app_pem.arn
-}
-
-# Base path for the SecureString parameters the backend resolves at cold start
-# (see backend/config/aws_secrets.py). Only the prefix crosses the layer
-# boundary — the values never enter Terraform state.
+# ── SSM ──────────────────────────────────────────────────────────────────────
+# Only the prefix crosses the layer boundary. The values never enter state:
+# backend/config/aws_secrets.py resolves them at start up from CLYRO_SSM_PREFIX.
 output "ssm_prefix" {
   value = local.ssm_base
 }
 
-# ── CloudFront ────────────────────────────────────────────────────────────────
-output "cloudfront_domain" {
-  value = module.frontend.cloudfront_domain
-}
-
-output "cloudfront_distribution_id" {
-  value = module.frontend.cloudfront_distribution_id
-}
-
-output "frontend_bucket_name" {
-  value = module.frontend.bucket_name
-}
-
-# ── CloudFront (admin panel) ─────────────────────────────────────────────────
-output "frontend_admin_cloudfront_domain" {
-  value = module.frontend_admin.cloudfront_domain
-}
-
-output "frontend_admin_cloudfront_distribution_id" {
-  value = module.frontend_admin.cloudfront_distribution_id
-}
-
-output "frontend_admin_bucket_name" {
-  value = module.frontend_admin.bucket_name
-}
-
-# ── Monitoring ────────────────────────────────────────────────────────────────
-output "backend_lambda_log_group" {
-  value = module.monitoring.backend_lambda_log_group
+output "ssm_secret_names" {
+  description = "Parameters whose values must be populated out of band"
+  value       = sort([for p in aws_ssm_parameter.runtime_secret : p.name])
 }
