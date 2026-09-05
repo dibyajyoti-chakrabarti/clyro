@@ -17,6 +17,7 @@
 #
 #   export AWS_PROFILE=home
 #   ./put-secrets.sh --github-pem ~/clyro-github-app.pem \
+#                    --github-app-id 123456 --github-app-name clyro \
 #                    --google-client-id "..." --google-client-secret "..."
 set -euo pipefail
 
@@ -27,6 +28,8 @@ PREFIX="/${PROJECT}/${ENVIRONMENT}"
 
 FORCE=0
 GITHUB_PEM=""
+GITHUB_APP_ID=""
+GITHUB_APP_NAME=""
 GOOGLE_CLIENT_ID=""
 GOOGLE_CLIENT_SECRET=""
 
@@ -34,6 +37,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --force)                 FORCE=1; shift ;;
     --github-pem)            GITHUB_PEM="$2"; shift 2 ;;
+    --github-app-id)         GITHUB_APP_ID="$2"; shift 2 ;;
+    --github-app-name)       GITHUB_APP_NAME="$2"; shift 2 ;;
     --google-client-id)      GOOGLE_CLIENT_ID="$2"; shift 2 ;;
     --google-client-secret)  GOOGLE_CLIENT_SECRET="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -85,6 +90,35 @@ if [[ -n "$GITHUB_PEM" ]]; then
 else
   echo "  skip   ${PREFIX}/github/app-pem  (pass --github-pem <file>)"
 fi
+
+# The GitHub App id and slug are not secret, so they live as plain String
+# parameters under env/ where the container picks them up as environment
+# variables of the same name. They are still written here rather than by
+# Terraform, because a human reads them off the GitHub App settings page.
+#
+# GITHUB_APP_ID is read by settings.py with env.int, so "PENDING" would crash
+# at import; its placeholder is 0, which is also the setting's own default and
+# reads as "not configured".
+put_plain() {
+  local name="$1" value="$2" placeholder="$3"
+  if [ -z "$value" ]; then
+    echo "  skip   ${name}  (no value supplied)"
+    return
+  fi
+  local current
+  current="$(aws ssm get-parameter --name "$name" --region "$REGION" \
+    --query 'Parameter.Value' --output text 2>/dev/null || echo "$placeholder")"
+  if [ $FORCE -eq 0 ] && [ "$current" != "$placeholder" ]; then
+    echo "  keep   ${name}  (already populated, use --force to replace)"
+    return
+  fi
+  aws ssm put-parameter --name "$name" --type String \
+    --value "$value" --overwrite --region "$REGION" >/dev/null
+  echo "  wrote  ${name}  = ${value}"
+}
+
+put_plain "${PREFIX}/env/GITHUB_APP_ID"   "$GITHUB_APP_ID"   "0"
+put_plain "${PREFIX}/env/GITHUB_APP_NAME" "$GITHUB_APP_NAME" "PENDING"
 
 put "${PREFIX}/cognito/google-client-id"     "$GOOGLE_CLIENT_ID"
 put "${PREFIX}/cognito/google-client-secret" "$GOOGLE_CLIENT_SECRET"
