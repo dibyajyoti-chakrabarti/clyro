@@ -136,11 +136,20 @@ jobs:
       # container started, not that Django is answering.
       - name: Wait for the API to answer
         run: |
+          # 401, 403 and 404 all count as healthy: there is no health route,
+          # every API view requires authentication, and any of them proves
+          # Django routed the request.
+          #
+          # 400 explicitly does not. That is what Django returns for
+          # DisallowedHost, so treating "any 4xx" as success would report a
+          # green deploy for a box rejecting every single request. 5xx does not
+          # count either.
           for i in $(seq 1 30); do
             CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$API_HEALTH_URL" || echo 000)
             echo "attempt $i: $CODE"
             case "$CODE" in
-              2*|3*|40*) echo "API responding with $CODE"; exit 0 ;;
+              200|301|302|401|403|404) echo "API responding with $CODE"; exit 0 ;;
+              400) echo "::error::400 from Django, usually ALLOWED_HOSTS not covering the request host"; exit 1 ;;
             esac
             sleep 10
           done

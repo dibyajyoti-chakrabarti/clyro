@@ -78,3 +78,66 @@ resource "aws_ssm_parameter" "app_url" {
   type  = "String"
   value = "https://${var.domain}"
 }
+
+# ── Application configuration ────────────────────────────────────────────────
+#
+# Everything under /clyro/prod/env/ is exported verbatim into the container
+# environment by /opt/clyro/up.sh, so a parameter name here is a Django setting
+# name there. Adding configuration later is a parameter and a redeploy, with no
+# change to the instance or its Terraform.
+#
+# This exists because the first real deploy would have crash-looped without it.
+# backend/config/settings.py reads CLYRO_AWS_ACCOUNT_ID with no default, so
+# Django raises ImproperlyConfigured at import when it is missing, and
+# ALLOWED_HOSTS defaults to ["localhost"], so every request arriving as
+# api.clyro.cloud would have been answered with 400 DisallowedHost.
+
+locals {
+  # Values Terraform already knows. Owned here, value and all.
+  app_env = {
+    # Turns on SECURE_SSL_REDIRECT, secure cookies and HSTS in settings.py.
+    # Safe behind nginx because SECURE_PROXY_SSL_HEADER is set and nginx sends
+    # X-Forwarded-Proto; without that pairing this would redirect-loop.
+    ENVIRONMENT = "production"
+
+    ALLOWED_HOSTS        = "api.${var.domain}"
+    CORS_ALLOWED_ORIGINS = "https://${var.domain},https://www.${var.domain},https://admin.${var.domain}"
+    CSRF_TRUSTED_ORIGINS = "https://${var.domain},https://www.${var.domain},https://admin.${var.domain}"
+
+    CLYRO_AWS_ACCOUNT_ID = var.account_id
+    AWS_REGION           = var.aws_region
+    COGNITO_REGION       = var.aws_region
+  }
+
+  # Values a human supplies out of band. Terraform owns the parameter, never the
+  # value, same split as the secrets above.
+  #
+  # GITHUB_APP_ID is read with env.int, so its placeholder has to parse as an
+  # integer. Zero is also the setting's own default, which reads as "the GitHub
+  # App integration is not configured yet" rather than as a broken value.
+  app_env_pending = {
+    GITHUB_APP_ID   = "0"
+    GITHUB_APP_NAME = "PENDING"
+  }
+}
+
+resource "aws_ssm_parameter" "app_env" {
+  for_each = local.app_env
+
+  name  = "${local.ssm_base}/env/${each.key}"
+  type  = "String"
+  value = each.value
+}
+
+resource "aws_ssm_parameter" "app_env_pending" {
+  for_each = local.app_env_pending
+
+  name        = "${local.ssm_base}/env/${each.key}"
+  description = "Supplied out of band, not by Terraform"
+  type        = "String"
+  value       = each.value
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
