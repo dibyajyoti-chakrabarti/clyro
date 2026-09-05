@@ -7,14 +7,18 @@ import CfnEditor from '../../../../components/wizard/CfnEditor'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
+// Agentic open models — tool-tuned, run the toolful self-correcting path.
+//
+// Claude Sonnet 4.5 and Haiku 4.5 were listed here and are still supported by
+// the backend, but every Anthropic id on this AWS account currently returns
+// AccessDeniedException / INVALID_PAYMENT_INSTRUMENT. Offering a choice that
+// always fails is worse than not offering it, so they are withheld from the
+// picker rather than deleted. Restore the two entries once the account's
+// payment instrument is valid; the backend keys never went away.
 const MODEL_OPTIONS = [
-  // Claude — fully supported (Converse + tool use)
-  { key: 'sonnet-4-5', label: 'Claude Sonnet 4.5' },
-  { key: 'haiku-4-5', label: 'Claude Haiku 4.5' },
-  // Agentic open models — tool-tuned, run the toolful self-correcting path
-  { key: 'kimi-k2-5', label: 'Kimi K2.5' },
   { key: 'minimax-m2-5', label: 'MiniMax M2.5' },
   { key: 'glm-5', label: 'GLM 5' },
+  { key: 'kimi-k2-5', label: 'Kimi K2.5' },
   { key: 'deepseek-v3-2', label: 'DeepSeek V3.2' },
 ]
 

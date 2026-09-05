@@ -1,3 +1,5 @@
+import os
+
 from strands.models.bedrock import BedrockModel
 
 # Curated, user-selectable models (key -> Bedrock model id / cross-region profile).
@@ -20,10 +22,33 @@ MODELS = {
     "deepseek-v3-2": "deepseek.v3.2",
 }
 
-# Defaults by mode when the caller doesn't pick a model (backward-compatible):
-# Sonnet authors the initial template, Haiku handles cheap chat/refine.
-DEFAULT_GENERATE = "sonnet-4-5"
-DEFAULT_REFINE = "haiku-4-5"
+# Defaults by mode when the caller doesn't pick a model.
+#
+# These were Sonnet for generate and Haiku for refine. Anthropic ids currently
+# fail on this account with AccessDeniedException / INVALID_PAYMENT_INSTRUMENT,
+# which is a billing state on the AWS account rather than a missing capability,
+# so the Anthropic entries above are kept and will work again the moment the
+# payment instrument is valid. Only the defaults move.
+#
+# MiniMax generates because it reasons natively, so the Step-4 "Thinking..."
+# UX survives the switch without Anthropic extended thinking (see load_model).
+# GLM refines because refine is the short, frequent call. Both are in
+# _TOOLFUL_FAMILIES and were verified clean on the full cfn-lint/cfn-guard
+# self-correction path.
+#
+# Overridable by environment so the base model can be changed with a runtime
+# variable instead of a code change and redeploy. An unknown key would make
+# resolve_model_id fall back to itself and recurse, so validate here at import.
+DEFAULT_GENERATE = os.getenv("IAC_DEFAULT_GENERATE_MODEL", "minimax-m2-5")
+DEFAULT_REFINE = os.getenv("IAC_DEFAULT_REFINE_MODEL", "glm-5")
+
+for _slot, _key in (("IAC_DEFAULT_GENERATE_MODEL", DEFAULT_GENERATE),
+                    ("IAC_DEFAULT_REFINE_MODEL", DEFAULT_REFINE)):
+    if _key not in MODELS:
+        raise ValueError(
+            f"{_slot}={_key!r} is not a known model key. Choose one of: "
+            f"{', '.join(sorted(MODELS))}."
+        )
 
 
 def resolve_model_id(key: str | None, default_key: str) -> str:

@@ -24,7 +24,8 @@ function StepFivePanel({ projectId, projectData, setProjectData, onBackToCanvas,
   const [refineInput, setRefineInput] = useState('')
   const [refineHistory, setRefineHistory] = useState([])
   // Model choice applies only to Ask Clyro refine turns. Initial generation is deterministic.
-  const [chatModel, setChatModel] = useState('haiku-4-5')
+  // Matches the backend's DEFAULT_REFINE; Claude is unavailable on this account.
+  const [chatModel, setChatModel] = useState('glm-5')
   const iacGenStartedRef = useRef(false)
 
   // Hydrate the template from the backend on mount so a refresh resumes where
