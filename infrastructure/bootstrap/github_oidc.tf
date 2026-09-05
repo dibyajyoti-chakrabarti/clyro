@@ -322,13 +322,31 @@ data "aws_iam_policy_document" "terraform_guardrails" {
     ]
   }
 
-  # IAM roles are name-scoped in the allow above, but an explicit deny on
-  # everything outside the clyro- prefix closes the gap if that allow is ever
+  # IAM roles are name-scoped in the allow above; this denies mutation of
+  # anything outside the clyro- prefix, closing the gap if that allow is ever
   # widened by accident.
+  #
+  # Mutating verbs only, deliberately. Written as "iam:*" it also denied every
+  # read, silently cancelling the ReadOnlyIAM allow next to it, because an
+  # explicit deny always wins. Reads are safe: they expose no secret, and the
+  # things genuinely worth protecting are covered by the tag rule and the
+  # bootstrap rule below.
   statement {
-    sid     = "DenyForeignRoles"
-    effect  = "Deny"
-    actions = ["iam:*"]
+    sid    = "DenyForeignIAMWrites"
+    effect = "Deny"
+    actions = [
+      "iam:Create*",
+      "iam:Delete*",
+      "iam:Update*",
+      "iam:Put*",
+      "iam:Attach*",
+      "iam:Detach*",
+      "iam:Add*",
+      "iam:Remove*",
+      "iam:Tag*",
+      "iam:Untag*",
+      "iam:Set*",
+    ]
     not_resources = [
       "arn:aws:iam::${local.account_id}:role/${local.project}-*",
       "arn:aws:iam::${local.account_id}:instance-profile/${local.project}-*",
@@ -354,7 +372,14 @@ data "aws_iam_policy_document" "terraform_guardrails" {
     effect = "Deny"
     actions = [
       "iam:*Role*",
-      "iam:*OpenIDConnectProvider*",
+      # Mutating verbs only. "iam:*OpenIDConnectProvider*" also matched Get and
+      # List, which is not a protection: reading a provider reveals nothing and
+      # blocking it only breaks callers.
+      "iam:CreateOpenIDConnectProvider",
+      "iam:DeleteOpenIDConnectProvider",
+      "iam:UpdateOpenIDConnectProviderThumbprint",
+      "iam:AddClientIDToOpenIDConnectProvider",
+      "iam:RemoveClientIDFromOpenIDConnectProvider",
       "s3:PutBucketPolicy",
       "s3:DeleteBucketPolicy",
       "s3:DeleteBucket",

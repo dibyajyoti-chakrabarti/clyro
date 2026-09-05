@@ -6,10 +6,21 @@
 # cannot rewrite infrastructure, and it is why the deploy role is safe to
 # create from Terraform while the Terraform role is not.
 
-# Adopted, not created: an account holds exactly one provider per issuer, and
-# this account's was created by a neighbouring product.
-data "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
+# The provider ARN is constructed, not looked up.
+#
+# An account holds exactly one OIDC provider per issuer URL, and this one
+# belongs to a neighbouring product: it is tagged Project=jan-saathi. The
+# Terraform role's guardrails deny reading it three times over, by that tag, by
+# the foreign-resource rule, and by the rule protecting shared bootstrap
+# resources. All three are right. Clyro consumes this provider; it does not own
+# it and has no business enumerating IAM providers in a shared account.
+#
+# Since the ARN is fully determined by the account id and the issuer, a data
+# source bought nothing but a permission this role should not hold. A first
+# apply from a laptop worked and the CI plan then failed, which is exactly the
+# kind of gap running it in CI is supposed to surface.
+locals {
+  github_oidc_provider_arn = "arn:aws:iam::${var.account_id}:oidc-provider/token.actions.githubusercontent.com"
 }
 
 data "aws_iam_policy_document" "deploy_assume" {
@@ -19,7 +30,7 @@ data "aws_iam_policy_document" "deploy_assume" {
 
     principals {
       type        = "Federated"
-      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
+      identifiers = [local.github_oidc_provider_arn]
     }
 
     condition {
