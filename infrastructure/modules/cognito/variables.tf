@@ -48,3 +48,28 @@ variable "pre_signup_lambda_zip" {
   description = "Path to zipped pre-signup Lambda handler"
   type        = string
 }
+
+# ── GitHub, via the OIDC shim ────────────────────────────────────────────────
+variable "github_enabled" {
+  description = "Whether to create the GitHub identity provider pointing at the shim"
+  type        = bool
+  default     = false
+}
+
+variable "oidc_issuer" {
+  description = "Public URL prefix the shim is served from; also the issuer claim"
+  type        = string
+  default     = ""
+}
+
+variable "oidc_client_id" {
+  description = "Client id Cognito presents to the shim"
+  type        = string
+  default     = ""
+}
+
+variable "oidc_client_secret" {
+  type      = string
+  sensitive = true
+  default   = ""
+}

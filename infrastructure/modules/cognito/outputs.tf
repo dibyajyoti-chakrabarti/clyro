@@ -22,3 +22,7 @@ output "domain" {
 output "google_enabled" {
   value = nonsensitive(local.google_enabled)
 }
+
+output "github_enabled" {
+  value = var.github_enabled
+}

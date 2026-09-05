@@ -166,6 +166,15 @@ module "cognito" {
     "http://localhost:5173/",
   ]
 
+  # GitHub sign-in, through the shim the backend serves. The issuer is a URL
+  # on the API host, so the provider only works once the backend is deployed;
+  # that ordering is real but not expressible here, since the two live in
+  # different layers.
+  github_enabled     = var.github_enabled
+  oidc_issuer        = "https://api.${var.domain}/oidc/github"
+  oidc_client_id     = var.github_enabled ? one(data.aws_ssm_parameter.oidc_client_id[*].value) : ""
+  oidc_client_secret = var.github_enabled ? one(data.aws_ssm_parameter.oidc_client_secret[*].value) : ""
+
   # Not decoration. AWS refuses to create a Cognito custom domain unless the
   # parent domain already resolves, and the apex A record is created by the
   # frontend module. Without this, the first apply fails or succeeds depending
@@ -184,6 +193,16 @@ module "cognito" {
 # Bootstrap order on a fresh account: apply with google_enabled = false, which
 # creates the parameters and reads nothing; populate them with
 # scripts/put-secrets.sh; then set google_enabled = true.
+data "aws_ssm_parameter" "oidc_client_id" {
+  count = var.github_enabled ? 1 : 0
+  name  = "${local.ssm_base}/env/OIDC_CLIENT_ID"
+}
+
+data "aws_ssm_parameter" "oidc_client_secret" {
+  count = var.github_enabled ? 1 : 0
+  name  = "${local.ssm_base}/oidc/client-secret"
+}
+
 data "aws_ssm_parameter" "google_client_id" {
   count = var.google_enabled ? 1 : 0
   name  = "${local.ssm_base}/cognito/google-client-id"

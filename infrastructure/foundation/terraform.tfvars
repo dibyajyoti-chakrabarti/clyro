@@ -14,3 +14,6 @@ availability_zones  = ["ap-south-1a", "ap-south-1b"]
 
 # Google sign-in is configured and live.
 google_enabled = true
+
+# GitHub sign-in, via the OIDC shim the backend serves.
+github_enabled = true

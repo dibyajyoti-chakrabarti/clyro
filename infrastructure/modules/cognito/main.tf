@@ -155,6 +155,54 @@ resource "aws_cognito_identity_provider" "google" {
   }
 }
 
+# ── GitHub, via the OIDC shim ────────────────────────────────────────────────
+#
+# Cognito has no GitHub provider type and cannot have one: GitHub speaks OAuth2
+# with no ID token and no JWKS. This points at the shim in backend/app/oidc/,
+# which presents GitHub as a conventional OIDC provider.
+#
+# The endpoints are given explicitly rather than left to discovery. Cognito can
+# read them from the issuer's .well-known document, but that makes every apply
+# depend on the application being up, and a provider that silently reconfigures
+# itself from a remote document is harder to reason about than one whose
+# addresses are written down.
+resource "aws_cognito_identity_provider" "github" {
+  count = var.github_enabled ? 1 : 0
+
+  user_pool_id  = aws_cognito_user_pool.main.id
+  provider_name = "GitHub"
+  provider_type = "OIDC"
+
+  provider_details = {
+    client_id                 = var.oidc_client_id
+    client_secret             = var.oidc_client_secret
+    oidc_issuer               = var.oidc_issuer
+    authorize_url             = "${var.oidc_issuer}/authorize"
+    token_url                 = "${var.oidc_issuer}/token"
+    attributes_url            = "${var.oidc_issuer}/userinfo"
+    jwks_uri                  = "${var.oidc_issuer}/jwks"
+    authorize_scopes          = "openid email profile"
+    attributes_request_method = "GET"
+  }
+
+  # sub is "github:<numeric id>", which never changes even if the user renames
+  # their GitHub account. Mapping username to the login instead would break
+  # every account the first time someone renamed themselves.
+  attribute_mapping = {
+    email    = "email"
+    name     = "name"
+    picture  = "picture"
+    username = "sub"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.oidc_client_id != "" && var.oidc_client_secret != ""
+      error_message = "github_enabled is true but the shim's client id or secret is unset. Run scripts/put-secrets.sh, or set github_enabled = false."
+    }
+  }
+}
+
 resource "aws_cognito_user_pool_client" "web" {
   name         = "${var.project}-web-client-${var.environment}"
   user_pool_id = aws_cognito_user_pool.main.id
@@ -164,7 +212,11 @@ resource "aws_cognito_user_pool_client" "web" {
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["email", "openid", "profile"]
   allowed_oauth_flows_user_pool_client = true
-  supported_identity_providers         = concat(["COGNITO"], local.google_enabled ? ["Google"] : [])
+  supported_identity_providers = concat(
+    ["COGNITO"],
+    local.google_enabled ? ["Google"] : [],
+    var.github_enabled ? ["GitHub"] : [],
+  )
 
   callback_urls = var.callback_urls
   logout_urls   = var.logout_urls
@@ -187,5 +239,8 @@ resource "aws_cognito_user_pool_client" "web" {
 
   prevent_user_existence_errors = "ENABLED"
 
-  depends_on = [aws_cognito_identity_provider.google]
+  depends_on = [
+    aws_cognito_identity_provider.google,
+    aws_cognito_identity_provider.github,
+  ]
 }

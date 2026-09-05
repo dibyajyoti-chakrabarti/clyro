@@ -106,3 +106,14 @@ variable "google_enabled" {
   type    = bool
   default = false
 }
+
+# Whether GitHub sign-in exists. Same explicit-flag reasoning as google_enabled:
+# a count that depends on reading a parameter cannot be planned while that
+# parameter is being created.
+#
+# Requires the backend to be deployed first, since the provider points at an
+# issuer served by the application itself.
+variable "github_enabled" {
+  type    = bool
+  default = false
+}
