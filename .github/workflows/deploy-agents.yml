@@ -138,6 +138,13 @@ jobs:
         with:
           node-version: '22'
 
+      # The CodeZip build resolves the runtime's Python dependencies for its
+      # own platform (aarch64-manylinux2014) with uv, which the runner does not
+      # ship. Without it synthesis dies as "uv install failed ... exit code
+      # null", which reads like a packaging error rather than a missing binary.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
