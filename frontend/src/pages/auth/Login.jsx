@@ -94,8 +94,7 @@ export default function Login() {
                 <Button
                   variant="secondary"
                   className="min-h-12 w-full justify-center gap-3 border-white/[0.14] bg-white/[0.035] text-base"
-                  disabled
-                  title="GitHub login coming soon"
+                  onClick={() => signInWithRedirect({ provider: { custom: 'GitHub' } })}
                 >
                   <GitHubIcon className="h-5 w-5" />
                   Continue with GitHub
