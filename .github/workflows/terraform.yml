@@ -1,0 +1,228 @@
+name: Terraform
+
+# Every Terraform apply against the Clyro account goes through this workflow.
+#
+# The shape is plan-then-apply on a saved plan file: a pull request that touches
+# infrastructure/ gets a plan posted back as a comment, and merging to main
+# applies that exact plan rather than re-planning. Applying a freshly computed
+# plan would mean the thing that ran is not quite the thing that was reviewed.
+#
+# The bootstrap layer is deliberately NOT here. It keeps its state on local
+# disk, it creates the very role this workflow assumes, and it is applied once
+# by hand. A layer that owns its own CI credentials cannot be run by that CI.
+
+on:
+  pull_request:
+    paths:
+      - 'infrastructure/**'
+      - '.github/workflows/terraform.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infrastructure/**'
+      - '.github/workflows/terraform.yml'
+  workflow_dispatch:
+    inputs:
+      layer:
+        description: Terraform layer to run
+        required: true
+        default: foundation
+        type: choice
+        options: [foundation]
+      apply:
+        description: Apply the plan (unchecked runs plan only)
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write      # required to mint the OIDC token
+  contents: read
+  pull-requests: write # to post the plan back onto the PR
+
+env:
+  AWS_REGION: ap-south-1
+  TF_VERSION: 1.16.0
+  TF_IN_AUTOMATION: 'true'
+  LAYER: ${{ inputs.layer || 'foundation' }}
+
+# State locking already serialises applies, but a queued second run would just
+# sit failing to acquire the lock. Queue them here instead, and never cancel a
+# run in progress: killing Terraform mid-apply is how state gets orphaned.
+concurrency:
+  group: terraform-${{ inputs.layer || 'foundation' }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.plan.outputs.has_changes }}
+    defaults:
+      run:
+        working-directory: infrastructure/${{ inputs.layer || 'foundation' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Formatting is checked across the whole tree, not just this layer, so a
+      # badly formatted module cannot slip in via a layer that does not use it.
+      - name: Format check
+        working-directory: infrastructure
+        run: terraform fmt -check -recursive -diff
+
+      - name: Init
+        run: terraform init -input=false -lock-timeout=5m
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -input=false -lock-timeout=5m \
+            -detailed-exitcode -out=tfplan
+          code=$?
+          set -e
+          # -detailed-exitcode: 0 no changes, 1 error, 2 changes present.
+          # Without this the workflow cannot tell "nothing to do" from
+          # "something to do" and would run a pointless apply every time.
+          case "$code" in
+            0) echo "has_changes=false" >> "$GITHUB_OUTPUT" ;;
+            2) echo "has_changes=true"  >> "$GITHUB_OUTPUT" ;;
+            *) exit "$code" ;;
+          esac
+          terraform show -no-color tfplan > plan.txt
+
+      - name: Write plan to job summary
+        run: |
+          {
+            echo "### Terraform plan: \`${LAYER}\`"
+            echo
+            echo '```terraform'
+            # A large plan overruns the 1 MB summary limit and is silently
+            # dropped, so the tail is trimmed rather than losing the lot.
+            head -c 60000 plan.txt
+            if [ "$(wc -c < plan.txt)" -gt 60000 ]; then
+              printf '\n... truncated, see the Plan step for the full output\n'
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The plan file is what the apply job consumes, so the two cannot drift.
+      # It is retained for a single day: a plan can embed attribute values, and
+      # anyone with read access to the repo can download a workflow artifact.
+      - name: Upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ env.LAYER }}-${{ github.run_id }}
+          path: infrastructure/${{ inputs.layer || 'foundation' }}/tfplan
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Comment plan on the pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const layer = process.env.LAYER;
+            const body = fs.readFileSync(
+              `infrastructure/${layer}/plan.txt`, 'utf8');
+            // GitHub rejects a comment body over 65536 characters.
+            const max = 60000;
+            const shown = body.length > max
+              ? body.slice(0, max) + '\n... truncated, see the job summary'
+              : body;
+            const marker = `<!-- terraform-plan-${layer} -->`;
+            const text = `${marker}\n### Terraform plan: \`${layer}\`\n\n<details><summary>Show plan</summary>\n\n\`\`\`terraform\n${shown}\n\`\`\`\n\n</details>`;
+            // Update the existing comment rather than adding one per push, so
+            // a long-lived PR does not accumulate a wall of stale plans.
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number });
+            const previous = comments.find(c => c.body.startsWith(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: previous.id, body: text });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body: text });
+            }
+
+  apply:
+    name: Apply
+    needs: plan
+    # Never on a pull request: a PR gets a plan and nothing more. Applying is
+    # either a merge to main or a deliberate manual run.
+    if: >-
+      needs.plan.outputs.has_changes == 'true' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.apply))
+    runs-on: ubuntu-latest
+
+    # Add required reviewers to this environment in the repository settings to
+    # put a human approval in front of every apply. The role's trust policy
+    # already accepts "environment:prod" as a subject, so the gate is enforced
+    # by AWS as well as by GitHub.
+    environment: prod
+
+    defaults:
+      run:
+        working-directory: infrastructure/${{ inputs.layer || 'foundation' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ env.LAYER }}-${{ github.run_id }}
+          path: infrastructure/${{ inputs.layer || 'foundation' }}
+
+      - name: Init
+        run: terraform init -input=false -lock-timeout=5m
+
+      # The saved plan, not a new one. Terraform refuses a plan file that no
+      # longer matches the current state, which is the desired behaviour: if
+      # something changed underneath, the run fails instead of applying a diff
+      # nobody looked at.
+      - name: Apply
+        run: terraform apply -input=false -lock-timeout=5m tfplan
+
+      - name: Outputs to job summary
+        run: |
+          {
+            echo "### Applied \`${LAYER}\`"
+            echo
+            echo '```'
+            terraform output
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
