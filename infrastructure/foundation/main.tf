@@ -34,3 +34,61 @@ module "acm_wildcard" {
   sans            = ["*.${var.domain}"]
   route53_zone_id = module.route53.zone_id
 }
+
+# ── Phase 2: the box ─────────────────────────────────────────────────────────
+
+module "networking" {
+  source = "../modules/networking"
+
+  project             = var.project
+  environment         = var.environment
+  vpc_cidr            = var.vpc_cidr
+  public_subnet_cidrs = var.public_subnet_cidrs
+  availability_zones  = var.availability_zones
+}
+
+module "ecr" {
+  source = "../modules/ecr"
+
+  project     = var.project
+  environment = var.environment
+  # One repository, not four. The three MCP Lambdas are gone with the rest of
+  # the serverless estate; they run in-process on the box now.
+  repos = ["backend"]
+}
+
+module "app" {
+  source = "../modules/ec2_app"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+  account_id  = var.account_id
+
+  vpc_id    = module.networking.vpc_id
+  subnet_id = module.networking.public_subnet_ids[0]
+
+  instance_type = var.instance_type
+  backend_image = "${module.ecr.repo_urls["backend"]}:latest"
+
+  ecr_repository_arns = [module.ecr.repo_arns["backend"]]
+
+  # Cognito lands in the next slice. Until the pool exists, the user-linking
+  # statement is scoped to a pool ARN that resolves to nothing, which grants
+  # nothing rather than granting everything.
+  cognito_user_pool_arn = "arn:aws:cognito-idp:${var.aws_region}:${var.account_id}:userpool/none"
+
+  api_domain        = "api.${var.domain}"
+  letsencrypt_email = var.letsencrypt_email
+}
+
+# api.clyro.cloud resolves straight to the instance. No CloudFront in front of
+# it and no load balancer: an ALB would cost more per month than the instance
+# it balances, and there is exactly one target.
+resource "aws_route53_record" "api" {
+  zone_id = module.route53.zone_id
+  name    = "api.${var.domain}"
+  type    = "A"
+  ttl     = 300
+  records = [module.app.public_ip]
+}

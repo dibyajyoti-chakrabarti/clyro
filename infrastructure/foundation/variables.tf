@@ -67,3 +67,15 @@ variable "github_repo" {
   type        = string
   default     = "dibyajyoti-chakrabarti/clyro"
 }
+
+variable "instance_type" {
+  description = "See the module's own note: 2 GB is tight, cloud-init adds swap, move up if it thrashes"
+  type        = string
+  default     = "t4g.small"
+}
+
+variable "letsencrypt_email" {
+  description = "Contact address on the ACME account, used for certificate expiry warnings"
+  type        = string
+  default     = "sulabaga1995@gmail.com"
+}

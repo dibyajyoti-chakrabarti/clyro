@@ -25,3 +25,21 @@ output "ssm_secret_names" {
   description = "Parameters whose values must be populated out of band"
   value       = sort([for p in aws_ssm_parameter.runtime_secret : p.name])
 }
+
+# ── Application instance ─────────────────────────────────────────────────────
+output "instance_id" {
+  description = "Target for `aws ssm start-session` and for the deploy workflow's send-command"
+  value       = module.app.instance_id
+}
+
+output "api_public_ip" {
+  value = module.app.public_ip
+}
+
+output "ecr_backend_url" {
+  value = module.ecr.repo_urls["backend"]
+}
+
+output "backups_bucket" {
+  value = module.app.backups_bucket
+}

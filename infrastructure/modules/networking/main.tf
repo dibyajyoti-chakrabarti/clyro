@@ -2,7 +2,21 @@ locals {
   prefix = "${var.project}-${var.environment}"
 }
 
-# ── VPC ─────────────────────────────────────────────────────────────────────
+# One public subnet tier and nothing else.
+#
+# The previous design had three tiers (public, private-app, private-data) and a
+# stoppable NAT instance to give the private tiers egress. That structure
+# existed to keep Lambda and Fargate off the public internet while still
+# letting them reach it. With the whole application collapsed onto a single
+# instance, there is nothing left in a private subnet, so there is nothing left
+# to NAT, and the NAT box was the largest always-on cost in the old estate.
+#
+# The instance sits in a public subnet with an Elastic IP and is protected by
+# its security group rather than by subnet placement. That is a real trade: a
+# misconfigured security group is now the only thing between the box and the
+# internet. It is mitigated by opening nothing but 80 and 443, closing SSH
+# entirely in favour of SSM Session Manager, and requiring IMDSv2 so an SSRF
+# cannot be turned into credential theft.
 
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
@@ -17,8 +31,10 @@ resource "aws_internet_gateway" "main" {
   tags   = { Name = "${local.prefix}-igw" }
 }
 
-# ── Subnets ──────────────────────────────────────────────────────────────────
-
+# Two subnets across two AZs even though only one instance runs today. Subnets
+# cannot be moved between AZs later, and several managed services refuse to
+# attach to a single-AZ VPC, so the second one costs nothing now and saves a
+# rebuild if this ever grows an ALB or an RDS instance.
 resource "aws_subnet" "public" {
   count                   = length(var.public_subnet_cidrs)
   vpc_id                  = aws_vpc.main.id
@@ -28,41 +44,6 @@ resource "aws_subnet" "public" {
 
   tags = { Name = "${local.prefix}-public-${count.index + 1}" }
 }
-
-resource "aws_subnet" "private_app" {
-  count             = length(var.private_app_cidrs)
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.private_app_cidrs[count.index]
-  availability_zone = var.availability_zones[count.index]
-
-  tags = { Name = "${local.prefix}-private-app-${count.index + 1}" }
-}
-
-resource "aws_subnet" "private_data" {
-  count             = length(var.private_data_cidrs)
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.private_data_cidrs[count.index]
-  availability_zone = var.availability_zones[count.index]
-
-  tags = { Name = "${local.prefix}-private-data-${count.index + 1}" }
-}
-
-# ── NAT instance (stoppable, replaces managed NAT Gateways for cost control) ─
-# A managed NAT Gateway bills hourly even while stopped (it can't be stopped
-# at all). This EC2-based NAT can be stopped nightly via the infra-stop
-# workflow, dropping its cost to ~$0 outside the 9AM-9PM IST service window.
-
-module "nat" {
-  source = "../nat-instance"
-
-  name_prefix      = local.prefix
-  vpc_id           = aws_vpc.main.id
-  vpc_cidr_block   = var.vpc_cidr
-  public_subnet_id = aws_subnet.public[0].id
-  instance_type    = var.nat_instance_type
-}
-
-# ── Route Tables ──────────────────────────────────────────────────────────────
 
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
@@ -79,80 +60,4 @@ resource "aws_route_table_association" "public" {
   count          = length(aws_subnet.public)
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
-}
-
-resource "aws_route_table" "private_app" {
-  count  = length(var.private_app_cidrs)
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block           = "0.0.0.0/0"
-    network_interface_id = module.nat.primary_eni_id
-  }
-
-  tags = { Name = "${local.prefix}-rt-private-app-${count.index + 1}" }
-}
-
-resource "aws_route_table_association" "private_app" {
-  count          = length(aws_subnet.private_app)
-  subnet_id      = aws_subnet.private_app[count.index].id
-  route_table_id = aws_route_table.private_app[count.index].id
-}
-
-resource "aws_route_table" "private_data" {
-  count  = length(var.private_data_cidrs)
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block           = "0.0.0.0/0"
-    network_interface_id = module.nat.primary_eni_id
-  }
-
-  tags = { Name = "${local.prefix}-rt-private-data-${count.index + 1}" }
-}
-
-resource "aws_route_table_association" "private_data" {
-  count          = length(aws_subnet.private_data)
-  subnet_id      = aws_subnet.private_data[count.index].id
-  route_table_id = aws_route_table.private_data[count.index].id
-}
-
-# ── Security Groups ───────────────────────────────────────────────────────────
-
-resource "aws_security_group" "lambda" {
-  name        = "${local.prefix}-lambda-sg"
-  description = "Backend Lambda (VPC-attached) egress"
-  vpc_id      = aws_vpc.main.id
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = { Name = "${local.prefix}-lambda-sg" }
-}
-
-resource "aws_security_group" "rds" {
-  name        = "${local.prefix}-rds-sg"
-  description = "Allow PostgreSQL from the backend Lambda only"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description     = "PostgreSQL from backend Lambda"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.lambda.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = { Name = "${local.prefix}-rds-sg" }
 }
