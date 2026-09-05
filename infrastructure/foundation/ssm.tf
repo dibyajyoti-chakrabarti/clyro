@@ -155,3 +155,30 @@ resource "aws_ssm_parameter" "cognito_env" {
   type  = "String"
   value = each.value
 }
+
+# Where each frontend lives, published for the deploy workflow.
+#
+# The workflow used to find its distribution with cloudfront:ListDistributions,
+# filtering by the hostname served. That failed, and correctly: the deploy role
+# has no such permission, and the action cannot be scoped to a resource, so
+# granting it would let this role enumerate every distribution in an account
+# shared with two other products.
+#
+# Publishing the ids here keeps the workflow free of hardcoded values, which is
+# the property that mattered, while needing no new permission at all: the role
+# can already read this path. Terraform owns them, so replacing a distribution
+# updates them automatically.
+resource "aws_ssm_parameter" "frontend_targets" {
+  for_each = {
+    "frontend/bucket"                = module.frontend.bucket_name
+    "frontend/distribution_id"       = module.frontend.cloudfront_distribution_id
+    "frontend/host"                  = var.domain
+    "frontend-admin/bucket"          = module.frontend_admin.bucket_name
+    "frontend-admin/distribution_id" = module.frontend_admin.cloudfront_distribution_id
+    "frontend-admin/host"            = "admin.${var.domain}"
+  }
+
+  name  = "${local.ssm_base}/${each.key}"
+  type  = "String"
+  value = each.value
+}

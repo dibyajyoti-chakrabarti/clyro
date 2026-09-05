@@ -73,40 +73,37 @@ jobs:
       # Everything the build and the deploy need, read from AWS at run time.
       # The previous workflows pasted pool ids and distribution ids into the
       # file, and every one of them was stale within a month.
+      # Read from SSM, which Terraform populates. Nothing is hardcoded, and
+      # nothing needs a permission this role should not have: an earlier
+      # version located the distribution with cloudfront:ListDistributions,
+      # which cannot be scoped to a resource and would have let this role
+      # enumerate every distribution in an account shared with two other
+      # products.
       - name: Resolve configuration
         if: steps.gate.outputs.run == 'true'
         id: cfg
         run: |
           set -euo pipefail
-          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-          BUCKET="clyro-prod-${{ matrix.app }}-${ACCOUNT}"
-
-          # The distribution is found by the hostname it serves, so renaming or
-          # replacing it never needs an edit here.
-          if [ "${{ matrix.app }}" = "frontend" ]; then
-            HOST=clyro.cloud
-          else
-            HOST=admin.clyro.cloud
-          fi
-          DIST=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?contains(Aliases.Items, '${HOST}')].Id | [0]" \
-            --output text)
-          if [ "$DIST" = "None" ] || [ -z "$DIST" ]; then
-            echo "::error::No CloudFront distribution serves ${HOST}"
-            exit 1
-          fi
-
-          get() { aws ssm get-parameter --name "$1" --query Parameter.Value --output text 2>/dev/null || echo ""; }
+          get() {
+            aws ssm get-parameter --name "$1" --query Parameter.Value --output text
+          }
+          # Optional values: absent or still a placeholder is not an error here.
+          soft() {
+            v=$(aws ssm get-parameter --name "$1" --query Parameter.Value --output text 2>/dev/null || echo "")
+            [ "$v" = "PENDING" ] && v=""
+            echo "$v"
+          }
+          APP=${{ matrix.app }}
           {
-            echo "bucket=$BUCKET"
-            echo "dist=$DIST"
-            echo "host=$HOST"
-            echo "pool=$(get /clyro/prod/env/COGNITO_USER_POOL_ID)"
-            echo "client=$(get /clyro/prod/env/COGNITO_CLIENT_ID)"
-            echo "cognito_domain=$(get /clyro/prod/env/COGNITO_DOMAIN)"
+            echo "bucket=$(get "/clyro/prod/$APP/bucket")"
+            echo "dist=$(get "/clyro/prod/$APP/distribution_id")"
+            echo "host=$(get "/clyro/prod/$APP/host")"
+            echo "pool=$(soft /clyro/prod/env/COGNITO_USER_POOL_ID)"
+            echo "client=$(soft /clyro/prod/env/COGNITO_CLIENT_ID)"
+            echo "cognito_domain=$(soft /clyro/prod/env/COGNITO_DOMAIN)"
             echo "api=$(get /clyro/prod/api/base_url)"
             echo "app_url=$(get /clyro/prod/app/url)"
-            echo "gh_app=$(get /clyro/prod/env/GITHUB_APP_NAME)"
+            echo "gh_app=$(soft /clyro/prod/env/GITHUB_APP_NAME)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
