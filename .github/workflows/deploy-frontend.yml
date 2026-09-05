@@ -1,81 +1,196 @@
 name: Deploy Frontend
 
+# Builds a frontend bundle, syncs it to S3, invalidates CloudFront, and then
+# proves the bundle actually reached the edge.
+#
+# One workflow with a matrix, replacing two near-identical files. Both had
+# drifted: they named buckets without the account-id suffix, CloudFront
+# distribution ids from an account that no longer exists, a Cognito pool from
+# that same account, and a role secret that has since been deleted. Nothing
+# here is hardcoded that AWS can be asked for instead.
+
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'frontend-admin/**'
+      - '.github/workflows/deploy-frontend.yml'
   workflow_dispatch:
     inputs:
-      environment:
-        description: Target environment
+      app:
+        description: Which bundle to deploy
         required: true
-        default: prod
+        default: both
         type: choice
-        options: [prod]
+        options: [both, frontend, frontend-admin]
 
 permissions:
-  id-token: write   # required for OIDC
+  id-token: write
   contents: read
 
 env:
   AWS_REGION: ap-south-1
-  S3_BUCKET: clyro-prod-frontend
-  CF_DISTRIBUTION_ID: EADKB0A4SBAJA
-  # Non-secret Vite config — already public in .env.example
-  VITE_COGNITO_USER_POOL_ID: ap-south-1_RHY9si02J
-  VITE_COGNITO_CLIENT_ID: 6vn4pdd2m2pigk854dkjapgf8t
-  VITE_COGNITO_REGION: ap-south-1
-  VITE_COGNITO_DOMAIN: clyro.auth.ap-south-1.amazoncognito.com
-  VITE_API_BASE_URL: https://api.clyro.cloud
-  VITE_APP_URL: https://clyro.cloud
-  VITE_GITHUB_APP_NAME: crylo-github
+
+concurrency:
+  group: deploy-frontend-${{ github.event.inputs.app || 'both' }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Build & Deploy to S3 + CloudFront
+    name: ${{ matrix.app }}
     runs-on: ubuntu-latest
+    environment: prod
+
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [frontend, frontend-admin]
 
     steps:
+      - name: Skip if this app was not selected
+        id: gate
+        run: |
+          WANTED="${{ github.event.inputs.app || 'both' }}"
+          if [ "$WANTED" = "both" ] || [ "$WANTED" = "${{ matrix.app }}" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Not selected, skipping."
+          fi
+
       - name: Checkout
+        if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v4
 
+      - name: Configure AWS credentials (OIDC)
+        if: steps.gate.outputs.run == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Everything the build and the deploy need, read from AWS at run time.
+      # The previous workflows pasted pool ids and distribution ids into the
+      # file, and every one of them was stale within a month.
+      - name: Resolve configuration
+        if: steps.gate.outputs.run == 'true'
+        id: cfg
+        run: |
+          set -euo pipefail
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          BUCKET="clyro-prod-${{ matrix.app }}-${ACCOUNT}"
+
+          # The distribution is found by the hostname it serves, so renaming or
+          # replacing it never needs an edit here.
+          if [ "${{ matrix.app }}" = "frontend" ]; then
+            HOST=clyro.cloud
+          else
+            HOST=admin.clyro.cloud
+          fi
+          DIST=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Aliases.Items, '${HOST}')].Id | [0]" \
+            --output text)
+          if [ "$DIST" = "None" ] || [ -z "$DIST" ]; then
+            echo "::error::No CloudFront distribution serves ${HOST}"
+            exit 1
+          fi
+
+          get() { aws ssm get-parameter --name "$1" --query Parameter.Value --output text 2>/dev/null || echo ""; }
+          {
+            echo "bucket=$BUCKET"
+            echo "dist=$DIST"
+            echo "host=$HOST"
+            echo "pool=$(get /clyro/prod/env/COGNITO_USER_POOL_ID)"
+            echo "client=$(get /clyro/prod/env/COGNITO_CLIENT_ID)"
+            echo "cognito_domain=$(get /clyro/prod/env/COGNITO_DOMAIN)"
+            echo "api=$(get /clyro/prod/api/base_url)"
+            echo "app_url=$(get /clyro/prod/app/url)"
+            echo "gh_app=$(get /clyro/prod/env/GITHUB_APP_NAME)"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Setup Node
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
 
-      - name: Install dependencies
-        working-directory: frontend
+      - name: Install
+        if: steps.gate.outputs.run == 'true'
+        working-directory: ${{ matrix.app }}
         run: npm ci
 
       - name: Build
-        working-directory: frontend
+        if: steps.gate.outputs.run == 'true'
+        working-directory: ${{ matrix.app }}
+        env:
+          VITE_COGNITO_USER_POOL_ID: ${{ steps.cfg.outputs.pool }}
+          VITE_COGNITO_CLIENT_ID: ${{ steps.cfg.outputs.client }}
+          VITE_COGNITO_REGION: ${{ env.AWS_REGION }}
+          VITE_COGNITO_DOMAIN: ${{ steps.cfg.outputs.cognito_domain }}
+          VITE_API_BASE_URL: ${{ steps.cfg.outputs.api }}
+          VITE_APP_URL: ${{ steps.cfg.outputs.app_url }}
+          VITE_GITHUB_APP_NAME: ${{ steps.cfg.outputs.gh_app }}
         run: npm run build
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.GH_ACTIONS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
+      # Hashed assets first with a long max-age, then index.html last with
+      # no-cache. In that order a browser can never fetch a new index.html that
+      # references assets which have not landed yet.
       - name: Sync to S3
+        if: steps.gate.outputs.run == 'true'
+        working-directory: ${{ matrix.app }}
         run: |
-          aws s3 sync frontend/dist/ s3://${{ env.S3_BUCKET }}/ \
-            --delete \
-            --cache-control "public,max-age=31536000,immutable" \
-            --exclude "index.html"
-          # index.html must never be cached
-          aws s3 cp frontend/dist/index.html s3://${{ env.S3_BUCKET }}/index.html \
+          set -euo pipefail
+          aws s3 sync dist/ "s3://${{ steps.cfg.outputs.bucket }}/" \
+            --delete --exclude index.html \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp dist/index.html "s3://${{ steps.cfg.outputs.bucket }}/index.html" \
             --cache-control "no-cache,no-store,must-revalidate"
 
-      - name: Invalidate CloudFront cache
+      - name: Invalidate CloudFront
+        if: steps.gate.outputs.run == 'true'
         run: |
-          INVALIDATION_ID=$(aws cloudfront create-invalidation \
-            --distribution-id ${{ env.CF_DISTRIBUTION_ID }} \
-            --paths "/*" \
-            --query Invalidation.Id \
-            --output text)
-          echo "Invalidation ID: $INVALIDATION_ID"
+          set -euo pipefail
+          ID=$(aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.cfg.outputs.dist }}" \
+            --paths '/*' --query 'Invalidation.Id' --output text)
+          echo "Invalidation $ID"
           aws cloudfront wait invalidation-completed \
-            --distribution-id ${{ env.CF_DISTRIBUTION_ID }} \
-            --id "$INVALIDATION_ID"
-          echo "✓ CloudFront cache cleared"
+            --distribution-id "${{ steps.cfg.outputs.dist }}" --id "$ID"
+
+      # A status code proves nothing here. The distribution rewrites both 403
+      # and 404 to /index.html with a 200 so that client-side routing works,
+      # which means a completely empty bucket and a totally broken deploy both
+      # answer 200. Comparing the served index.html against the one just built
+      # is the only check that actually distinguishes them.
+      - name: Verify the bundle actually reached the edge
+        if: steps.gate.outputs.run == 'true'
+        working-directory: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          LOCAL=$(sha256sum dist/index.html | cut -d' ' -f1)
+          for i in $(seq 1 10); do
+            REMOTE=$(curl -fsS "https://${{ steps.cfg.outputs.host }}/index.html" \
+              | sha256sum | cut -d' ' -f1) || REMOTE=""
+            if [ "$REMOTE" = "$LOCAL" ]; then
+              echo "Served index.html matches the build ($LOCAL)"
+              exit 0
+            fi
+            echo "attempt $i: served $REMOTE, expected $LOCAL"
+            sleep 10
+          done
+          echo "::error::https://${{ steps.cfg.outputs.host }}/ is not serving the bundle just built"
+          exit 1
+
+      - name: Summary
+        if: always() && steps.gate.outputs.run == 'true'
+        run: |
+          {
+            echo "### ${{ matrix.app }}"
+            echo
+            echo "- Bucket: \`${{ steps.cfg.outputs.bucket }}\`"
+            echo "- Distribution: \`${{ steps.cfg.outputs.dist }}\`"
+            echo "- URL: https://${{ steps.cfg.outputs.host }}/"
+          } >> "$GITHUB_STEP_SUMMARY"
