@@ -116,28 +116,142 @@ jobs:
   agentcore:
     name: AgentCore runtimes
     if: github.event_name == 'workflow_dispatch' && inputs.target != 'mcp'
-    needs: [mcp]
-    # `needs` alone would skip this job whenever the MCP job is skipped, which
-    # is exactly the agentcore-only case this input exists for.
-    #
-    # NOTE: this job is a placeholder and deliberately fails. The AgentCore
-    # deploy still depends on the `agentcore` CLI generating a project scaffold
-    # (agentcore.json and the CDK lib/) that is gitignored, so there is nothing
-    # in the repository for CI to apply. Committing the generated scaffold, or
-    # replacing it with Terraform, is the decision that unblocks this. Failing
-    # loudly beats a green job that deployed nothing.
+    # Not `needs: [mcp]`: that would skip this job whenever the MCP job is
+    # skipped, which is exactly the agentcore-only case the input exists for.
+    # The gateway targets read the Lambda ARNs from SSM, so an MCP deploy is a
+    # prerequisite in fact but not in this run.
     runs-on: ubuntu-latest
     environment: prod
 
+    strategy:
+      # One project at a time. They share the MCP Lambdas as gateway targets,
+      # and two concurrent CDK deploys touching the same targets is a race for
+      # no gain: the whole thing is a few minutes.
+      max-parallel: 1
+      matrix:
+        project: [CryloCanvas, CryloIac]
+
     steps:
-      - name: Not yet wired
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Materialise the project config
+        working-directory: backend/agents/${{ matrix.project }}/agentcore
         run: |
-          echo "::error::The AgentCore deploy has no committed scaffold to apply."
-          echo "backend/agents/*/agentcore/ holds only agentcore.json.example;"
-          echo "the working agentcore.json and the CDK lib/ are gitignored, so"
-          echo "they exist on whichever laptop last ran 'agentcore create'."
-          echo
-          echo "Unblock by either committing the generated scaffold with the"
-          echo "account id read from SSM at deploy time, or by expressing the"
-          echo "runtimes and gateway as Terraform in the foundation layer."
-          exit 1
+          set -euo pipefail
+          # agentcore.json and aws-targets.json are gitignored because they
+          # carry the AWS account id, and the repository should not. They are
+          # not secret though, only account-specific, so CI rebuilds them from
+          # the committed template using the identity it is already running as.
+          # That is what stops the agent deploy from being something only one
+          # laptop can do.
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          sed "s/<ACCOUNT_ID>/${ACCOUNT_ID}/g" agentcore.json.example > agentcore.json
+
+          cat > aws-targets.json <<JSON
+          [
+            {
+              "name": "prod",
+              "description": "Clyro production, ${AWS_REGION}",
+              "account": "${ACCOUNT_ID}",
+              "region": "${AWS_REGION}"
+            }
+          ]
+          JSON
+
+          # Fail here rather than three minutes into a CDK synth.
+          grep -q '<ACCOUNT_ID>' agentcore.json && {
+            echo "::error::agentcore.json still contains a placeholder"; exit 1; }
+          echo "config written for account ending ${ACCOUNT_ID: -4}"
+
+      - name: Install and build the CDK app
+        working-directory: backend/agents/${{ matrix.project }}/agentcore/cdk
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy
+        working-directory: backend/agents/${{ matrix.project }}/agentcore/cdk
+        run: |
+          set -euo pipefail
+          npx cdk deploy --all --require-approval never
+
+      - name: Publish the runtime ARNs
+        run: |
+          set -euo pipefail
+          # Django reads these as settings, and /clyro/prod/env/ is exported
+          # verbatim into the container by /opt/clyro/up.sh, so publishing them
+          # here is the whole handoff. require_runtime_arn has no fallback, so
+          # until these exist Step 3 and Step 4 raise ImproperlyConfigured.
+          publish() {
+            aws ssm put-parameter --name "$1" --value "$2" \
+              --type String --overwrite >/dev/null
+            echo "published $1"
+          }
+
+          list_runtime() {
+            aws bedrock-agentcore-control list-agent-runtimes \
+              --query "agentRuntimes[?agentRuntimeName=='$1'].agentRuntimeArn | [0]" \
+              --output text
+          }
+
+          case "${{ matrix.project }}" in
+            CryloCanvas)
+              ARN=$(list_runtime CryloCanvas_Reasoning)
+              [ "$ARN" = "None" ] && { echo "::error::Reasoning runtime not found"; exit 1; }
+              publish /clyro/prod/env/REASONING_RUNTIME_ARN "$ARN"
+
+              MEM=$(aws bedrock-agentcore-control list-memories \
+                --query "memories[?starts_with(id, 'CryloCanvas')].id | [0]" --output text)
+              [ "$MEM" = "None" ] && { echo "::error::CryloCanvas memory not found"; exit 1; }
+              publish /clyro/prod/env/AGENTCORE_MEMORY_ID "$MEM"
+              ;;
+            CryloIac)
+              ARN=$(list_runtime CryloIac_IacArchitect)
+              [ "$ARN" = "None" ] && { echo "::error::IacArchitect runtime not found"; exit 1; }
+              publish /clyro/prod/env/IAC_RUNTIME_ARN "$ARN"
+              ;;
+          esac
+
+      - name: Restart the backend so it reads the new parameters
+        if: matrix.project == 'CryloIac'
+        run: |
+          set -euo pipefail
+          # The container reads /clyro/prod/env/ at start, so parameters
+          # published above are invisible until it restarts. Runs once, after
+          # the last project, so the box bounces a single time.
+          ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=clyro-prod-app" \
+                      "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+
+          if [ "$ID" = "None" ] || [ -z "$ID" ]; then
+            echo "::warning::No running instance; the ARNs are published but the app has not picked them up."
+            exit 0
+          fi
+
+          CMD=$(aws ssm send-command --instance-ids "$ID" \
+            --document-name AWS-RunShellScript \
+            --parameters 'commands=["/opt/clyro/up.sh"]' \
+            --query 'Command.CommandId' --output text)
+
+          for _ in $(seq 1 30); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$CMD" \
+              --instance-id "$ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in
+              Success) echo "restarted"; exit 0 ;;
+              Failed|Cancelled|TimedOut) echo "::error::restart $STATUS"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::restart did not finish in time"; exit 1
