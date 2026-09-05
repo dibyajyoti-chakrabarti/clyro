@@ -43,3 +43,33 @@ output "ecr_backend_url" {
 output "backups_bucket" {
   value = module.app.backups_bucket
 }
+
+# ── Frontends ────────────────────────────────────────────────────────────────
+output "frontend" {
+  description = "Main site: bucket, distribution and the hostnames it should serve"
+  value = {
+    bucket          = module.frontend.bucket_name
+    distribution_id = module.frontend.cloudfront_distribution_id
+    cloudfront      = module.frontend.cloudfront_domain
+    aliases         = module.frontend.alias_names
+  }
+}
+
+output "frontend_admin" {
+  value = {
+    bucket          = module.frontend_admin.bucket_name
+    distribution_id = module.frontend_admin.cloudfront_distribution_id
+    cloudfront      = module.frontend_admin.cloudfront_domain
+    aliases         = module.frontend_admin.alias_names
+  }
+}
+
+# ── Cognito ──────────────────────────────────────────────────────────────────
+output "cognito" {
+  value = {
+    user_pool_id   = module.cognito.user_pool_id
+    client_id      = module.cognito.client_id
+    domain         = module.cognito.domain
+    google_enabled = module.cognito.google_enabled
+  }
+}

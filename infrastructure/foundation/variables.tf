@@ -79,3 +79,19 @@ variable "letsencrypt_email" {
   type        = string
   default     = "sulabaga1995@gmail.com"
 }
+
+# clyro.cloud, www. and admin. are all still attached to CloudFront
+# distributions in the abandoned account 321613317660, and CloudFront enforces
+# alternate domain names across every AWS account. A distribution therefore
+# cannot be created carrying them.
+#
+# It can, however, have them moved onto it once it exists, by proving control of
+# the domain with a DNS TXT record. Set this false for one apply, run
+# scripts/claim-cloudfront-aliases.sh, then set it back to true and apply again.
+#
+# Leaving it false afterwards is actively harmful: the next apply resets the
+# alias list to empty and undoes the move.
+variable "enable_cloudfront_aliases" {
+  type    = bool
+  default = true
+}

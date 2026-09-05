@@ -15,6 +15,10 @@ output "domain" {
   value       = aws_cognito_user_pool_domain.main.domain
 }
 
+# nonsensitive() because this is derived from the client id, which arrives from
+# an SSM parameter and is therefore marked sensitive, which would taint every
+# output containing it. Whether Google sign-in is switched on is not a secret;
+# the credential behind it stays sensitive and is never output.
 output "google_enabled" {
-  value = local.google_enabled
+  value = nonsensitive(local.google_enabled)
 }

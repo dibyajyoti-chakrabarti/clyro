@@ -108,6 +108,7 @@ module "frontend" {
   account_id          = var.account_id
   acm_certificate_arn = one(module.acm_wildcard[*].certificate_arn)
   route53_zone_id     = module.route53.zone_id
+  enable_aliases      = var.enable_cloudfront_aliases
 }
 
 module "frontend_admin" {
@@ -119,6 +120,7 @@ module "frontend_admin" {
   account_id          = var.account_id
   app_name            = "frontend-admin"
   include_www         = false
+  enable_aliases      = var.enable_cloudfront_aliases
   acm_certificate_arn = one(module.acm_wildcard[*].certificate_arn)
   route53_zone_id     = module.route53.zone_id
 }

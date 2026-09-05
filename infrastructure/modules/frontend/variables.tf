@@ -17,6 +17,14 @@ variable "app_name" {
   default = "frontend"
 }
 
+# False only for the single apply that creates a distribution whose names are
+# still held by another AWS account. See the module's own note and
+# scripts/claim-cloudfront-aliases.sh.
+variable "enable_aliases" {
+  type    = bool
+  default = true
+}
+
 # The admin subdomain has no "www.admin.<domain>" alias — only the apex site
 # gets a www redirect.
 variable "include_www" {

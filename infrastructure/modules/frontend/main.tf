@@ -13,6 +13,8 @@ locals {
   # OAC/distribution are never renamed by a second module instance existing —
   # only a distinctly-named instance (app_name set explicitly) gets a suffix.
   resource_label = var.app_name == "frontend" ? local.prefix : "${local.prefix}-${var.app_name}"
+
+  alias_names = var.include_www ? [var.domain, "www.${var.domain}"] : [var.domain]
 }
 
 # ── S3 bucket (private, versioned) ───────────────────────────────────────────
@@ -81,7 +83,17 @@ resource "aws_cloudfront_distribution" "frontend" {
   is_ipv6_enabled     = true
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
-  aliases             = var.include_www ? [var.domain, "www.${var.domain}"] : [var.domain]
+  # Gated because of the two-pass move described in
+  # scripts/claim-cloudfront-aliases.sh. A distribution cannot be CREATED with
+  # an alias another account already holds, but it can have that alias moved
+  # onto it afterwards, and it has to exist to be the target of the move. So
+  # the first apply runs with this false, the aliases are claimed, and the
+  # second apply turns it back on.
+  #
+  # Turn it back on immediately after claiming. Leaving it false on a later
+  # apply resets the distribution's alias list to empty and silently undoes the
+  # move.
+  aliases = var.enable_aliases ? local.alias_names : []
 
   origin {
     domain_name              = aws_s3_bucket.frontend.bucket_regional_domain_name
