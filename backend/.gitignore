@@ -7,17 +7,25 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+#
+# Anchored with a leading slash so each pattern means "the setuptools artifact
+# directory beside this file" and not "any directory with this name, at any
+# depth". Unanchored, `lib/` silently swallowed
+# agents/*/agentcore/cdk/lib/cdk-stack.ts, which is how the AgentCore CDK
+# scaffold came to be missing from the repository and the agent deploy came to
+# have no CI path. Nothing here is a name that only setuptools ever uses, so
+# every one of them could have done the same.
 .Python
-build/
-dist/
-downloads/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+/build/
+/dist/
+/downloads/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
 *.egg-info/
 .installed.cfg
 *.egg

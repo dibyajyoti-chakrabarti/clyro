@@ -2,3 +2,12 @@
 # Pinned for reproducible Lambda images. We expose only its read-only
 # validate_cloudformation_template tool (cfn-lint); see handler.py / tools.json.
 awslabs.aws-iac-mcp-server==1.0.19
+
+# Transitive pins. The awslabs servers above declare `mcp[cli]>=1.23.0` and
+# `fastmcp>=2.14.0` with no upper bound, so a rebuild months later resolved
+# mcp 2.x and fastmcp 3.x and every Lambda failed at import: FastMCP was
+# renamed to MCPServer in mcp 2, and fastmcp.server.proxy moved in fastmcp 3.
+# Nothing in this repository changed. Cap the majors so an image built today
+# and an image built next year contain the same code.
+mcp>=1.23,<2
+fastmcp>=2.14,<3
