@@ -1,8 +1,0 @@
-project             = "clyro"
-environment         = "prod"
-aws_region          = "ap-south-1"
-domain              = "clyro.cloud"
-rds_instance_class  = "db.t3.micro"
-deletion_protection = true
-skip_final_snapshot = false
-backend_image_tag   = "latest"
