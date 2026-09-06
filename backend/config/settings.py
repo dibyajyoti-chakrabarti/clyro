@@ -84,11 +84,13 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_TRACK_STARTED = True
 
-# Production has no ElastiCache/Redis — the broker is SQS instead (see
-# infrastructure/workloads/celery_worker.tf), authenticated via the Lambda's/
-# ECS task's own IAM role (no static keys). `_run()` persists results onto
-# AgentJob rows directly, not through Celery's own result backend, so the SQS
-# transport not supporting one is a non-issue.
+# Production runs redis:7-alpine on the app box and CELERY_BROKER_URL points at
+# it (see infrastructure/modules/ec2_app/templates/cloud-init.yaml.tftpl). The
+# SQS branch below is left in place for the serverless deployment shape this
+# used to have, and for anyone running it that way; it is not what prod does.
+# `_run()` persists results onto AgentJob rows directly rather than through
+# Celery's own result backend, which is why no result backend is configured
+# either way.
 if CELERY_BROKER_URL.startswith('sqs://'):
     CELERY_BROKER_TRANSPORT_OPTIONS = {
         'queue_name_prefix': env('CELERY_SQS_QUEUE_PREFIX', default=''),
@@ -103,7 +105,7 @@ CELERY_TASK_TIME_LIMIT = 900
 # AWSAccountConnections and stuck 'deleting' Deployments on a schedule instead of
 # only reactively, the next time the user hits _assume(). Runs on whatever
 # process invokes `celery -A config beat` (a sidecar process on the same Celery
-# worker service in prod — see infrastructure/modules/celery_worker/).
+# worker service in prod: the celery_beat service in the box's compose file).
 CELERY_BEAT_SCHEDULE = {
     "reconcile-aws-state": {
         "task": "app.tasks.run_reconcile_sweep_task",
@@ -124,9 +126,10 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# Production has no Redis (see the SQS note above), so the cache is deliberately
-# per-process LocMem — only used for short-TTL snapshots (the Step 7 health poll)
-# that absorb rapid re-polls/multiple tabs and don't need cross-process coherence.
+# Deliberately per-process LocMem even though prod now has a Redis to point at.
+# The cache only holds short-TTL snapshots (the Step 7 health poll) that absorb
+# rapid re-polls and multiple tabs, and those do not need cross-process
+# coherence. Worth revisiting if anything starts caching something that does.
 CACHES = {
     'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
 }

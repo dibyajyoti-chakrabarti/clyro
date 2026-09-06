@@ -91,10 +91,11 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     env_file:
       - ./backend/.env.local
-    # Drives CELERY_BEAT_SCHEDULE (config/settings.py) — currently just the
-    # AWS-state reconciliation sweep (app.provisioning.reconcile). In prod
-    # this runs as a second process on the same Celery worker service
-    # (infrastructure/modules/celery_worker/), not a separate always-on task.
+    # Drives CELERY_BEAT_SCHEDULE (config/settings.py): the AWS-state
+    # reconciliation sweep (app.provisioning.reconcile) and the Step 7 health
+    # snapshots. Prod runs the same thing as its own celery_beat container on
+    # the app box, written by
+    # infrastructure/modules/ec2_app/templates/cloud-init.yaml.tftpl.
     command: celery -A config beat --loglevel=info
     depends_on:
       db:

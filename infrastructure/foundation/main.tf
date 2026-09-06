@@ -52,8 +52,11 @@ module "ecr" {
 
   project     = var.project
   environment = var.environment
-  # One repository, not four. The three MCP Lambdas are gone with the rest of
-  # the serverless estate; they run in-process on the box now.
+  # One repository, not four, because this module only owns the box's own image.
+  # The three MCP tool Lambdas are still very much alive (clyro-mcp-pricing,
+  # clyro-mcp-cfn, clyro-mcp-docs, all container-image Lambdas in ap-south-1),
+  # but backend/mcp/deploy_mcp.sh creates and pushes their repositories itself
+  # from the deploy-agents workflow, so Terraform must not also declare them.
   repos = ["backend"]
 }
 
