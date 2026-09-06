@@ -204,6 +204,13 @@ AWS_PROFILE = env('AWS_PROFILE', default='default')
 AWS_REGION = env('AWS_REGION', default='us-east-1')
 CLYRO_AWS_ACCOUNT_ID = env('CLYRO_AWS_ACCOUNT_ID')
 
+# Where Step 2's CloudFormation quick-create link fetches its template from.
+# Published by Terraform (infrastructure/foundation/cfn_bootstrap.tf) rather
+# than hardcoded: the previous value pointed at a bucket in an AWS account that
+# has since been closed, so every quick-create link opened a console page that
+# could not load its template, and Step 2 was unreachable for every user.
+CFN_BOOTSTRAP_TEMPLATE_URL = env('CFN_BOOTSTRAP_TEMPLATE_URL', default='')
+
 # ── Step 3 (Canvas) ─────────────────────────────────────────────────────────
 # When set, a new canvas prompt is sent to the deployed Reasoning runtime; when
 # empty (default), it runs the local canvas_core deterministic stub.

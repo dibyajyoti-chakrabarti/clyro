@@ -16,11 +16,14 @@ on:
     paths:
       - 'infrastructure/**'
       - '.github/workflows/terraform.yml'
+      # Terraform publishes this template to S3, so editing it is an apply.
+      - 'backend/cfn-templates/**'
   push:
     branches: [main]
     paths:
       - 'infrastructure/**'
       - '.github/workflows/terraform.yml'
+      - 'backend/cfn-templates/**'
   workflow_dispatch:
     inputs:
       layer:
