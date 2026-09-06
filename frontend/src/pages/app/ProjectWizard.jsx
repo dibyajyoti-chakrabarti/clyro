@@ -41,7 +41,6 @@ export default function ProjectWizard() {
   const [step4Finalized, setStep4Finalized] = useState(false)
   const [step4ShowBanner, setStep4ShowBanner] = useState(false)
   const [step4InputPrefill, setStep4InputPrefill] = useState('')
-  const [step4Metrics, setStep4Metrics] = useState({ serviceCount: 0, estimatedMonthlyCost: 0 })
 
   useEffect(() => {
     if (isNew || !id) {
@@ -262,7 +261,6 @@ export default function ProjectWizard() {
                     setStep4InputPrefill={setStep4InputPrefill}
                     step4ShowBanner={step4ShowBanner}
                     onDismissStep4Banner={() => setStep4ShowBanner(false)}
-                    onMetricsChange={setStep4Metrics}
                   />
                 ) : null}
 

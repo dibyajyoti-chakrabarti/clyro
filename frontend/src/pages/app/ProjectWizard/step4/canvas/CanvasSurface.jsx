@@ -9,8 +9,6 @@ export default function CanvasSurface({
   canvasNodes,
   canvasConnections,
   nodePositions,
-  accentByType,
-  iconByType,
   selectedNode,
   selected,
   chatInputRef,
@@ -296,8 +294,6 @@ export default function CanvasSurface({
                   node={node}
                   isSelected={isSelected}
                   position={pos}
-                  accentByType={accentByType}
-                  iconByType={iconByType}
                   onClick={(event) => {
                     event.stopPropagation();
                     setSelectedNode(node.id);

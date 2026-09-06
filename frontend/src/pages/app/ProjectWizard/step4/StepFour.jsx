@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Database, Globe, Layers, Package, Server, Settings2, Zap, ZoomIn, ZoomOut } from 'lucide-react'
+import { ZoomIn, ZoomOut } from 'lucide-react'
 import CanvasSurface from './canvas/CanvasSurface'
 import CanvasNode from './canvas/CanvasNode'
 import NodePopup from './canvas/NodePopup'
@@ -15,7 +15,6 @@ function StepFourPanel({
   step4InputPrefill,
   step4ShowBanner,
   onDismissStep4Banner,
-  onMetricsChange,
 }) {
   const surfaceRef = useRef(null)
   const panState = useRef(null)
@@ -35,7 +34,6 @@ function StepFourPanel({
     selected,
     surfaceBounds,
     nodePositions,
-    setNodePositions,
     chatHistory,
     agentLoading,
     pendingOp,
@@ -50,26 +48,6 @@ function StepFourPanel({
     handleAskAbout,
   } = useCanvasAgent({ projectId, setStep4InputPrefill, step4InputPrefill })
 
-  const iconByType = {
-    service: Server,
-    static: Globe,
-    database: Database,
-    cache: Zap,
-    worker: Settings2,
-    queue: Layers,
-    storage: Package,
-  }
-
-  const accentByType = {
-    service: 'border-l-blue-500',
-    static: 'border-l-purple-500',
-    database: 'border-l-green-500',
-    cache: 'border-l-red-500',
-    worker: 'border-l-orange-500',
-    queue: 'border-l-yellow-500',
-    storage: 'border-l-teal-500',
-  }
-
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key === 'Escape') setActiveDrawer(null)
@@ -77,11 +55,6 @@ function StepFourPanel({
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
-
-  useEffect(() => {
-    if (!onMetricsChange) return
-    onMetricsChange({ serviceCount: canvasNodes.length, estimatedMonthlyCost: totalCost })
-  }, [canvasNodes.length, onMetricsChange, totalCost])
 
   const startPan = (event) => {
     if (event.target.closest('button')) return
@@ -135,8 +108,6 @@ function StepFourPanel({
           canvasNodes={canvasNodes}
           canvasConnections={canvasConnections}
           nodePositions={nodePositions}
-          accentByType={accentByType}
-          iconByType={iconByType}
           selectedNode={selectedNode}
           selected={selected}
           chatInputRef={chatInputRef}

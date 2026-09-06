@@ -71,8 +71,6 @@ export default function CanvasNode({
   node,
   isSelected,
   position,
-  accentByType,
-  iconByType,
   onClick,
 }) {
   const { icon } = resolveIcon(node);

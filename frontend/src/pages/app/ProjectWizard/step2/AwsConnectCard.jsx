@@ -19,7 +19,6 @@ const WHITE_60 = 'rgba(255, 255, 255, 0.6)'
 const WHITE_70 = 'rgba(255, 255, 255, 0.7)'
 const WHITE_90 = 'rgba(255, 255, 255, 0.9)'
 const WHITE_40 = 'rgba(255, 255, 255, 0.4)'
-const WHITE_09 = 'rgba(255, 255, 255, 0.09)'
 const WHITE_15 = 'rgba(255, 255, 255, 0.15)'
 
 // Card shell shared by the two Section 2 cards and the bottom CTA — dark
