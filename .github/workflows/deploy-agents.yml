@@ -200,6 +200,20 @@ jobs:
           CDK=./node_modules/.bin/cdk
           "$CDK" --version
 
+          # CDK needs the account bootstrapped before it can stage assets.
+          # That is deliberately not done here: `cdk bootstrap` creates the
+          # cdk-<qualifier>-* roles, one of which carries AdministratorAccess,
+          # and this role is scoped to clyro-* precisely so CI cannot mint an
+          # admin role. It is a one-time, account-level action and belongs with
+          # the hand-applied Terraform bootstrap layer.
+          if ! aws ssm get-parameter --name /cdk-bootstrap/hnb659fds/version >/dev/null 2>&1; then
+            echo "::error::This account and region are not CDK-bootstrapped, so"
+            echo "there is nowhere to stage the runtime bundle. Run once, by hand,"
+            echo "with credentials that can create IAM roles:"
+            echo "  AWS_PROFILE=jan-saathi npx cdk bootstrap aws://$(aws sts get-caller-identity --query Account --output text)/${AWS_REGION}"
+            exit 1
+          fi
+
           # List first, so an app that genuinely synthesizes no stacks fails
           # here instead of looking like a no-op success.
           echo "--- stacks the app synthesizes ---"

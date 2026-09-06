@@ -1,0 +1,127 @@
+name: Django Management
+
+# Runs a Django management command inside the backend container on the app
+# instance. This exists because some operations have no self-service path and
+# no API: the project-creation allowlist is the first, and the e2e bot needs to
+# be on it before it can create anything.
+#
+# Deliberately not an arbitrary shell. The command is chosen from a fixed list,
+# so this workflow cannot become a general remote-execution hole in an
+# otherwise reviewed deploy path.
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: Management command to run
+        required: true
+        type: choice
+        options:
+          - whitelist_email list
+          - whitelist_email add
+          - whitelist_email remove
+          - showmigrations
+          - migrate
+      argument:
+        description: Argument for the command (an email, for whitelist_email add/remove)
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: manage
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.GH_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve instance
+        id: infra
+        run: |
+          # Resolved from the tag, not hardcoded, for the same reason the
+          # deploy workflow does it: a stale instance id fails silently.
+          ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=clyro-prod-app" \
+                      "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [ "$ID" = "None" ] || [ -z "$ID" ]; then
+            echo "::error::No running clyro-prod-app instance. Start it with the Infra Power workflow first."
+            exit 1
+          fi
+          echo "instance_id=$ID" >> "$GITHUB_OUTPUT"
+
+      - name: Validate the argument
+        id: args
+        env:
+          CMD: ${{ inputs.command }}
+          ARG: ${{ inputs.argument }}
+        run: |
+          set -euo pipefail
+
+          # The allowed commands only ever take an email address. Anything
+          # outside that shape is refused rather than escaped, so nothing the
+          # dispatcher types can reach the shell the SSM document runs.
+          if [ -n "$ARG" ] && ! printf '%s' "$ARG" | grep -Eq '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'; then
+            echo "::error::The argument must be a plain email address."
+            exit 1
+          fi
+
+          case "$CMD" in
+            *add|*remove)
+              if [ -z "$ARG" ]; then
+                echo "::error::'$CMD' needs an email address in the argument field."
+                exit 1
+              fi
+              ;;
+          esac
+          echo "full=$CMD $ARG" >> "$GITHUB_OUTPUT"
+
+      - name: Run it
+        env:
+          INSTANCE_ID: ${{ steps.infra.outputs.instance_id }}
+          FULL: ${{ steps.args.outputs.full }}
+        run: |
+          set -euo pipefail
+          echo "Running: manage.py $FULL"
+
+          CMD=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --timeout-seconds 600 \
+            --comment "manage.py $FULL" \
+            --parameters "commands=[\"docker compose -f /opt/clyro/docker-compose.yml exec -T backend python manage.py $FULL\"]" \
+            --query 'Command.CommandId' --output text)
+
+          aws ssm wait command-executed --command-id "$CMD" --instance-id "$INSTANCE_ID" || true
+          STATUS=$(aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INSTANCE_ID" \
+            --query Status --output text)
+
+          {
+            echo "### \`manage.py $FULL\`"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INSTANCE_ID" \
+            --query StandardOutputContent --output text | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$STATUS" != "Success" ]; then
+            echo "::error::SSM command finished as $STATUS"
+            aws ssm get-command-invocation --command-id "$CMD" --instance-id "$INSTANCE_ID" \
+              --query StandardErrorContent --output text
+            exit 1
+          fi
