@@ -44,7 +44,7 @@ Based on the graph, here's what Step 1 currently produces across multiple subsys
 |---|---|---|
 | `deterministic_detector.py` (deleted) | Manifest scan (free, fast) | `detected_resources` dict, `env_vars` list, `confidence`, `status`, `block_reason` |
 | `RepoRecon/main.py` (deleted) | AgentCore LLM agent (slow, ~41s cold start) | Same shape as above, used as fallback when deterministic confidence is "low" |
-| [compliance.py](../backend/app/scanner/compliance.py) | Static rule-based checks | `compliance_findings[]` — each `{id, title, passed, severity, detail, fix_hint}` |
+| [compliance.py](../backend/app/scanner/compliance.py) | Static rule-based checks | `compliance_findings[]`, each `{id, title, passed, severity, detail, fix_hint}` |
 | [runner.py](../backend/app/scanner/runner.py) | Orchestrator | Saves to [ScanResult](../backend/core/models.py) model + creates [EnvVarKey](../backend/core/models.py) records |
 
 ### Current Data Shapes
@@ -298,7 +298,7 @@ Wrote CLYRO.md (5 resources, 8 env vars, 6/6 compliance checks passing)
 Wrote .env.clyro (1 generated secret — do NOT commit this file)
 ```
 
-This is possible because [compliance.py](../backend/app/scanner/compliance.py) already has `fix_hint` on every finding — the agent can read those hints and *apply them*.
+This is possible because [compliance.py](../backend/app/scanner/compliance.py) already has `fix_hint` on every finding, so the agent can read those hints and *apply them*.
 
 ### 7. Additional Sections CLYRO.md Could Carry
 
