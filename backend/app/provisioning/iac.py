@@ -251,11 +251,18 @@ def ensure_deployment(project: Project) -> Deployment:
     # aws_account_type now comes from AWS connect (Step 2), which runs before
     # intent collection (Step 3) — the intent question that used to capture it
     # was removed, so intent.aws_account_type is null on the normal path.
-    # Backfill it from the connection's real-AWS-verified value (falling back to
-    # the user's self-reported claim) so build_spec/canvas still see a value.
-    if intent.aws_account_type is None and connection is not None:
+    # AWSAccountConnection is the source of truth; the field on IntentRecord is
+    # only a mirror of it, because build_spec reads intent rather than the
+    # connection.
+    #
+    # This resyncs on every call rather than filling a null once. Written as
+    # `if intent.aws_account_type is None` it was a one-way latch: the first
+    # generation cached "paid", and a user who then switched to Free Tier kept
+    # getting paid infrastructure forever, because the backfill never ran again.
+    # Found live on a free-tier account whose template carried four NAT gateways.
+    if connection is not None:
         account_type = connection.verified_account_type or connection.claimed_account_type
-        if account_type:
+        if account_type and account_type != intent.aws_account_type:
             intent.aws_account_type = account_type
             intent.save(update_fields=["aws_account_type", "updated_at"])
 
