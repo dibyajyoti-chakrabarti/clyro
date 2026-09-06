@@ -1,332 +1,157 @@
-**Crylo — Step 2: Intent Collection (Final Documentation)**
+# Chapter 9: Wizard Step 3, Tell us about your app
 
-**Overview**
+> **Filename note.** This file is `ch_9_wizard_step_2_configure.md` because the wizard
+> used to have five steps and intent collection was the second of them. Intent is now
+> **Step 3**. The filename is kept so existing links keep working. Step 2 is connecting
+> the AWS account, covered in [Chapter 11](ch_11_wizard_step_4_deploy.md).
+>
+> Rewritten 2026-09-06 against the code. The previous version of this chapter described
+> eight questions, most of which are no longer asked, and mapped them onto sizing rules
+> that no longer hold.
 
-Step 2 collects the information that repository scanning cannot provide. It is a short, conversational flow — not a form. Every question has a clear purpose tied directly to an infrastructure decision. No question is asked if the answer is already known from Step 1.
+Step 3 collects the small amount of information that reading the repository cannot
+supply. It runs after the AWS account is connected and before the canvas.
 
-Step 2 produces a single intent record stored in the database. Combined with the Step 1 resource record, this gives every downstream step a complete, unambiguous picture of what to build.
+## The design principles, which still hold
 
-**Design Principles**
+**Never re-ask what Step 1 already knows.** Celery detected in the contract means the
+worker exists; psycopg2 means PostgreSQL. Repeating detected information tells the user
+the system did not actually read their code.
 
-**Never re-ask what Step 1 already knows.** If Crylo detected Celery, it never asks about background jobs. If psycopg2 was found, it never asks about the database. Repeating detected information signals to the user that the system didn't actually understand their code.
+**Plain English only.** No AWS terminology in the questions. A developer who does not
+know AWS should be able to answer every one without searching for anything.
 
-**Questions are presented one at a time.** Not as a list, not as a form. Each question appears after the previous one is answered. This keeps the interaction conversational and reduces cognitive load.
+**Fixed options wherever possible.** Open text introduces ambiguity; options map cleanly
+onto infrastructure decisions. Exactly one field in Step 3 is free text.
 
-**Plain English only.** No AWS terminology in the questions themselves. A developer who doesn't know AWS should be able to answer every question without googling anything. Technical implications are handled internally.
+**Ask less over time.** The question set has shrunk deliberately. Every question removed
+was one whose answer could be defaulted safely or moved somewhere it fits better, and the
+canvas at Step 4 is editable, so a default the user dislikes is one click from being
+changed rather than a decision they had to make blind.
 
-**Options over open input wherever possible.** Open text fields introduce ambiguity. Fixed options map cleanly to infrastructure decisions. The only open text fields in Step 2 are the app description and the domain name.
+## The questions
 
-**Question Sequence**
+Four, defined in
+`frontend/src/pages/app/ProjectWizard/constants/questions.js::getQuestions`. They render
+**all at once on a single page**, not one card at a time.
 
-Questions are grouped into three moments. Moments 1 and 3 always appear. Moment 2 questions appear based on what Step 1 detected.
+| # | `id` | Question | Options |
+| --- | --- | --- | --- |
+| 1 | `environment` | What environment is this deployment for? | Production, Staging / Testing, Development |
+| 2 | `scale` | How many users do you expect at launch? | `solo`, `small` (under 1,000), `medium` (real traffic), `large` (significant load) |
+| 3 | `domain_has` | Do you have a custom domain for this app? | `yes`, `no` (use the AWS URL), `internal` |
+| 4 | `domain_name` | What's your domain? | Free text. **Shown only when `domain_has` is `yes`.** |
 
-**Moment 1 — Understanding the App**
+The conditional field is filtered out of the "can continue" check as well as the render,
+so a hidden question never blocks progress.
 
-These three questions are always asked, in this order, one at a time.
+## What used to be asked, and where it went
 
-**Q1 — App Description**
-
-*"Describe your app in one sentence."*
-
-Free text input. One line maximum.
-
-Purpose: Used exclusively for resource naming (invoiceapp-prod-db instead of crylo-rds-1) and canvas node labels. Has no effect on infrastructure decisions.
-
-Stored as: intent.description
-
-**Q2 — Expected Scale**
-
-*"How many users do you expect at launch?"*
-
-A) Just me or a small internal team
-
-B) Small user base — under 1,000 users
-
-C) Public product — expecting real traffic
-
-D) High scale — expecting significant load
-
-Purpose: This single answer drives instance sizing for every resource in the stack. Maps directly to infrastructure sizing tiers:
-
-A → db.t3.micro | cache.t3.micro | 1 ECS task | no autoscaling
-
-B → db.t3.small | cache.t3.micro | 1 ECS task | no autoscaling
-
-C → db.t3.medium | cache.t3.small | 2 ECS tasks | autoscaling enabled
-
-D → db.r6g.large | cache.r6g.large | 3 ECS tasks | autoscaling aggressive
-
-Stored as: intent.scale → solo | small | medium | large
-
-**Q3 — Uptime Requirement**
-
-*"How critical is uptime for this deployment?"*
-
-A) Downtime is acceptable — dev, staging, or side project
-
-B) Downtime is bad but not catastrophic — early stage product
-
-C) It needs to stay up — this is a production business
-
-Purpose: Drives redundancy decisions across the entire stack. Maps to:
-
-A → single-AZ RDS | 1 ECS task minimum | no multi-AZ | no read replicas
-
-B → single-AZ RDS | 1 ECS task minimum | no multi-AZ
-
-C → multi-AZ RDS | 2 ECS task minimum | multi-AZ subnets | deletion protection on
-
-Stored as: intent.criticality → low | medium | high
-
-**Moment 2 — Service Confirmation**
-
-These questions appear only when the corresponding resource was detected in Step 1, or when a decision is required. Each is shown only once and only when relevant.
-
-**Q4 — Backend Compute Choice**
-
-Always shown. This is the most consequential architectural decision the user makes.
-
-*"Your Django backend will run as a container on AWS. Where do you want it hosted?"*
-
-A) ECS Fargate — fully managed, no servers to configure (recommended)
-
-B) ECS on EC2 — more control, slightly cheaper at high scale
-
-C) EC2 — you manage the underlying server yourself
-
-A one-line cost and complexity note is shown under each option. Recommended option is highlighted. Most users will pick Fargate.
-
-Purpose: Sets aws\_service on the backend node in canvas.yml. Directly determines which CloudFormation resources get generated for compute.
-
-Stored as: intent.compute\_choice → ecs\_fargate | ecs\_ec2 | ec2
-
-**Q5 — Database Service Choice**
-
-Shown only if PostgreSQL was confirmed in Step 1, which it almost always will be.
-
-*"Which database setup do you want?"*
-
-A) RDS PostgreSQL — reliable, well-understood, lower cost (recommended)
-
-B) Aurora PostgreSQL — higher performance, more scalable, higher cost
-
-Purpose: Sets aws\_service on the database node in canvas.yml.
-
-Stored as: intent.database\_choice → rds\_postgres | aurora\_postgres
-
-**Q6 — Worker Compute Choice**
-
-Shown only if Celery was detected in Step 1.
-
-*"Your background workers were detected. Where should they run?"*
-
-A) ECS Fargate — same as your backend, fully managed (recommended)
-
-B) ECS on EC2 — more control, cheaper at scale
-
-C) EC2 — manage the server yourself
-
-Purpose: Sets aws\_service on the worker node in canvas.yml.
-
-Stored as: intent.worker\_compute\_choice → ecs\_fargate | ecs\_ec2 | ec2
-
-**Q7 — Environment**
-
-Always shown.
-
-*"What environment is this deployment for?"*
-
-A) Production
-
-B) Staging
-
-C) Development
-
-Purpose: Affects resource naming conventions, sizing overrides, deletion protection, and whether multi-AZ defaults are applied regardless of Q3 answer.
-
-Production → multi-AZ respected from Q3 | deletion protection on | full naming
-
-Staging → single-AZ always | deletion protection off | -staging suffix
-
-Development → single-AZ always | deletion protection off | minimal sizing override
-
-Stored as: intent.environment → production | staging | development
-
-**Moment 3 — Domain**
-
-Always shown. One question, one optional follow-up.
-
-**Q8 — Domain**
-
-*"Do you have a domain name for this app?"*
-
-A) Yes — I have a domain to point to this
-
-B) Not yet — give me the AWS-generated URL for now
-
-C) No public domain needed — internal use only
-
-If A is selected, a text input appears:
-
-*"What's the domain? (e.g. app.myproduct.com)"*
-
-Purpose:
-
-A → Provision ACM certificate | configure ALB with HTTPS listener | output CNAME record
-
-B → Output ALB DNS name only | no ACM provisioned
-
-C → No ALB listener on 443 | internal DNS only
-
-Stored as: intent.domain.has\_domain → true | false | internal Stored as: intent.domain.domain\_name → string | null
-
-**Step 2 Output**
-
-All answers are written to the database as a single intent record in JSONB, linked to the project by project\_id.
-
-{
-
-"project\_id": "uuid",
-
-"intent": {
-
-"description": "A SaaS tool for managing freelance invoices",
-
-"scale": "small",
-
-"criticality": "high",
-
-"environment": "production",
-
-"compute\_choice": "ecs\_fargate",
-
-"database\_choice": "rds\_postgres",
-
-"worker\_compute\_choice": "ecs\_fargate",
-
-"domain": {
-
-"has\_domain": true,
-
-"domain\_name": "app.myproduct.com"
-
-}
-
-}
-
-}
-
-**canvas.yml Update After Step 2**
-
-Once the intent record is written, Crylo updates the draft canvas.yml generated at the end of Step 1. The aws\_service values on each node are replaced with the user's confirmed choices.
-
-version: 1
-
-project: invoiceapp
-
-nodes:
-
-- id: backend
-
-label: Django Backend
-
-type: service
-
-aws\_service: ecs\_fargate
-
-image: ecr
-
-port: 8000
-
-- id: frontend
-
-label: React Frontend
-
-type: static
-
-aws\_service: s3\_cloudfront
-
-- id: db
-
-label: PostgreSQL
-
-type: database
-
-aws\_service: rds\_postgres
-
-- id: cache
-
-label: Redis
-
-type: cache
-
-aws\_service: elasticache
-
-- id: worker
-
-label: Celery Worker
-
-type: worker
-
-aws\_service: ecs\_fargate
-
-image: ecr
-
-- id: queue
-
-label: Task Queue
-
-type: queue
-
-aws\_service: sqs
-
-connections:
-
-- from: frontend
-
-to: backend
-
-label: REST API
-
-- from: backend
-
-to: db
-
-label: reads/writes
-
-- from: backend
-
-to: cache
-
-label: caching
-
-- from: backend
-
-to: worker
-
-label: async tasks
-
-- from: worker
-
-to: queue
-
-label: consumes
-
-This canvas.yml is the input to Step 3. It is complete, confirmed, and unambiguous.
-
-**What Step 2 Does Not Do**
-
-* Does not ask for environment variable values — that is Step 4
-* Does not ask about VPC, subnets, security groups, or any networking — derived at Step 4
-* Does not ask about CI/CD pipeline setup — out of scope for MVP
-* Does not ask about monitoring or alerting — out of scope for MVP
-* Does not modify the database resource record from Step 1
-
-**Step 2 Outputs**
-
-| **Output** | **Location** | **Consumer** |
+| Removed question | Field | What happens now |
 | --- | --- | --- |
-| Intent record | Database (JSONB) | Step 3 (canvas), Step 4 (IaC generation) |
-| Updated canvas.yml | Internal storage | Step 3 (canvas rendering) |
+| Describe your app in one sentence | `description` | Not asked, not set, not read. The field still exists on the model and in the serializer. |
+| How critical is uptime? | `criticality` | Not asked. Defaults to `medium` in `build_spec.py` and in `iac.py`. See the note on multi-AZ below. |
+| Which database setup? (RDS or Aurora) | `database_choice` | Defaulted to `rds_postgres` by `canvas_core/canvas_builder.py`. Changeable on the canvas. |
+| Where should the workers run? | `worker_compute_choice` | Defaulted to `ecs_fargate` by `canvas_builder.py`. Changeable on the canvas. |
+| Where should the backend run? | `compute_choice` | Hardcoded to `ecs_fargate` by the Step 3 component itself. Changeable on the canvas. |
+| What type of AWS account? | `aws_account_type` | **Moved to Step 2**, where it is compared against the account being connected. |
 
-Step 2 is complete when the intent record is written and canvas.yml is updated. Step 3 opens the canvas immediately after.
+`aws_account_type` never reaches the record through this step. `iac.ensure_deployment()`
+backfills it from the connection on **every** call, not once, because a free-tier project
+that had picked up a paid-account value would go on to be given four NAT gateways.
+
+## Storage
+
+One `IntentRecord` row per project, upserted by `POST /api/projects/<id>/intent/`
+(`app/views.py::save_intent`), table `intent_records`. Every field is nullable. Saving
+moves the project to `intent_collected` and fires a warmup of the reasoning runtime, so
+the canvas at Step 4 does not open onto a cold start.
+
+## What each answer actually decides
+
+This is the part worth being precise about, because the mapping is smaller than it looks.
+
+### `scale` sets sizing
+
+From `canvas_core/cost_engine.py::SIZING_BY_SCALE`, applied in `build_spec.py`:
+
+| scale | Fargate vCPU | Fargate GB | RDS class | Cache node | Service tasks |
+| --- | --- | --- | --- | --- | --- |
+| `solo` | 0.25 | 0.5 | `db.t3.micro` | `cache.t3.micro` | 1 |
+| `small` | 0.5 | 1 | `db.t3.small` | `cache.t3.micro` | 1 |
+| `medium` | 1 | 2 | `db.t3.medium` | `cache.t3.small` | 2 |
+| `large` | 2 | 4 | `db.r6g.large` | `cache.r6g.large` | 3 |
+
+A worker service always runs exactly one task, whatever the scale. Only the serving
+service picks up the task count above.
+
+### `environment` sets names, and nothing else
+
+It maps to a short prefix (`prod`, `staging`, `dev`) which cascades into every resource
+name, the `clyro-`-scoped IAM prefix that the connector role's policy requires, and a
+truncated prefix for the ALB and target group names, whose combined AWS limit is 32
+characters.
+
+It also appears in the multi-AZ gate, which is
+`(not free_tier) and criticality == "high" and environment == "production"`.
+
+> **Multi-AZ is currently always off.** `criticality` is no longer collected and defaults
+> to `medium`, so the gate can never open. That makes `environment` a naming decision in
+> practice, and nothing more. It does not change sizing, replica counts, backup retention
+> or deletion protection. This is a consequence of removing the uptime question rather
+> than an intentional decision, and it is worth revisiting.
+
+### `domain_has` sets the ALB listener
+
+`has_domain` requires **both** `domain_has == "yes"` and a non-empty `domain_name`. With
+a domain, the ALB listens on 443, HTTP redirects to HTTPS, and an ACM certificate is
+requested. Without one, the ALB is plain HTTP on port 80.
+
+`no` and `internal` are treated identically today. There is no internal-only path: no
+internal ALB and no private DNS. If a user picks `internal` expecting a private
+deployment, they will not get one.
+
+The hosted zone is derived by taking the last two labels of the domain, so
+`app.example.com` gives `example.com`. That is wrong for multi-part suffixes such as
+`co.uk`. `IntentRecord.route53_hosted_zone_id` overrides it, but has no UI anywhere; when
+it is blank, `deploy.start()` resolves the zone live with `route53:ListHostedZones`.
+
+### The account type, set in Step 2, overrides most of the above
+
+A free-tier account discards the scale-based sizing entirely and substitutes the smallest
+tier: 0.25 vCPU, 0.5 GB, `db.t3.micro`, `cache.t3.micro`, one task. It also drops the NAT
+Gateway, moves ECS tasks into the public subnets with public IPs so they can still reach
+ECR, forces multi-AZ off, and cuts RDS backup retention from 7 days to 1. The generator
+re-forces the instance classes a second time, because a non-eligible class taken from the
+spec failed live with "This instance size isn't available with free plan accounts".
+
+Note that this is a spend-minimising path, not a zero-cost guarantee. Fargate itself is
+not free-tier eligible. The Step 2 copy currently says only that "NAT Gateway and some
+services will be excluded", which understates it considerably.
+
+## Dead code in this step
+
+Worth knowing before reading the directory, because three files look authoritative and
+are not. `QuestionCard.jsx`, `IntentSummary.jsx` and `hooks/useQuestionFlow.js` implement
+the old one-question-at-a-time flow with a progress bar and a summary table. Nothing
+imports them. `useQuestionFlow.js` still calls `getQuestions()` with arguments the current
+function does not accept, and still branches on the removed `description` question.
+`ACCOUNT_TYPE_OPTIONS` in `questions.js` is exported and imported nowhere; the Step 2 card
+duplicates that copy inline with different wording.
+
+The resume path has a related leftover: `StepThree.jsx` tries to auto-advance past Step 3
+when `intent.description` is set, and `description` is never set. What actually happens on
+resume is that the form renders pre-filled from the saved record with Continue already
+enabled, which is the desired behaviour, reached by accident.
+
+## Step 3 outputs
+
+| Output | Location | Consumer |
+| --- | --- | --- |
+| `IntentRecord` row | `intent_records` | Step 4 canvas, Step 5 IaC generation |
+
+Only seven of its fields ever reach the generator: `scale`, `criticality`, `environment`,
+`domain_has`, `domain_name`, `route53_hosted_zone_id` and `aws_account_type`.
+`compute_choice`, `database_choice`, `worker_compute_choice` and `description` influence
+the canvas only, and `build_spec` reads the resulting `aws_service` off the canvas nodes
+instead.

@@ -190,7 +190,7 @@ source, context, hint, and acquire URL. Values are staged separately (8.7).
 > **Security boundary.** `contract_raw` is untrusted, agent-authored text from a
 > repo Clyro does not control. Only the validated output of `to_detection()` may
 > propagate downstream. It must never be interpolated into an LLM prompt — not
-> the Step 3 canvas chat, not `IacArchitect`. Without that boundary a repository
+> the Step 4 canvas chat, not `IacArchitect`. Without that boundary a repository
 > can inject instructions into infrastructure generation. `contract_raw` is
 > deliberately excluded from `ScanResultSerializer`.
 
@@ -235,7 +235,7 @@ for Claude Code, plus a link to the raw skill for users on other agents.
 
 | Output | Location | Consumer |
 | --- | --- | --- |
-| `detected_resources` | `scan_results` (JSONB) | Step 3 canvas, Step 5 IaC |
+| `detected_resources` | `scan_results` (JSONB) | Step 4 canvas, Step 5 IaC |
 | `env_vars` + `EnvVarKey` rows | `scan_results`, `env_var_keys` | Step 1 staging, Step 6 secret write |
 | Recomputed `compliance_findings` | `scan_results` (JSONB) | Step 1 gate |
 | `contract_meta` / `contract_drift` | `scan_results` (JSONB) | Step 1 provenance + drift banner |
