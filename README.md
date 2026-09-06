@@ -1,239 +1,292 @@
-# Clyro
+<p align="center">
+  <img src="frontend/src/assets/logos/Clyro_logo.png" alt="Clyro" width="120" />
+</p>
 
-Welcome to Clyro. The full Engineering Handbook is located in the `documentation/` directory.
+<h1 align="center">Clyro</h1>
 
-**👉 Start here: [Engineering Handbook](documentation/index.md)**
+<p align="center">
+  Point it at a GitHub repository and it designs, prices, generates and provisions the AWS architecture to run it, in your own AWS account.
+</p>
 
-AI-powered infrastructure provisioning platform — give it your GitHub repo and it generates, reviews, and deploys your AWS architecture.
+<p align="center">
+  <a href="https://clyro.cloud"><strong>clyro.cloud</strong></a> &nbsp;·&nbsp;
+  <a href="documentation/index.md">Engineering Handbook</a> &nbsp;·&nbsp;
+  <a href="https://api.clyro.cloud/api/health/">API health</a>
+</p>
 
-- Frontend: React + Vite + Tailwind CSS
-- Backend: Django + PostgreSQL + DRF
+<p align="center">
+  <img src="https://img.shields.io/badge/stack-Django%20%7C%20React%20%7C%20Terraform%20%7C%20AWS-blue?style=flat-square" alt="Stack" />
+  <img src="https://img.shields.io/badge/agents-Bedrock%20AgentCore-8A2BE2?style=flat-square" alt="Agents" />
+  <img src="https://img.shields.io/badge/region-ap--south--1-orange?style=flat-square" alt="Region" />
+  <img src="https://img.shields.io/badge/license-proprietary-lightgrey?style=flat-square" alt="License" />
+</p>
 
-## Project Structure
+---
 
-- `frontend/` — React UI
-- `backend/` — Django REST API
+## What it does
 
-## Tech Stack
+You connect a GitHub repository. Clyro reads the code, works out what it needs to run (framework, database, cache, background workers, object storage, every environment variable), proposes an architecture you can argue with in plain English, prices it against live AWS rates, generates the CloudFormation, and provisions it.
 
-### Frontend
-- React 19
-- Vite 7
-- Tailwind CSS 4
-- AWS Amplify (Cognito auth)
+The infrastructure lands in **your** AWS account, never in Clyro's. You launch a small CloudFormation stack that creates a role trusting Clyro with an ExternalId, and every provisioning call runs on temporary credentials from assuming that role. Revoke it by deleting one stack.
 
-### Backend
-- Python 3
-- Django 6
-- Django REST Framework
-- PostgreSQL
+> **Two systems share this repository's vocabulary.** Clyro's own platform runs on a single small EC2 instance and uses no ECS, no RDS and no load balancer. The stacks Clyro *generates* run in the user's account and do use ECS, RDS and sometimes an ALB. A mention of Fargate or RDS is almost always the second one. [Chapter 6](documentation/ch_6_infrastructure_and_deployment.md) is the authority on the first, [Chapter 11](documentation/ch_11_wizard_step_4_deploy.md) on the second.
 
-## Prerequisites
+---
 
-Install these on your machine:
-- Node.js (LTS recommended)
-- Python 3.12+
-- Docker (for local PostgreSQL)
+## The seven steps
 
-## Environment Setup
+| Step | What happens |
+|---|---|
+| 1. Connect | GitHub App installation, pick a repo and branch. A scanner reads the tree and classifies every environment variable as generated, optional, or a secret you must supply. Anything that is only entropy, Clyro mints itself. |
+| 2. Connect AWS | Launch the connector stack, paste back the role ARN. Clyro verifies by assuming it. |
+| 3. Tell us about your app | A short intent questionnaire. Each answer moves a real lever in the generated topology. |
+| 4. Review your architecture | A live canvas with a running cost estimate, priced in your region and free-tier aware. Talk to the reasoning agent to change the design. |
+| 5. Generate and validate | The IaC agent emits CloudFormation, validated before you can continue. |
+| 6. Provision | The stack is created in your account with a live event stream. Services are authored at zero desired count so the stack can complete before an image exists. Then CodeBuild builds and pushes, a one-off task applies your database migrations, and only then do services scale up. |
+| 7. Live | Health, metrics, logs, cost, pause and resume, and a teardown that removes everything it created. |
 
-### Backend (`backend/.env.local`)
+The parts that must be correct are not left to a model. Canvas parsing, constraint checking, cost estimation and the CloudFormation generator are ordinary Python. The agents propose; deterministic code prices, validates and emits. See [Chapter 3](documentation/ch_3_deterministic_provisioning.md) and [Chapter 13](documentation/ch_13_deterministic_iac_mechanism.md).
 
-```env
-DEBUG=True
-SECRET_KEY=django-insecure-replace-this-before-production
-DATABASE_URL=postgres://clyro:clyro@localhost:5432/clyro_db
-ALLOWED_HOSTS=localhost,127.0.0.1
-CORS_ALLOWED_ORIGINS=http://localhost:5173
+---
 
-# Cognito
-COGNITO_REGION=ap-south-1
-COGNITO_USER_POOL_ID=<your-user-pool-id>
+## Repository structure
 
-# GitHub App (see Step 1 setup below)
-GITHUB_APP_ID=<your-app-id>
-GITHUB_APP_NAME=<your-app-slug>
-GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/github-app.pem
+A monorepo. Everything deploys independently from `main`.
+
+```
+clyro/
+├── backend/           # Django REST API, provisioning engine, agents, MCP servers
+├── frontend/          # React app: marketing, auth, the seven-step wizard
+├── frontend-admin/    # React admin console
+├── infrastructure/    # Terraform, in two layers
+├── documentation/     # Engineering handbook, 20 chapters
+├── docker-compose.yml
+└── .github/
+    └── workflows/     # Deploy backend, frontend and agents; Terraform; tests; ops
 ```
 
-### Frontend (`frontend/.env.local`)
+---
 
-```env
-VITE_COGNITO_USER_POOL_ID=<your-user-pool-id>
-VITE_COGNITO_CLIENT_ID=<your-client-id>
-VITE_COGNITO_REGION=ap-south-1
+## Services
 
-VITE_API_BASE_URL=http://localhost:8000
-VITE_GITHUB_APP_NAME=<your-app-slug>
+### `backend/`: Django REST API and provisioning engine
+
+Owns all persistent data, the wizard state machine, and every AWS call made on a user's behalf.
+
+**Stack:** Python 3.12 · Django 6 · Django REST Framework · PostgreSQL · Celery · Redis · uvicorn (ASGI) · boto3
+
+```
+backend/
+├── config/            # Settings, ASGI entry point, Celery app
+├── core/              # Shared models: Project, Deployment, IntentRecord, EnvVarKey
+├── app/
+│   ├── scanner/       # Repo detection, CLYRO.md ingest, compliance checks
+│   ├── canvas/        # Architecture canvas services and views
+│   ├── provisioning/  # deploy.py, iac.py, cfn_generator.py, build_spec.py, aws_client.py
+│   ├── oidc/          # OIDC shim so Cognito can federate GitHub, which is OAuth2 only
+│   ├── agentcore.py   # Bedrock AgentCore invocation
+│   └── tasks.py       # Celery tasks: scan, generate, provision, build, delete
+├── canvas_core/       # Deterministic canvas ops, constraints, cost engine
+├── agents/            # AgentCore runtime bundles: CryloCanvas, CryloIac
+├── mcp/               # MCP servers: pricing, CloudFormation validation, AWS docs
+├── lambdas/           # Lambda handlers
+├── cfn-templates/     # bootstrap.yaml, the cross-account connector stack
+└── skills/
 ```
 
-## 1) Start the Database
+**The connector role** is the load-bearing piece of the whole product. `cfn-templates/bootstrap.yaml` creates `clyro-provisioning-<uuid>` in the user's account, trusting Clyro's account with an ExternalId. Its policy is a hand-maintained least-privilege allowlist, and `app.tests.BootstrapTemplateGrantsTests` pins the grants whose absence nothing else catches.
+
+### `frontend/`: React application
+
+**Stack:** React 19 · Vite 7 · Tailwind CSS 4 · AWS Amplify (Cognito) · Monaco · Playwright
+
+```
+frontend/
+├── src/
+│   ├── pages/
+│   │   ├── public/          # Landing, pricing, legal
+│   │   ├── auth/            # Login, signup, OAuth callbacks
+│   │   └── app/
+│   │       ├── ProjectWizard/   # step1 … step7, one directory each
+│   │       └── ...              # Dashboard, project views
+│   ├── components/          # Shared UI
+│   ├── monaco/              # Template editor
+│   ├── api/                 # API client
+│   └── context/             # Auth, theme
+├── e2e/                     # Playwright suite, runs against a live base URL
+└── vite.config.js
+```
+
+### `frontend-admin/`: Admin console
+
+A separate bundle on its own subdomain for operational views. Same stack, no shared build.
+
+### `infrastructure/`: Terraform
+
+Two layers, because the first has to exist before the second can have a remote backend.
+
+| Layer | State | Applied by | Contains |
+|---|---|---|---|
+| `bootstrap/` | Local | By hand, rarely | State bucket, GitHub Actions OIDC role |
+| `foundation/` | S3 | GitHub Actions | Everything else |
+
+```
+infrastructure/
+├── bootstrap/     # Chicken-and-egg layer
+├── foundation/    # The real infrastructure
+├── modules/       # acm, cognito, ec2_app, ecr, frontend, monitoring, networking, route53
+└── scripts/
+```
+
+`foundation` also publishes `backend/cfn-templates/bootstrap.yaml` to S3, so editing the connector template is a Terraform apply.
+
+---
+
+## Local development
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Node.js LTS and Python 3.12 if you want to run a service natively
+- `backend/.env.local` and `frontend/.env.local` populated
+
+### Start everything
 
 ```bash
-docker compose up -d
+docker compose up --build
 ```
 
-## 2) Start the Backend (Django)
+| Service | URL |
+|---|---|
+| Backend API | http://localhost:8000 |
+| Frontend | http://localhost:5173 |
+| Admin | http://localhost:5174 |
+| Postgres | localhost:5432 |
+| Redis | localhost:6379 |
+
+### Backend only
 
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
 ```
 
-Backend runs at `http://127.0.0.1:8000`
+### Tests
 
-Key endpoints:
-- `GET  /api/hello`
-- `POST /api/projects/`
-- `GET  /api/projects/`
-- `GET  /api/projects/<id>/`
-- `POST /api/projects/<id>/connect-repo/`
-- `POST /api/github/installations/`
-- `GET  /api/github/repos/?installation_id=<id>`
-- `GET  /api/github/branches/?installation_id=<id>&repo=<owner/repo>`
-- `GET  /admin/`
+```bash
+cd backend && DATABASE_URL='sqlite:///:memory:' python manage.py test
+cd frontend && npm run lint && npm run build
+```
 
-## 3) Start the Frontend (React + Vite)
+The Playwright suite runs against a deployed environment rather than a local one:
 
 ```bash
 cd frontend
-npm install
-npm run dev
+PLAYWRIGHT_BASE_URL=https://clyro.cloud npx playwright test
 ```
 
-Frontend runs at `http://localhost:5173`
-
 ---
 
-## Step 1 — Connect Repository (GitHub App Setup)
+## Environment variables
 
-Step 1 allows users to connect a GitHub repository to a project. This uses a GitHub App for secure, scoped repository access.
-
-### Create the GitHub App
-
-1. Go to **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**
-2. Fill in:
-   - **App name**: `Clyro` (or any unique name; the slug is what goes in env vars)
-   - **Homepage URL**: `http://localhost:5173`
-   - **Callback URL**: `http://localhost:5173/app/github/callback`
-   - **Setup URL** (Post installation): `http://localhost:5173/app/github/callback`
-   - Check **"Redirect on update"**
-   - Uncheck **"Active"** under Webhook (not needed yet)
-3. Under **Permissions → Repository permissions**:
-   - **Contents**: Read-only
-   - **Metadata**: Read-only (mandatory)
-4. Under **"Where can this GitHub App be installed?"**: select **"Only on this account"** for development
-5. Click **Create GitHub App**
-
-### After creating the app
-
-1. Note the **App ID** (shown at top of the app settings page)
-2. Note the **App slug** (the URL-safe name, shown in the public link)
-3. Generate a **private key**: scroll down → **Generate a private key** → save the `.pem` file to `backend/github-app.pem`
-4. Fill in `backend/.env.local`:
-   ```
-   GITHUB_APP_ID=<App ID>
-   GITHUB_APP_NAME=<App slug>
-   GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/backend/github-app.pem
-   ```
-5. Fill in `frontend/.env.local`:
-   ```
-   VITE_GITHUB_APP_NAME=<App slug>
-   ```
-6. Restart the backend and frontend dev servers
-
-### User flow (Step 1 in the wizard)
-
-1. Click **New Project** → enter a project name → project created in DB
-2. In wizard Step 1, click **Install Clyro GitHub App** → redirected to GitHub
-3. On GitHub, select which repositories to grant access to → click **Install**
-4. GitHub redirects to `http://localhost:5173/app/github/callback?installation_id=<id>&setup_action=install`
-5. Backend stores the `GitHubInstallation` record; page redirects back to the wizard
-6. Repository and branch dropdowns populate from GitHub API
-7. Select repo + branch → click **Connect repository**
-8. Project status updates to `repo_connected` in DB → Step 1 complete
-
----
-
-## Agentic Workflow
-
-### Step 1 — Repository Analysis
-
-After the user connects a repo, Clyro runs an agentic scan using the **Strands** framework (AWS open-source Python SDK for agents) backed by **Claude 3.5 Sonnet** via AWS Bedrock (APAC cross-region inference profile).
-
-**Stack:**
-- Agent framework: [`strands-agents`](https://github.com/strands-agents/sdk-python)
-- LLM: `apac.anthropic.claude-3-5-sonnet-20241022-v2:0` via AWS Bedrock
-- Tools: three `@tool`-decorated functions the agent can call — `get_file_tree`, `read_file`, `search_in_files` — all backed by GitHub's REST API using the project's installation token
-
-**How it works:**
-
-The agent is given a detailed system prompt encoding every detection rule from the product spec and runs a structured 3-pass scan:
-
-1. **Pass 1 — File tree** (`get_file_tree`): walks the repo root, identifies monorepo vs single-service, flags high-signal files. No file contents are read.
-2. **Pass 2 — Targeted reads** (`read_file`): reads specific files in priority order — `requirements.txt`, `manage.py`, settings files (all discovered locations), `package.json`, `docker-compose.yml`, CI workflows.
-3. **Pass 3 — Fallback search** (`search_in_files`): fires only when Pass 2 leaves genuine ambiguity (no settings file found, DB engine unclear). Runs targeted string searches across `.py` files; never reads whole files.
-
-Detection is deterministic by rule first; the LLM only uses its own reasoning for genuinely ambiguous cases. The agent returns a single JSON object with three payloads: a `detected_resources` record (services, infrastructure, IaC), an `env_vars` record (each key classified as `generated`, `user_secret`, or `optional`), and a `draft_canvas_yaml`.
-
-Django's `runner.py` receives this, persists `ScanResult` and individual `EnvVarKey` rows to the DB, and advances the project status to `scan_complete`.
-
-**To use locally:** set `AWS_PROFILE` and `AWS_REGION` in `backend/.env.local` and ensure the profile has `AmazonBedrockFullAccess`.
-
-```env
-AWS_PROFILE=your-aws-profile
-AWS_REGION=ap-south-1
-```
-
-### Step 2 — Intent Collection
-
-Step 2 is not agentic — it's a short adaptive questionnaire. The questions the user sees are determined by what Step 1 detected:
-
-- **Q: Database choice** — only shown if PostgreSQL was detected (`psycopg2` in `requirements.txt`)
-- **Q: Worker compute** — only shown if Celery was detected
-- **Backend compute** — defaults silently to ECS Fargate; not asked (most users should pick this anyway)
-
-Once the user answers, the intent is persisted as an `IntentRecord` and the `draft_canvas_yaml` from Step 1 is updated with the confirmed `aws_service` values (e.g. `rds_postgres` vs `aurora_postgres`). Project status advances to `intent_collected`.
-
-Step 3 (canvas review) and Step 4 (provisioning) will bring agentic AI back — the canvas agent will handle natural-language edits to the architecture, and the provisioning step will generate CloudFormation from the finalised `canvas.yml`.
-
----
-
-## Common Development Workflow
-
-1. Start Docker (database)
-2. Start backend
-3. Start frontend
-4. Open `http://localhost:5173`
-
-## Helpful Commands
-
-### Frontend
+### `backend/.env.local`
 
 ```bash
-cd frontend
-npm run dev      # Start dev server
-npm run build    # Production build
-npm run lint     # Run ESLint
+DEBUG=True
+SECRET_KEY=django-insecure-replace-this-before-production
+DATABASE_URL=postgres://clyro:clyro@localhost:5432/clyro_db
+ALLOWED_HOSTS=localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=http://localhost:5173
+CSRF_TRUSTED_ORIGINS=http://localhost:5173
+
+# Cognito
+COGNITO_REGION=ap-south-1
+COGNITO_USER_POOL_ID=
+COGNITO_CLIENT_ID=
+
+# GitHub App
+GITHUB_APP_ID=
+GITHUB_APP_NAME=
+GITHUB_APP_PRIVATE_KEY_PATH=/absolute/path/to/github-app.pem
+
+# Celery
+CELERY_BROKER_URL=redis://localhost:6379/1
+CELERY_RESULT_BACKEND=redis://localhost:6379/1
+
+# Cross-account provisioning
+CLYRO_AWS_ACCOUNT_ID=
+CFN_BOOTSTRAP_TEMPLATE_URL=
+
+# Agents
+REASONING_RUNTIME_ARN=
+IAC_RUNTIME_ARN=
+AGENTCORE_MEMORY_ID=
+
+# Local development only
+AWS_PROFILE=clyro
 ```
 
-### Backend
+### `frontend/.env.local`
 
 ```bash
-cd backend
-source .venv/bin/activate
-python manage.py runserver
-python manage.py migrate
-python manage.py createsuperuser
+VITE_API_BASE_URL=http://localhost:8000
+VITE_COGNITO_REGION=ap-south-1
+VITE_COGNITO_USER_POOL_ID=
+VITE_COGNITO_CLIENT_ID=
+VITE_GITHUB_APP_NAME=
 ```
 
-## Troubleshooting
+`backend/*.pem` is gitignored. The GitHub App private key never belongs in the repository.
 
-- **`pip: command not found`**: Use `python3 -m pip install -r requirements.txt`
-- **Port in use**: Backend → `python manage.py runserver 8001`; Vite suggests another port automatically
-- **venv not active**: Run `source .venv/bin/activate` inside `backend/`
-- **GitHub callback fails**: Ensure the GitHub App's Setup URL matches exactly `http://localhost:5173/app/github/callback` and that `VITE_GITHUB_APP_NAME` matches the app slug (not the display name)
+In production none of this is a file. `/opt/clyro/up.sh` reads `/clyro/prod/env/` out of SSM Parameter Store and exports it into the container.
+
+---
+
+## CI/CD
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `deploy-backend.yml` | Push to `main` on `backend/**` | Builds the image, pushes to ECR, deploys over SSM |
+| `deploy-frontend.yml` | Push to `main` on `frontend/**` or `frontend-admin/**` | Builds both bundles, syncs to S3, invalidates CloudFront |
+| `deploy-agents.yml` | Push to `main` on the Lambda sources | Rebuilds the MCP Lambdas. The AgentCore runtime job is dispatch only |
+| `terraform.yml` | PR plans, push to `main` applies | Applies `foundation`, and republishes the connector template on `backend/cfn-templates/**` |
+| `test.yml` | Pull request, or manual | Django suite on in-memory SQLite, frontend lint and build |
+| `e2e.yml` | Manual | Playwright against a chosen base URL |
+| `manage.yml` | Manual | Django management commands against production |
+| `infra-power.yml` | Manual | Start or stop the instance to control cost |
+
+`test.yml` does not run on pushes to `main`, only on pull requests. Branch protection, not the workflow list, is what keeps `main` green.
+
+---
+
+## Production
+
+Deliberately small. This is a pre-revenue product and the deployment is sized as a cost floor, not as a reference architecture.
+
+| Piece | What runs it |
+|---|---|
+| API, workers, database, cache | One `t4g.small` EC2 instance running postgres, redis, uvicorn, celery worker, celery beat and nginx under docker compose |
+| Data durability | Postgres bind-mounted to a separate EBS volume, so the instance is disposable |
+| TLS | nginx with certbot. The backend binds loopback and is never exposed directly |
+| Frontend and admin | S3 and CloudFront |
+| Auth | Cognito, with an OIDC shim for GitHub sign-in |
+| Agents | Two Bedrock AgentCore runtimes: canvas reasoning and IaC generation |
+| Agent tools | Three MCP servers on Lambda: pricing, CloudFormation validation, AWS documentation |
+| Region | `ap-south-1` |
+
+The single box is a single point of failure with no redundancy and no managed database. That is a known and accepted trade for now. The whole machine is reproducible from `infrastructure/modules/ec2_app/templates/cloud-init.yaml.tftpl`, which is the source of truth for what actually runs on it.
+
+---
+
+## Documentation
+
+The [Engineering Handbook](documentation/index.md) is 20 chapters covering the platform, the generated stacks, every wizard step, and the deploy pipeline. Chapters 15 to 19 are dated point-in-time reports kept as historical records rather than rewritten, and each says what has changed since.
+
+---
+
+## License
+
+Proprietary. All rights reserved.
