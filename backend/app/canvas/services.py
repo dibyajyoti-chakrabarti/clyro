@@ -52,17 +52,32 @@ def intent_dict(project: Project) -> dict[str, Any]:
     return _intent_to_dict(intent)
 
 
-def _account_type_for(project: Project) -> str | None:
-    """AWSAccountConnection.verified_account_type (queried live from AWS via
-    freetier:GetAccountPlanState at connect time) over the user's own
-    claimed_account_type self-report — mirrors the precedence already used by
-    deploy._deterministic_template_fix."""
+def _pricing_context(project: Project) -> dict[str, Any]:
+    """The ``estimate_cost`` kwargs that come from the AWS connection rather
+    than from the canvas: which account type to price against, and where.
+
+    ``account_type`` prefers AWSAccountConnection.verified_account_type (queried
+    live from AWS via freetier:GetAccountPlanState at connect time) over the
+    user's own claimed_account_type self-report, mirroring the precedence
+    already used by deploy._deterministic_template_fix.
+
+    ``region`` matters because estimate_cost defaults its override to us-east-1
+    and multiplies every hourly line item by REGION_MULTIPLIER. Nothing used to
+    pass it, so a project deploying to ap-south-1 was quoted at us-east-1 prices
+    and the panel said "us-east-1 pricing" underneath, contradicting the region
+    the user picked two steps earlier. The multipliers range from 0.95 to 1.10,
+    so the number was wrong as well as the label."""
     connection = (
         AWSAccountConnection.objects.filter(project=project).order_by("-created_at").first()
     )
     if not connection:
-        return None
-    return connection.verified_account_type or connection.claimed_account_type
+        return {}
+    context: dict[str, Any] = {
+        "account_type": connection.verified_account_type or connection.claimed_account_type,
+    }
+    if connection.aws_region:
+        context["overrides"] = {"region": connection.aws_region}
+    return context
 
 
 def ensure_initial_canvas(project: Project) -> CanvasVersion | None:
@@ -88,7 +103,7 @@ def ensure_initial_canvas(project: Project) -> CanvasVersion | None:
 
     canvas = canvas_builder.build_canvas_from_detection(scan.detected_resources, intent)
     positions = layout_solver.compute_positions(canvas)
-    cost = cost_engine.estimate_cost(canvas, intent, account_type=_account_type_for(project))
+    cost = cost_engine.estimate_cost(canvas, intent, **_pricing_context(project))
 
     version = CanvasVersion.objects.create(
         project=project,
@@ -122,7 +137,7 @@ def apply_operation_and_persist(
 
     existing = (version.canvas_snapshot or {}).get("positions", {})
     positions = layout_solver.compute_positions(new_canvas, existing=existing)
-    cost = cost_engine.estimate_cost(new_canvas, intent, account_type=_account_type_for(project))
+    cost = cost_engine.estimate_cost(new_canvas, intent, **_pricing_context(project))
 
     new_version = CanvasVersion.objects.create(
         project=project,
@@ -152,7 +167,7 @@ def revert_to(project: Project, version_number: int) -> dict[str, Any] | None:
     canvas = canvas_ops.parse_canvas(target.canvas_yaml)
     intent = intent_dict(project)
     positions = (target.canvas_snapshot or {}).get("positions", {})
-    cost = cost_engine.estimate_cost(canvas, intent, account_type=_account_type_for(project))
+    cost = cost_engine.estimate_cost(canvas, intent, **_pricing_context(project))
     new_version = CanvasVersion.objects.create(
         project=project,
         intent_record=target.intent_record,

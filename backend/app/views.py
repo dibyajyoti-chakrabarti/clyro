@@ -244,7 +244,7 @@ def wizard_state(request, pk):
     # AwsSetup seeds its toggle from connection.account_type and falls back to
     # 'paid', so leaving it out made every reload show "Paid account" selected
     # even for a project stored as free_tier. verified wins over claimed, the
-    # same precedence canvas.services._account_type_for uses to price the canvas.
+    # same precedence canvas.services._pricing_context uses to price the canvas.
     return Response({
         'project': ProjectSerializer(project).data,
         'scan': ScanResultSerializer(scan).data if scan else None,

@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from app.canvas import services as canvas_services
 from app import views as app_views
 from app.provisioning import aws_client as aws_client_module
 from app.provisioning import cfn_events, cfn_generator, deploy, iac
@@ -1323,3 +1324,15 @@ class AccountTypeRoundTripTests(TestCase):
         intent.refresh_from_db()
         self.assertEqual(intent.aws_account_type, 'free_tier')
         self.assertEqual(canvas.version_number, 1)
+
+    def test_the_canvas_is_priced_in_the_connected_region(self):
+        # estimate_cost defaults to us-east-1 and nothing passed a region, so a
+        # project connected to ap-south-1 was quoted at us-east-1 prices under a
+        # panel line that read "us-east-1 pricing".
+        context = canvas_services._pricing_context(self.project)
+        self.assertEqual(context['overrides'], {'region': 'ap-south-1'})
+        self.assertEqual(context['account_type'], 'paid')
+
+    def test_pricing_context_is_empty_before_a_connection_exists(self):
+        AWSAccountConnection.objects.filter(project=self.project).delete()
+        self.assertEqual(canvas_services._pricing_context(self.project), {})
