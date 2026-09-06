@@ -42,8 +42,8 @@ Based on the graph, here's what Step 1 currently produces across multiple subsys
 
 | Component | Source | What It Produces |
 |---|---|---|
-| [deterministic_detector.py](../backend/app/scanner/deterministic_detector.py) | Manifest scan (free, fast) | `detected_resources` dict, `env_vars` list, `confidence`, `status`, `block_reason` |
-| [RepoRecon/main.py](../backend/agents/CryloCanvas/app/RepoRecon/main.py) | AgentCore LLM agent (slow, ~41s cold start) | Same shape as above, used as fallback when deterministic confidence is "low" |
+| `deterministic_detector.py` (deleted) | Manifest scan (free, fast) | `detected_resources` dict, `env_vars` list, `confidence`, `status`, `block_reason` |
+| `RepoRecon/main.py` (deleted) | AgentCore LLM agent (slow, ~41s cold start) | Same shape as above, used as fallback when deterministic confidence is "low" |
 | [compliance.py](../backend/app/scanner/compliance.py) | Static rule-based checks | `compliance_findings[]` — each `{id, title, passed, severity, detail, fix_hint}` |
 | [runner.py](../backend/app/scanner/runner.py) | Orchestrator | Saves to [ScanResult](../backend/core/models.py) model + creates [EnvVarKey](../backend/core/models.py) records |
 
@@ -214,7 +214,7 @@ Create a **Clyro Skill** (like graphify's `SKILL.md`) or a downloadable prompt t
 
 ### 2. The Deterministic-First, Agent-Second Hybrid
 
-The offline agent itself mirrors the [deterministic_detector.py](../backend/app/scanner/deterministic_detector.py) pattern:
+The offline agent itself mirrors the `deterministic_detector.py` (deleted) pattern:
 
 1. **Phase 1 (Deterministic)**: A script/CLI runs locally — reads `requirements.txt`, `package.json`, settings files, Dockerfiles. Produces a partial `CLYRO.md` with everything it can confidently detect.
 2. **Phase 2 (Agent)**: The AI agent fills in gaps — `wsgi_path`, `project_name`, ambiguous env var classifications, checks the agent can't do mechanically (e.g., "is this env var actually needed in production?").
@@ -359,7 +359,7 @@ How does the user get the scan prompt/skill?
 | **D. CLI Tool** | `npx @clyro/scan` or `pip install clyro-scan` | Agent-agnostic, deterministic | Needs a maintained package |
 | **E. MCP Server** | Clyro MCP that any agent can call | Universal, structured I/O | MCP adoption still early |
 
-**Recommendation**: Start with **D (CLI)** for the deterministic part + **A (Skill)** for the agent-augmented part. The CLI handles what [deterministic_detector.py](../backend/app/scanner/deterministic_detector.py) does today. The skill handles the LLM reasoning parts.
+**Recommendation**: Start with **D (CLI)** for the deterministic part + **A (Skill)** for the agent-augmented part. The CLI handles what `deterministic_detector.py` (deleted) does today. The skill handles the LLM reasoning parts.
 
 ---
 
