@@ -1,7 +1,60 @@
-# Crylo — Agentic AI Network Design
+# Chapter 14: Agentic AI Network Design
 
-**Frameworks:** Strands Agents SDK (orchestration) · Amazon Bedrock AgentCore Runtime (deployment) · AgentCore Gateway (MCP tool plane) · AgentCore Memory (state)
-**IaC strategy:** Template-centric — a single CloudFormation template is authored, validated, then submitted via the CloudFormation API.
+> **Read this before the chapter. Added 2026-09-06.**
+>
+> **This is a design document, not a description of the running system.** It sets out
+> the agent network as it was conceived, and most of it was never built. The reasoning
+> is why the chapter is kept: the trust-boundary argument in §1.3, the
+> deterministic-where-possible principle in §1.5, and the per-agent context budgets in
+> §9.3 all still guide the code. The topology does not.
+>
+> **What actually exists.** Two Amazon Bedrock AgentCore runtimes, in
+> `backend/agents/`:
+>
+> | Runtime | Wizard step | Role |
+> | --- | --- | --- |
+> | `CryloCanvas_Reasoning` | 3 and 4 | The conversational layer over the architecture canvas |
+> | `CryloIac_IacArchitect` | 5 | CloudFormation refinement, and generation before Chapter 13 made it deterministic |
+>
+> `backend/config/settings.py` holds exactly two runtime ARNs, `REASONING_RUNTIME_ARN`
+> and `IAC_RUNTIME_ARN`, which is the shortest proof of the above.
+>
+> **What was designed here and does not exist:** the `GraphBuilder` orchestrator, the
+> Repo Recon agent, the Intent agent, the Monitoring agent, the Step 1 detection Swarm,
+> the A2A cross-runtime protocol, and AgentCore Memory. Step ordering is enforced by the
+> Django backend and the wizard state machine. Agent and project state lives in
+> PostgreSQL on the application instance. Step 1 no longer runs an agent at all: it
+> ingests an offline `CLYRO.md` contract, and RepoRecon was deleted (see Chapters 8
+> and 20).
+>
+> **The MCP tool plane in §2 is not the one that shipped.** None of the `awslabs/mcp`
+> servers or the GitHub MCP are deployed. Clyro built three MCP tool Lambdas of its own:
+> `clyro-mcp-pricing` (`get_pricing`), `clyro-mcp-cfn`
+> (`validate_cloudformation_template`) and `clyro-mcp-docs` (`search_documentation`,
+> `read_documentation`, `recommend`). GitHub access is direct, through
+> `backend/app/github_utils.py`. CloudFormation is submitted with boto3 in
+> `backend/app/provisioning/deploy.py` under an assumed role, not through an MCP.
+> Validation is cfn-lint plus cfn-guard plus `security_scan`, not Checkov.
+>
+> **Template authorship has inverted since this was written.** Every line below that
+> has an agent author the CloudFormation template is superseded by Chapter 13:
+> `cfn_generator.py` authors it deterministically and the LLM only refines.
+>
+> **The step numbers below are the retired five-step scheme.** Map them like this:
+>
+> | Below | Today |
+> | --- | --- |
+> | Step 1, repo | Step 1, connect your repository |
+> | Step 2, intent | Step 3, tell us about your app (Step 2 is connecting the AWS account) |
+> | Step 3, canvas | Step 4, review your architecture |
+> | Step 4, provisioning | Step 5 generates the template, Step 6 provisions |
+> | Step 5, monitoring | Step 7, your infrastructure is live |
+>
+> Finally, the product is **Clyro**. "Crylo" survives only inside the two AgentCore
+> runtime names, which are deployed under those identifiers.
+
+**Frameworks as designed:** Strands Agents SDK (orchestration) · Amazon Bedrock AgentCore Runtime (deployment) · AgentCore Gateway (MCP tool plane) · AgentCore Memory (state). Of these, only AgentCore Runtime is in use.
+**IaC strategy:** Template-centric. A single CloudFormation template is authored, validated, then submitted via the CloudFormation API. Still true, except that the author is deterministic Python rather than an agent.
 
 ---
 

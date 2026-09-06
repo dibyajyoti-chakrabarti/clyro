@@ -30,6 +30,37 @@ above still holds. Two things worth noting:
   See ch. 6 for the async-pipeline (SQS/Celery) and reconciliation work layered on top
   of the deterministic generator described here.
 
+## Status update (2026-09-06)
+
+The mechanism this chapter describes is still exactly what runs.
+`cfn_generator.py` remains the sole author of the initial template, and the LLM
+remains confined to the "Ask Clyro" refine path. Five references in the text below
+have gone stale, and none of them changes a conclusion:
+
+- **The title, and every "Step 4" in the body, means today's Step 5.** The
+  2026-07-16 note above explains why. The filename is kept so existing links do not
+  break.
+- **The provisioning feed is Step 6**, not part of the IaC step, so Part B item 4's
+  "`StepFour.jsx` / provisioning feed" is now `step5/StepFive.jsx` for the editor and
+  `step6/ProvisionLog.jsx` for the feed.
+- **"Sonnet authors a ~600-line CFN template" (Context, item 2) is no longer the
+  model in question.** That was accurate when the diagnosis was written. Clyro has
+  since moved off Anthropic models on Bedrock entirely: generation and canvas default
+  to MiniMax M2.5, refinement to GLM-5, with Kimi K2.5 and DeepSeek V3.2 selectable.
+  The argument the item makes, that an LLM transcribing an already-deterministic spec
+  adds only variance, is model-independent and is why the generator exists.
+- **`Step4.md §4.3` does not exist.** No file of that name is in the repository. The
+  equivalent content is in this handbook as
+  [Chapter 11](ch_11_wizard_step_4_deploy.md).
+- **`Crylo_Agentic_Network_Design.md §1.5` is now**
+  [`ch_14_agentic_network_design.md`](ch_14_agentic_network_design.md), same section.
+- **The scratchpad `ecs-e2e-findings.md` is gone.** The findings it held were closed
+  out and are recorded in ch. 16 and ch. 17.
+
+One correction to the note above: ch. 6 no longer describes an SQS async pipeline,
+because there is no SQS. Celery runs against a Redis container on the application
+instance.
+
 ## Context
 
 Live E2E test (Playwright, real AWS) + code exploration confirmed the user's four complaints and their root causes:
