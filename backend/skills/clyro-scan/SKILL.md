@@ -336,7 +336,7 @@ status: complete          # complete | hard_block | soft_block
 block_reason: null        # missing_requirements | unsupported_framework | unsupported_database | ambiguous_database | no_database_found
 block_message: null
 agent: "clyro-scan skill"
-commit_sha: "<git rev-parse HEAD at scan time>"
+commit_sha: "<git rev-parse HEAD; in --fix mode, after the fix commits>"
 scan_mode: default        # default | fix | validate
 confidence: high          # high | low
 schema_version: 1
@@ -377,8 +377,10 @@ Abort means: change no file, create no commit, and print which check failed.
 4. An `origin` remote exists and the current branch has an upstream
    (`git rev-parse --abbrev-ref @{upstream}`). If there is no upstream, continue
    but force `--no-push` behaviour and say so.
-5. Record the branch name and `git rev-parse HEAD` — the head sha goes into
-   CLYRO.md's metadata as `commit_sha`.
+5. Record the branch name and `git rev-parse HEAD`. Call this the *preflight
+   head*. It is the baseline for the `git diff --stat` you show before pushing.
+   In `--fix` mode it is **not** what goes into `commit_sha`: see *Regenerate,
+   commit, push*.
 
 Then run Phase 1 + Phase 2, and remediate every **failed** check that has a
 `fix_hint`, making the smallest change that satisfies it and touching nothing
@@ -426,6 +428,17 @@ staging anything:
 
 After fixing, re-run Phase 2 so the findings describe the post-fix repo, then
 write CLYRO.md with the fresh findings and `scan_mode: fix`.
+
+**Commit the fixes first, then set `commit_sha` to the resulting HEAD, then
+commit CLYRO.md.** Not the preflight head. Clyro treats a contract as stale when
+`git diff --name-only <commit_sha>..HEAD` touches a file detection depends on
+(`requirements.txt`, `package.json`, any `*settings*.py`, `Dockerfile`, any
+`urls.py`, any `migrations/` path), and the fixes this mode just made are
+usually exactly those files. Recording the preflight head would therefore make
+every `--fix` run produce a contract that reports itself out of sync the moment
+Clyro reads it, even though it describes the repo perfectly. Ordering the
+commits this way leaves only the CLYRO.md commit between `commit_sha` and
+`HEAD`, and that touches nothing detection depends on.
 
 Commit **one logical fix per commit**, staging explicit paths only. Never
 `git add -A`, `git add .`, or `git commit -a` — an unexpected file in the tree
