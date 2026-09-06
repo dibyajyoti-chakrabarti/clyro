@@ -180,6 +180,20 @@ jobs:
             echo "::error::agentcore.json still contains a placeholder"; exit 1; }
           echo "config written for account ending ${ACCOUNT_ID: -4}"
 
+      - name: Vendor canvas_core into the runtime bundle
+        if: matrix.project == 'CryloCanvas'
+        run: |
+          set -euo pipefail
+          # main.py does `from canvas_core import canvas_ops, constraints,
+          # cost_engine`, but canvas_core lives in backend/ and the CodeZip
+          # bundle is only app/Reasoning/. The vendored copy is gitignored as a
+          # build artifact, so without this step the zip ships without it and
+          # the runtime reaches READY and then dies on the very first invoke
+          # with ModuleNotFoundError: No module named 'canvas_core'. READY only
+          # means the bundle uploaded, not that it imports.
+          ./backend/agents/vendor_canvas_core.sh
+          test -f backend/agents/CryloCanvas/app/Reasoning/canvas_core/cost_engine.py
+
       - name: Install and build the CDK app
         working-directory: backend/agents/${{ matrix.project }}/agentcore/cdk
         run: |
