@@ -54,11 +54,23 @@ test.describe('Full provisioning + teardown (real AWS)', () => {
     await expect(page).toHaveURL(/\/app\/dashboard/, { timeout: 15_000 });
 
     // ── Create project ─────────────────────────────────────────────────────
-    await page.goto('/app/create-project');
+    // /app/projects/new, not /app/create-project, and the button reads
+    // "Next Step". Both were wrong here and neither had ever been run.
+    await page.goto('/app/projects/new');
     const projectName = `e2e-provisioning-${Date.now()}`;
-    await page.locator('input[type="text"]').fill(projectName);
-    await page.locator('button', { hasText: /Create/i }).click();
+    await page.locator('#project-name').fill(projectName);
+    await page.getByRole('button', { name: 'Next Step' }).click();
     await expect(page).toHaveURL(/\/app\/projects\/[^/]+$/, { timeout: 15_000 });
+
+    // Project creation is gated on the WhitelistedEmail allowlist. Without
+    // this the run dies later on an unrelated selector.
+    const denied = page.getByText('not authorized to create projects');
+    if (await denied.isVisible().catch(() => false)) {
+      throw new Error(
+        `${E2E_TEST_EMAIL} is not on the project-creation allowlist. Add it with the ` +
+        'Django Management workflow: whitelist_email add.',
+      );
+    }
 
     // ── Step 1: connect an existing GitHub installation, scan ──────────────
     // GithubConnectCard.jsx renders one button per existing installation,
