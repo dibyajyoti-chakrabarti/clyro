@@ -4,7 +4,7 @@ from botocore.exceptions import ClientError
 from cfnlint import api as cfnlint_api
 from cfnlint.config import ManualArgs
 from django.db.utils import IntegrityError
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -844,7 +844,7 @@ class DeployLifecycleTests(TestCase):
     def test_assume_access_denied_raises_reconnect_error(self, mock_assume):
         mock_assume.side_effect = _access_denied()
         deployment = self._deployment()
-        with self.assertRaisesMessage(deploy.DeployError, "reconnect your AWS account"):
+        with self.assertRaisesMessage(deploy.DeployError, "Reconnect your AWS account"):
             deploy._assume(deployment)
 
     @patch('app.provisioning.deploy.aws_client.assume_role')
@@ -973,6 +973,13 @@ class DeployLifecycleTests(TestCase):
         self.assertFalse(deploy._has_been_live(self.project))
 
 
+# aws_connection_init builds the Step 2 quick-create URL, and
+# generate_cfn_console_url raises rather than hand back a link that opens a
+# broken console page. The setting arrives from /clyro/prod/env/ in production
+# and from .env.local in development, so it is simply absent in CI, and both
+# tests below failed on the URL rather than on the duplicate handling they
+# exist to cover.
+@override_settings(CFN_BOOTSTRAP_TEMPLATE_URL='https://example.invalid/bootstrap.yaml')
 class AwsConnectionInitDuplicateTests(TestCase):
     """Found live: Step 2 fires aws_connection_init twice on mount (React
     StrictMode double-invokes the effect in dev), and the endpoint's
@@ -1201,9 +1208,10 @@ class RuntimeSecretLoaderTests(SimpleTestCase):
 
         self.assertIn('/clyro/prod/django/secret-key', str(ctx.exception))
 
-    def test_fetches_both_parameters_in_one_call(self):
-        """One GetParameters, not two GetParameter — this is on the cold-start
-        path for every invocation."""
+    def test_fetches_every_parameter_in_one_call(self):
+        """One GetParameters, never one call per name. This is on the
+        cold-start path for every invocation, so each extra round trip is paid
+        by a user waiting on a request."""
         import os
         from config import aws_secrets
 
@@ -1217,8 +1225,15 @@ class RuntimeSecretLoaderTests(SimpleTestCase):
         mock_client.return_value.get_parameters.assert_called_once()
         kwargs = mock_client.return_value.get_parameters.call_args.kwargs
         self.assertTrue(kwargs['WithDecryption'])
+        # Required and optional alike: the point of the test is that the
+        # optional ones ride along rather than adding calls. Three were added
+        # after this test was written and it kept asserting the original two.
         self.assertEqual(sorted(kwargs['Names']), [
-            '/clyro/prod/django/secret-key', '/clyro/prod/github/app-pem',
+            '/clyro/prod/django/secret-key',
+            '/clyro/prod/github/app-pem',
+            '/clyro/prod/github/oauth-client-secret',
+            '/clyro/prod/oidc/client-secret',
+            '/clyro/prod/oidc/signing-key',
         ])
 
 
