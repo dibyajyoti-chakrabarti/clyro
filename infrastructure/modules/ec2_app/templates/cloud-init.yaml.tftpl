@@ -16,7 +16,7 @@ packages:
   - cronie
 
 write_files:
-  # 2 GB of RAM is genuinely tight for postgres, redis, gunicorn and two celery
+  # 2 GB of RAM is genuinely tight for postgres, redis, uvicorn and two celery
   # processes. Swap does not make it fast, it makes the difference between a
   # slow request and the OOM killer taking out postgres mid-transaction.
   - path: /opt/clyro/setup-swap.sh
