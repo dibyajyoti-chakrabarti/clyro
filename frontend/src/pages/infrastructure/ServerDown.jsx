@@ -2,38 +2,15 @@ import { useEffect, useState } from 'react'
 import { Moon, Clock3, CheckCircle2, Info } from 'lucide-react'
 import clyroLogo from '../../assets/logos/Clyro_logo.png'
 
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000 // UTC+5:30
-const WINDOW_START_H = 9 // 9 AM IST
-const WINDOW_END_H = 21 // 9 PM IST
+// This page used to advertise a 9 AM to 9 PM IST service window and count down
+// to the next one. That schedule is gone (see .github/workflows/infra-power.yml:
+// the cron was removed because a box that stopped itself overnight kept ending
+// demos midway). The copy outlived it, so every real outage told the user to
+// come back at 9 AM and ticked down to a window that meant nothing. It now says
+// only what is actually known: the backend is unreachable, and this page is
+// still checking.
 
-const getISTHour = (now = new Date()) => {
-  const istMs = now.getTime() + IST_OFFSET_MS
-  return new Date(istMs).getUTCHours() + new Date(istMs).getUTCMinutes() / 60
-}
-
-const formatISTTime = (now = new Date()) => {
-  const istMs = now.getTime() + IST_OFFSET_MS
-  const d = new Date(istMs)
-  const h = d.getUTCHours()
-  const m = String(d.getUTCMinutes()).padStart(2, '0')
-  const s = String(d.getUTCSeconds()).padStart(2, '0')
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  const h12 = h % 12 || 12
-  return `${h12}:${m}:${s} ${ampm} IST`
-}
-
-const getCountdownToNextWindow = (now = new Date()) => {
-  const istMs = now.getTime() + IST_OFFSET_MS
-  const istNow = new Date(istMs)
-  const nextStart = new Date(istNow)
-  nextStart.setUTCHours(WINDOW_START_H, 0, 0, 0)
-  if (istNow.getUTCHours() >= WINDOW_START_H) {
-    nextStart.setUTCDate(nextStart.getUTCDate() + 1)
-  }
-  return Math.max(0, nextStart.getTime() - istNow.getTime())
-}
-
-const formatCountdown = (ms) => {
+const formatElapsed = (ms) => {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
   const h = Math.floor(totalSeconds / 3600)
   const m = Math.floor((totalSeconds % 3600) / 60)
@@ -64,6 +41,9 @@ function StatusRow({ label, value, accent = false }) {
 export default function ServerDown() {
   const [now, setNow] = useState(() => new Date())
   const [pulseKey, setPulseKey] = useState(0)
+  // Mount time, not outage start: the gate only renders this once the health
+  // check has already failed, so this is "how long you have been looking at it".
+  const [since] = useState(() => Date.now())
 
   useEffect(() => {
     const tickInterval = setInterval(() => setNow(new Date()), 1000)
@@ -73,10 +53,6 @@ export default function ServerDown() {
       clearInterval(pulseInterval)
     }
   }, [])
-
-  const istHour = getISTHour(now)
-  const inActiveWindow = istHour >= WINDOW_START_H && istHour < WINDOW_END_H
-  const countdownMs = getCountdownToNextWindow(now)
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030609] text-text-primary">
@@ -105,15 +81,14 @@ export default function ServerDown() {
         <h1 className="text-4xl font-semibold tracking-[-0.03em] text-white sm:text-5xl">
           Clyro is{' '}
           <span className="bg-gradient-to-r from-amber-300 via-amber-200 to-amber-300 bg-clip-text text-transparent">
-            {inActiveWindow ? 'starting up' : 'sleeping'}
+            offline
           </span>
         </h1>
 
         <p className="mx-auto mt-5 max-w-lg text-base leading-7 text-text-muted sm:text-lg">
-          Clyro runs on AWS{' '}
-          <strong className="font-semibold text-text-primary">9 AM to 9 PM IST</strong>{' '}
-          every day to keep cloud costs low. Come back during those hours and
-          you&apos;ll be all set.
+          The Clyro backend is not responding right now. Nothing you did caused
+          this, and nothing you have saved is lost. This page keeps checking, so
+          leave it open and it will let you straight back in.
         </p>
 
         <div className="mt-9 w-full overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02] text-left">
@@ -125,16 +100,9 @@ export default function ServerDown() {
             />
           </div>
 
-          <StatusRow label="Service window" value="9:00 AM to 9:00 PM IST, daily" />
-          <StatusRow label="Current IST time" value={formatISTTime(now)} accent />
-          <StatusRow
-            label="Next active window"
-            value={inActiveWindow ? 'Now (starting up…)' : `in ${formatCountdown(countdownMs)}`}
-          />
-          <StatusRow
-            label="Status"
-            value={inActiveWindow ? 'Starting…' : 'Offline (outside service hours)'}
-          />
+          <StatusRow label="Status" value="Unreachable" accent />
+          <StatusRow label="Checking every" value="15 seconds" />
+          <StatusRow label="Waiting for" value={formatElapsed(now.getTime() - since)} />
         </div>
 
         <div className="mt-8 flex w-full flex-col gap-3 text-left">
@@ -143,19 +111,17 @@ export default function ServerDown() {
             <span>
               No action needed.{' '}
               <strong className="font-semibold text-text-primary">
-                Come back between 9 AM and 9 PM IST
-              </strong>{' '}
-              and the service will be live.
+                Your projects and connected accounts are untouched
+              </strong>
+              .
             </span>
           </div>
           <div className="flex items-start gap-3 text-sm text-text-muted sm:text-base">
             <Clock3 className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
             <span>
-              Service state:{' '}
-              <strong className="font-semibold text-text-primary">
-                Offline, resumes at 9:00 AM IST tomorrow
-              </strong>
-              .
+              Anything already provisioned in your own AWS account{' '}
+              <strong className="font-semibold text-text-primary">keeps running</strong>. This
+              outage only affects the Clyro control plane.
             </span>
           </div>
           <div className="flex items-start gap-3 text-sm text-text-muted sm:text-base">

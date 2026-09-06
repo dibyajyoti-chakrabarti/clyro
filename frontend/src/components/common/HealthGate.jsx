@@ -11,9 +11,9 @@ export default function HealthGate({ children }) {
   const [healthReady, setHealthReady] = useState(false)
 
   useEffect(() => {
-    // The 9AM-9PM IST "sleeping" schedule (ServerDown) is a prod-only AWS cost
-    // decision -- it has no meaning against a local docker-compose backend, so a
-    // transient local DB hiccup shouldn't render it. Skip the gate entirely in dev.
+    // ServerDown is a prod-only page: against a local docker-compose backend a
+    // transient DB hiccup shouldn't blank the app behind an outage screen.
+    // Skip the gate entirely in dev.
     if (import.meta.env.DEV) {
       setBackendHealthy(true)
       setHealthReady(true)
