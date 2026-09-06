@@ -57,6 +57,21 @@ def resolve_model_id(key: str | None, default_key: str) -> str:
     return MODELS.get(key or "", MODELS[default_key])
 
 
+# Pinned rather than left to Bedrock. Strands omits maxTokens entirely when it
+# is unset, so the limit becomes whatever each model happens to default to, and
+# that silently varies per model on a list that is meant to be interchangeable.
+# The thinking path already pinned 16k for exactly this reason; the other branch
+# did not, which stopped mattering the moment the defaults moved off Anthropic.
+#
+# 16k because a generated template runs to roughly 50k characters and MiniMax,
+# now the default for generate, spends budget on a reasoning block before it
+# emits any template at all: a VPC-plus-ALB-plus-Fargate prompt measured ~10.5k
+# characters of reasoning ahead of ~5.4k characters of YAML. A truncated
+# template fails validation somewhere in the middle, which reads as a bad model
+# rather than a small budget.
+MAX_OUTPUT_TOKENS = 16000
+
+
 def load_model(model_id: str, thinking: bool = False) -> BedrockModel:
     """Bedrock model client (IAM credentials) for a resolved model id.
 
@@ -68,7 +83,7 @@ def load_model(model_id: str, thinking: bool = False) -> BedrockModel:
     if thinking and "anthropic" in model_id:
         return BedrockModel(
             model_id=model_id,
-            max_tokens=16000,
+            max_tokens=MAX_OUTPUT_TOKENS,
             additional_request_fields={"thinking": {"type": "enabled", "budget_tokens": 2048}},
         )
-    return BedrockModel(model_id=model_id)
+    return BedrockModel(model_id=model_id, max_tokens=MAX_OUTPUT_TOKENS)

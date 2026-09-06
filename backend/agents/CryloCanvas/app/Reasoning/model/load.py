@@ -29,6 +29,13 @@ if DEFAULT_MODEL not in MODELS:
     )
 
 
+# Pinned for the same reason as the IaC agent: Strands omits maxTokens when it
+# is unset, so an interchangeable model list quietly gets a different ceiling
+# per model. The canvas reply carries a whole node-and-connection graph, and
+# MiniMax spends budget on a reasoning block before emitting any of it.
+MAX_OUTPUT_TOKENS = 8000
+
+
 def load_model() -> BedrockModel:
     """Get Bedrock model client using IAM credentials."""
-    return BedrockModel(model_id=MODELS[DEFAULT_MODEL])
+    return BedrockModel(model_id=MODELS[DEFAULT_MODEL], max_tokens=MAX_OUTPUT_TOKENS)
