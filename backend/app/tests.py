@@ -1219,3 +1219,107 @@ class RuntimeSecretLoaderTests(SimpleTestCase):
         self.assertEqual(sorted(kwargs['Names']), [
             '/clyro/prod/django/secret-key', '/clyro/prod/github/app-pem',
         ])
+
+
+class AccountTypeRoundTripTests(TestCase):
+    """Found live walking the wizard on a free-tier account: the Step 4 cost
+    panel read "Free tier not applied" and the generated template carried four
+    NAT gateways, at roughly $32/month each, on the account type whose whole
+    purpose is avoiding them.
+
+    Two separate defects, both of which had to be fixed for the choice to mean
+    anything, and both covered here.
+
+    1. account_type was only ever sent by aws_connection_verify, which runs
+       once. Changing the Step 2 toggle afterwards moved the highlight and
+       persisted nothing, and wizard_state did not return the stored value at
+       all, so a reload always redrew "Paid account" whatever was in the
+       database.
+    2. IntentRecord.aws_account_type mirrors the connection because build_spec
+       reads intent rather than the connection, and ensure_deployment filled it
+       with `if ... is None`. That made it a one-way latch: the first
+       generation cached a value and no later change ever reached the
+       generator."""
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = User.objects.create(cognito_sub="sub-at", email="at@example.com", name="AT")
+        self.project = Project.objects.create(user=self.user, name="taskboard")
+        self.connection = AWSAccountConnection.objects.create(
+            project=self.project,
+            aws_account_id="123456789012",
+            aws_region="ap-south-1",
+            iam_role_arn="arn:aws:iam::123456789012:role/clyro-provisioning-x",
+            bootstrap_stack_id="clyro-bootstrap",
+            connected_at=timezone.now(),
+            claimed_account_type=IntentRecord.AwsAccountType.PAID,
+        )
+
+    def _patch_account_type(self, value):
+        request = self.factory.patch(
+            f'/api/projects/{self.project.id}/aws-connection/account-type/',
+            {'account_type': value}, format='json',
+        )
+        force_authenticate(request, user=self.user)
+        return provisioning_views.aws_connection_account_type(request, str(self.project.id))
+
+    def _wizard_state(self):
+        request = self.factory.get(f'/api/projects/{self.project.id}/wizard-state/')
+        force_authenticate(request, user=self.user)
+        return app_views.wizard_state(request, str(self.project.id))
+
+    def test_wizard_state_returns_the_stored_account_type(self):
+        # Without this the Step 2 toggle falls back to 'paid' on every reload.
+        self.assertEqual(self._wizard_state().data['connection']['account_type'], 'paid')
+
+    def test_verified_type_wins_over_the_claim(self):
+        self.connection.verified_account_type = IntentRecord.AwsAccountType.FREE_TIER
+        self.connection.save(update_fields=['verified_account_type'])
+        self.assertEqual(self._wizard_state().data['connection']['account_type'], 'free_tier')
+
+    def test_patch_persists_the_change_after_the_role_is_connected(self):
+        response = self._patch_account_type('free_tier')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['effective_account_type'], 'free_tier')
+        self.connection.refresh_from_db()
+        self.assertEqual(self.connection.claimed_account_type, 'free_tier')
+        self.assertEqual(self._wizard_state().data['connection']['account_type'], 'free_tier')
+
+    def test_patch_rejects_an_unknown_account_type(self):
+        response = self._patch_account_type('enterprise')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.connection.refresh_from_db()
+        self.assertEqual(self.connection.claimed_account_type, 'paid')
+
+    def test_patch_reports_a_mismatch_against_the_verified_type(self):
+        self.connection.verified_account_type = IntentRecord.AwsAccountType.PAID
+        self.connection.save(update_fields=['verified_account_type'])
+        response = self._patch_account_type('free_tier')
+        self.assertTrue(response.data['account_type_mismatch'])
+        # AWS itself outranks the self-report for anything that spends money.
+        self.assertEqual(response.data['effective_account_type'], 'paid')
+
+    def test_ensure_deployment_resyncs_intent_rather_than_latching(self):
+        canvas = CanvasVersion.objects.create(
+            project=self.project, version_number=1,
+            status=CanvasVersion.Status.FINALIZED,
+            canvas_yaml="version: 1\nnodes: []\nconnections: []\n", canvas_snapshot={},
+        )
+        intent = IntentRecord.objects.create(
+            project=self.project,
+            scale=IntentRecord.Scale.SOLO,
+            environment=IntentRecord.Environment.DEVELOPMENT,
+            domain_has=IntentRecord.DomainHas.NO,
+            completed_at=timezone.now(),
+        )
+
+        iac.ensure_deployment(self.project)
+        intent.refresh_from_db()
+        self.assertEqual(intent.aws_account_type, 'paid')
+
+        # The switch that used to be ignored because intent was already set.
+        self._patch_account_type('free_tier')
+        iac.ensure_deployment(self.project)
+        intent.refresh_from_db()
+        self.assertEqual(intent.aws_account_type, 'free_tier')
+        self.assertEqual(canvas.version_number, 1)
