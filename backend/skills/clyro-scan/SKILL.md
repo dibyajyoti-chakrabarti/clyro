@@ -20,7 +20,7 @@ allowed-tools:
 # Clyro Offline Scan Skill
 
 You are running the **Clyro offline repo scan**. Clyro is an AI-driven AWS
-provisioning platform. Normally its Step 1 runs a slow cloud scan (17–41s cold
+provisioning platform. Normally its Step 1 runs a slow cloud scan (17 to 41s cold
 start) against a connected GitHub repo to detect the app's shape, environment
 variables, and pre-deploy compliance problems. This skill moves that scan onto
 the developer's own machine: you read the repo directly and emit a single
@@ -29,11 +29,11 @@ scan entirely.
 
 **Scope: Django backends only.** Clyro currently provisions Python/Django +
 PostgreSQL, optionally with a React frontend, Redis cache, Celery worker, and S3
-storage. A React frontend, when present, is scanned as a secondary service — but
+storage. A React frontend, when present, is scanned as a secondary service, but
 every hard requirement below is about the Django backend. If the repo has no
 Django backend, stop and write a hard-block CLYRO.md (see *Hard blocks*).
 
-The `CLYRO.md` you produce must be **complete** — a filled-in contract for THIS
+The `CLYRO.md` you produce must be **complete**: a filled-in contract for THIS
 repo, never placeholder examples. Every value comes from something you actually
 read in the tree. If you cannot determine a value, set it to `null` and say why
 in the human-readable section; do not invent it.
@@ -56,7 +56,7 @@ are only meaningful with `--fix`; `--no-push --yes` together means commit only.
 
 ---
 
-## Shared Phase 1 — Deterministic detection (all modes)
+## Shared Phase 1: deterministic detection (all modes)
 
 Do this first, mechanically, before any LLM reasoning. It mirrors Clyro's own
 `deterministic_detector.py` so the output schema matches what the platform
@@ -78,11 +78,11 @@ ingests.
    - otherwise → **soft block** `no_database_found`
 5. **Find settings files.** Any `*.py` under the backend dir ending in
    `settings.py` or under a `/settings/` package (e.g. `taskboard/settings/base.py`).
-   Search the tree — do not guess the project package name.
+   Search the tree. Do not guess the project package name.
 5b. **Resolve the Django project package.** `project_name` is consumed by Clyro
    downstream (it names the generated architecture), so resolve it rather than
    leaving it null: read `DJANGO_SETTINGS_MODULE` out of `manage.py` (or
-   `wsgi.py`/`asgi.py`) and take its first dotted segment — for
+   `wsgi.py`/`asgi.py`) and take its first dotted segment. For
    `taskboard.settings.base` that is `taskboard`. Only `null` if none of those
    files resolve. `wsgi_path` (e.g. `taskboard.wsgi:application`) is best-effort;
    null is fine.
@@ -91,7 +91,7 @@ ingests.
    - worker: `celery` → Celery worker; `django-celery-beat` → `scheduled: true`
    - broker: inspect `CELERY_BROKER_URL`/settings. `redis://` present (or no
      `sqs`) → `redis`; explicit `sqs` → `sqs`. **Do not blindly default to
-     sqs** — report the real broker.
+     sqs.** Report the real broker.
    - storage: `boto3` **and** `django-storages` **and** `S3Boto3Storage` in
      settings → S3 storage
    - Dockerfile: `<backend>/Dockerfile` present → `dockerfile_found: true`,
@@ -114,7 +114,7 @@ ingests.
    `env('KEY')` (django-environ), `config('KEY')` (python-decouple). Record
    `key`, `source` (file), `context` (the source line, ≤200 chars). First
    occurrence wins; prefer a settings file as the `source` when a key appears in
-   both. Classify each — see *Env var classification*.
+   both. Classify each: see *Env var classification*.
 9. **Existing IaC.** If the tree has `terraform/`, `cloudformation/`, `cdk/`, or
    `infrastructure/` markers, set `existing_iac.found: true` with the path.
    Clyro may reconcile rather than generate.
@@ -125,7 +125,7 @@ CLYRO.md but the metadata flags it so Clyro can double-check.
 
 ### Env var classification
 
-Each env var gets one `classification`. These are the values Clyro ingests —
+Each env var gets one `classification`. These are the values Clyro ingests, so
 use exactly these three in the machine-parseable block:
 
 | classification | meaning | examples |
@@ -138,16 +138,16 @@ Rules: key in the generated set → `generated`. Key in `{DEBUG, ALLOWED_HOSTS}`
 `optional`. Context line mentions `DATABASES` or `CACHES` → `generated`.
 Otherwise → `user_secret`.
 
-Every `user_secret` also carries a `hint`, and Clyro ingests it — it decides
+Every `user_secret` also carries a `hint`, and Clyro ingests it. It decides
 what the user is asked for in the wizard, so it is part of the contract, not
 decoration. One of:
 
-- `agent_generatable` — the value is just entropy, with no external authority
+- `agent_generatable`: the value is just entropy, with no external authority
   (e.g. `DJANGO_SECRET_KEY` = a random 50-char string). Clyro mints its own
   value server-side at deploy time and never prompts the user for it. In `--fix`
   mode you *also* write one to `.env.clyro` so the repo runs locally; the two
   values are independent and that is fine.
-- `third_party` — the value exists only in an external console, so nobody can
+- `third_party`: the value exists only in an external console, so nobody can
   generate it. Emit an `acquire_url` alongside it (Stripe →
   https://dashboard.stripe.com/apikeys, SendGrid →
   https://app.sendgrid.com/settings/api_keys, etc.). Clyro renders that link
@@ -157,7 +157,7 @@ decoration. One of:
 Set `hint: third_party` when the key name or its context names a recognizable
 external service; `agent_generatable` when the value is arbitrary entropy the
 app only compares against itself. When neither is clear, use `third_party`
-without an `acquire_url` — asking the user is safe, silently minting a value for
+without an `acquire_url`. Asking the user is safe. Silently minting a value for
 something that had to match an external system is not.
 
 **Never write a secret VALUE into CLYRO.md.** Only key names, sources, and
@@ -165,13 +165,13 @@ classifications. Values live in `.env.clyro`, which must be gitignored.
 
 ---
 
-## Shared Phase 2 — Compliance checks
+## Shared Phase 2: compliance checks
 
 Run every applicable check below and record a finding
 `{id, title, passed, severity, detail, fix_hint}`. Severity is `blocker` (build
 fails), `warning` (deploy 500s or never becomes healthy), or `info` (fragile).
 
-**A check that does not apply to this repo is OMITTED entirely — never faked as
+**A check that does not apply to this repo is OMITTED entirely, never faked as
 a pass.** The applicability gate is the "Applies when" column: this is what the
 user means by *some compliance points are optional and depend on architecture*.
 For every omitted check, still record it in CLYRO.md's `## Compliance` prose
@@ -182,14 +182,14 @@ contract documents why it was skipped.
 
 | id | severity | Applies when | What it verifies |
 |---|---|---|---|
-| `database_url_env` | blocker | a database is detected (conditional — a legitimately DB-less backend omits this) | `DATABASE_URL` is among the extracted env vars. Clyro injects one Postgres connection string; the app must read it as a single URL, not split `DB_HOST`/`DB_USER`/… |
+| `database_url_env` | blocker | a database is detected (conditional: a legitimately DB-less backend omits this) | `DATABASE_URL` is among the extracted env vars. Clyro injects one Postgres connection string; the app must read it as a single URL, not split `DB_HOST`/`DB_USER`/… |
 | `allowed_hosts_env` | warning | always (Django) | `ALLOWED_HOSTS` is read from env. Clyro's ALB health check sends the target's private IP as the `Host` header; a hardcoded `ALLOWED_HOSTS` returns 400 and the service never stabilizes. |
 | `django_migrations` | blocker | always (Django) | Every app with `models.py` OR a `models/` package has ≥1 real migration file in `migrations/` (not just `__init__.py`). Clyro runs `migrate`, not `makemigrations`; a missing migration silently no-ops and every query 500s with `relation ... does not exist`. |
 | `health_endpoint` | warning | always (Django) | A `urls.py` registers a route whose path contains `health` (via `path`/`re_path`/`url`, or an `include()` of a health-check package). Clyro's ALB target group hardcodes `GET /health` and needs a 200 with no auth. |
-| `dockerfile_registry` | warning | **conditional** — only if a Dockerfile is committed in the backend dir (if Clyro generates the Dockerfile, this is skipped) | No `FROM` line pulls a bare image straight from Docker Hub. Docker Hub rate-limits anonymous pulls (~100/6hr shared), a real CodeBuild 429 failure mode. Multi-stage stage refs and `scratch` and build-arg (`$`) bases are ignored; a `FROM` with a registry host (contains `.`/`:` or `localhost`) in the first path segment passes. |
-| `django_system_check` | blocker | always (Django) | **Run the app's own `python manage.py check` in the backend dir** (using the project's `DJANGO_SETTINGS_MODULE`) and read the exit code. Any `ERROR`/`CRITICAL` message — e.g. `staticfiles.E005` from a `STORAGES` dict missing its `'staticfiles'` key — is a **blocker**: Clyro runs `migrate` on deploy, and Django runs system checks before *every* management command, so a check the app fails locally makes `migrate` abort and the deploy hard-fail. `WARNING`s (including the extra `--deploy` hardening warnings) are recorded as `warning`, never blockers. This is the authoritative gate — it catches app-level misconfig no file-pattern heuristic can, and it runs here (where the code + deps live) because Clyro has no running app until deploy. If you cannot run `manage.py check` (no venv/deps), do **not** fake a pass: record `passed: false` and tell the user the exact command to run — see `--fix`. |
+| `dockerfile_registry` | warning | **conditional**, only if a Dockerfile is committed in the backend dir (if Clyro generates the Dockerfile, this is skipped) | No `FROM` line pulls a bare image straight from Docker Hub. Docker Hub rate-limits anonymous pulls (~100/6hr shared), a real CodeBuild 429 failure mode. Multi-stage stage refs and `scratch` and build-arg (`$`) bases are ignored; a `FROM` with a registry host (contains `.`/`:` or `localhost`) in the first path segment passes. |
+| `django_system_check` | blocker | always (Django) | **Run the app's own `python manage.py check` in the backend dir** (using the project's `DJANGO_SETTINGS_MODULE`) and read the exit code. Any `ERROR`/`CRITICAL` message (e.g. `staticfiles.E005` from a `STORAGES` dict missing its `'staticfiles'` key) is a **blocker**: Clyro runs `migrate` on deploy, and Django runs system checks before *every* management command, so a check the app fails locally makes `migrate` abort and the deploy hard-fail. `WARNING`s (including the extra `--deploy` hardening warnings) are recorded as `warning`, never blockers. This is the authoritative gate: it catches app-level misconfig no file-pattern heuristic can, and it runs here (where the code + deps live) because Clyro has no running app until deploy. If you cannot run `manage.py check` (no venv/deps), do **not** fake a pass: record `passed: false` and tell the user the exact command to run (see `--fix`). |
 
-### React frontend checks (conditional — only if a React frontend was detected)
+### React frontend checks (conditional, only if a React frontend was detected)
 
 These are **architecture-dependent**: a Django-only repo omits both. Document
 them as not-applicable when there is no frontend.
@@ -202,32 +202,32 @@ them as not-applicable when there is no frontend.
 ### Failure-to-read guard
 
 If you cannot read the repo tree at all, emit a single finding
-`tree_fetch_failed` (warning) and stop the compliance phase — do not emit fake
+`tree_fetch_failed` (warning) and stop the compliance phase. Do not emit fake
 passes for the rest.
 
 ---
 
-## CLYRO.md output format — what Clyro actually ingests
+## CLYRO.md output format: what Clyro actually ingests
 
-**This section is the authoritative format. Follow it exactly — do not invent
+**This section is the authoritative format. Follow it exactly. Do not invent
 fence tags or key names.** Clyro's ingester (`clyro_md.py`) is deliberately
 structure-blind: it scans the whole document, finds **every fenced code block
 whose language is `yaml` (or `yml`)**, parses each as YAML, and merges the
-recognized top-level keys into one dict. Everything else — prose, tables, HTML
-comments, headings — is ignored for ingestion.
+recognized top-level keys into one dict. Everything else (prose, tables, HTML
+comments, headings) is ignored for ingestion.
 
 Two hard rules follow from that:
 
 1. **Fences must be ` ```yaml `.** A block fenced ` ```clyro `, ` ```clyro:env `,
    ` ```json `, or with no language is **invisible** to the parser. If none of
    your blocks are `yaml`, ingestion fails with *"No machine-readable ```yaml
-   block found in CLYRO.md."* — the contract is rejected even though it looks
+   block found in CLYRO.md."* and the contract is rejected even though it looks
    complete.
 2. **Use these exact top-level keys** (anything else is silently dropped):
    `repository`, `services`, `infrastructure`, `existing_iac`, `env_vars`,
    `compliance_findings`, `status`, `block_reason`, `block_message`, `agent`,
    `generated_at`, `commit_sha`, `scan_mode`, `confidence`, `schema_version`.
-   Note: it is `services`/`infrastructure`/`env_vars`/`compliance_findings` —
+   Note: it is `services`/`infrastructure`/`env_vars`/`compliance_findings`,
    **not** `resources`/`env`/`compliance`.
 
 You may split these across several `yaml` fences (one per section, as below) or
@@ -235,7 +235,7 @@ combine them; the parser merges by key name regardless of which heading a fence
 sits under. Emit exactly these blocks, filled in from what you read in THIS repo
 (a fuller annotated example lives at `reference/CLYRO.example.md`):
 
-**Resource graph** — `repository` + `services` + `infrastructure` + `existing_iac`:
+**Resource graph**, holding `repository` + `services` + `infrastructure` + `existing_iac`:
 
 ```yaml
 repository:
@@ -281,7 +281,7 @@ existing_iac:
   path: null
 ```
 
-**Environment variables** — one entry per var under `env_vars` (classification is
+**Environment variables**, one entry per var under `env_vars` (classification is
 one of `generated`/`optional`/`user_secret`; every `user_secret` also carries a
 `hint` of `agent_generatable` or `third_party`, and `third_party` carries an
 `acquire_url` when the service is recognizable):
@@ -313,7 +313,7 @@ env_vars:
     production_default: "False"
 ```
 
-**Compliance** — applied findings only, under `compliance_findings` (omitted
+**Compliance**, applied findings only, under `compliance_findings` (omitted
 architecture-dependent checks are documented in prose, never emitted as findings):
 
 ```yaml
@@ -328,7 +328,7 @@ compliance_findings:
       (e.g. path("health", lambda request: HttpResponse("ok"))).
 ```
 
-**Block status + metadata** — always emit both (on a clean scan `status:
+**Block status + metadata**, always emit both (on a clean scan `status:
 complete` and the block fields are null):
 
 ```yaml
@@ -352,7 +352,7 @@ blocks from *CLYRO.md output format* above (` ```yaml ` fences, keys
 `services`/`infrastructure`/`env_vars`/`compliance_findings`), with `commit_sha`
 set to `git rev-parse HEAD`. Do
 **not** modify any other file. Do not write `.env.clyro`. Do not stage, commit,
-or push — CLYRO.md is left in the working tree for the user to review and commit
+or push. CLYRO.md is left in the working tree for the user to review and commit
 themselves. Print a summary: N resources, N env vars (by classification), and
 compliance X/Y passing with the failing ids. When anything failed, end by
 pointing at `/clyro-scan --fix`, which fixes, commits, and pushes.
@@ -365,7 +365,7 @@ deploying, and regenerate CLYRO.md so it describes the fixed repo rather than th
 broken one. This is the only mode that writes to the user's history and remote,
 so it runs a preflight first and aborts rather than improvising.
 
-#### Preflight — run before touching anything, abort on any failure
+#### Preflight: run before touching anything, abort on any failure
 
 Abort means: change no file, create no commit, and print which check failed.
 
@@ -397,7 +397,7 @@ unrelated. Use each finding's `fix_hint` as the spec:
   key to the `STORAGES` dict; a broken `INSTALLED_APPS`/`MIDDLEWARE` import → fix
   the dotted path). Re-run until it exits 0. If you cannot run it (no venv/deps),
   do not guess: leave the finding `passed: false` and tell the user the exact
-  command — Clyro will block the deploy on it, which is correct.
+  command. Clyro will block the deploy on it, which is correct.
 - `health_endpoint` → add `path('health', lambda request: HttpResponse('ok'))`
   (import `HttpResponse`) to the root `urls.py`.
 - `dockerfile_registry` → rewrite `FROM <img>` to
@@ -406,11 +406,11 @@ unrelated. Use each finding's `fix_hint` as the spec:
   lockfile (tell the user if you cannot run npm).
 - `frontend_build_script` → add a `build` script to `package.json`.
 
-#### Secret hygiene — before any `git add`
+#### Secret hygiene, before any `git add`
 
 For `user_secret` vars hinted `agent_generatable` (e.g. `DJANGO_SECRET_KEY`),
 generate a value and write it to `.env.clyro` (create/append). For `third_party`
-secrets, do NOT invent a value — print the `acquire_url` for the user to fetch
+secrets, do NOT invent a value. Print the `acquire_url` for the user to fetch
 it.
 
 `.env.clyro` holds real secret material, and this mode pushes. So, before
@@ -419,7 +419,7 @@ staging anything:
 1. Ensure `.gitignore` contains `.env.clyro`; add the line if missing (this
    `.gitignore` edit is itself a legitimate part of the fix commit).
 2. Verify it with `git check-ignore .env.clyro`. If that does not report the
-   file as ignored, **abort before committing** — do not attempt a workaround.
+   file as ignored, **abort before committing**. Do not attempt a workaround.
 3. If `.env.clyro` is already tracked (`git ls-files --error-unmatch .env.clyro`
    succeeds), abort and tell the user to `git rm --cached .env.clyro` and rotate
    anything that was in it. Do not commit over it.
@@ -441,7 +441,7 @@ commits this way leaves only the CLYRO.md commit between `commit_sha` and
 `HEAD`, and that touches nothing detection depends on.
 
 Commit **one logical fix per commit**, staging explicit paths only. Never
-`git add -A`, `git add .`, or `git commit -a` — an unexpected file in the tree
+`git add -A`, `git add .`, or `git commit -a`. An unexpected file in the tree
 must not ride along in a pushed commit. One short imperative subject line per
 commit, no body needed:
 
@@ -458,7 +458,7 @@ Then push, unless `--no-push` was passed or there is no upstream:
 - **Ask for confirmation before pushing**, unless `--yes` was passed.
 - Push with a plain `git push`. Never `--force`, `--force-with-lease`, or a
   refspec targeting a different branch. If the push is rejected as non-fast-forward,
-  stop and tell the user to pull/rebase — do not resolve it yourself.
+  stop and tell the user to pull/rebase. Do not resolve it yourself.
 
 If anything fails mid-sequence, stop and report the exact state (which fixes are
 committed, whether the push happened). Committed-but-unpushed is a safe place to
@@ -469,7 +469,7 @@ Print a receipt like:
 ```
 Fixed   Added /health route to backend/urls.py
 Fixed   Rewrote Dockerfile FROM to public ECR mirror
-Skipped django_migrations — needs your venv: python manage.py makemigrations blog
+Skipped django_migrations, needs your venv: python manage.py makemigrations blog
 Secret  DJANGO_SECRET_KEY generated -> .env.clyro (gitignored, stays local)
 Action  STRIPE_SECRET_KEY -> get it at https://dashboard.stripe.com/apikeys
 Wrote   CLYRO.md (5 resources, 9 env vars, 6/7 compliance passing)
@@ -478,7 +478,7 @@ Commits 3 on `main`, pushed to origin/main
 
 Checks with no `fix_hint`, and fixes you could not run locally (a
 `makemigrations` needing the project's virtualenv), stay **failed** in CLYRO.md.
-Do not paper over them — Clyro blocks the deploy on that finding, which is the
+Do not paper over them. Clyro blocks the deploy on that finding, which is the
 correct outcome, and the receipt tells the user the exact command to run.
 
 ### `/clyro-scan --validate`
@@ -492,7 +492,7 @@ Read the existing `CLYRO.md`. If absent, say so and suggest running
    - compliance findings that changed pass/fail
    - schema-version mismatch (see the CLYRO.md `Schema version` comment)
    - staleness: `commit_sha` in the metadata block vs `git rev-parse HEAD`. A
-     mismatch alone is not staleness — CLYRO.md's own commit moves HEAD past the
+     mismatch alone is not staleness, because CLYRO.md's own commit moves HEAD past the
      sha recorded inside it. Only report stale when
      `git diff --name-only <commit_sha>..HEAD` touches something detection
      depends on: `requirements.txt`, `package.json`, any `*settings*.py`,
@@ -508,10 +508,10 @@ Read the existing `CLYRO.md`. If absent, say so and suggest running
 When Phase 1 hits a block, still write CLYRO.md, but with a `status` other than
 `complete` and the resource/env sections null:
 
-- `missing_requirements` (hard) — no `requirements.txt`.
-- `unsupported_framework` (hard) — backend isn't Django.
-- `unsupported_database` (hard) — MySQL detected.
-- `ambiguous_database` / `no_database_found` (soft) — no PostgreSQL detected;
+- `missing_requirements` (hard): no `requirements.txt`.
+- `unsupported_framework` (hard): backend isn't Django.
+- `unsupported_database` (hard): MySQL detected.
+- `ambiguous_database` / `no_database_found` (soft): no PostgreSQL detected;
   confidence `low` so Clyro can re-examine.
 
 State the block clearly in the human-readable section with the fix, e.g. add
@@ -527,15 +527,15 @@ fix.
 ## Guarantees / constraints
 
 - CLYRO.md is committed; `.env.clyro` is gitignored. Never put secret values in
-  CLYRO.md — only key names, sources, classifications, and hints.
+  CLYRO.md. Only key names, sources, classifications, and hints.
 - Only `--fix` writes to git, and only after its preflight passes. Default and
   `--validate` modes never stage, commit, or push. Never `--force` push, never
   push a branch other than the current one, never commit with `-a`/`add -A`.
 - Never claim a check passed without evidence from the tree.
 - Django only. React frontend is the sole supported secondary service; anything
-  else (Vue, Next, non-Python backends) is out of scope — note it, don't scan
+  else (Vue, Next, non-Python backends) is out of scope. Note it, don't scan
   it.
 - Machine-parseable blocks are the source of truth for ingestion; keep them
   exactly matching the human-readable tables.
 - Set the `Schema version` comment to `1`, and always emit `commit_sha` in the
-  metadata block — Clyro uses it to tell a fresh contract from a stale one.
+  metadata block. Clyro uses it to tell a fresh contract from a stale one.

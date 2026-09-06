@@ -9,7 +9,7 @@
 This file is the **contract** between this repository and the Clyro platform. It
 carries everything Clyro's Step 1 cloud scan would otherwise produce, so Clyro
 can skip that scan and go straight to configuring your deploy. It is committed to
-the repo, reviewed in PRs, and hand-editable — the scan is a starting point, not
+the repo, reviewed in PRs, and hand-editable. The scan is a starting point, not
 the final word. Correct any wrong detection below and Clyro honours your edit.
 
 **Scope:** Django + PostgreSQL backend (required), with an optional React
@@ -27,7 +27,7 @@ live here. Actual values go in `.env.clyro` (gitignored) or the Clyro UI.
 - **Cache**: Redis (django-redis)
 - **Worker**: Celery (scheduled via django-celery-beat), broker = Redis
 - **Storage**: S3 (django-storages / S3Boto3Storage)
-- **Frontend**: React 18 (Vite)  ·  *optional secondary service — omit this line if backend-only*
+- **Frontend**: React 18 (Vite)  ·  *optional secondary service, omit this line if backend-only*
 - **Layout**: Monorepo (`backend/` + `frontend/`)
 - **Python**: 3.12
 - **Existing IaC**: none detected
@@ -40,7 +40,7 @@ live here. Actual values go in `.env.clyro` (gitignored) or the Clyro UI.
 
 ## Detected Resources
 
-Machine-parseable — this block is what Clyro ingests. Keep it in sync with the
+Machine-parseable: this block is what Clyro ingests. Keep it in sync with the
 prose above.
 
 ```yaml
@@ -92,13 +92,13 @@ existing_iac:
 ## Environment Variables
 
 Grouped by how Clyro handles them. The `classification` in the machine block is
-one of `generated`, `optional`, `user_secret` — those are the only three values.
+one of `generated`, `optional`, `user_secret`. Those are the only three values.
 Every `user_secret` also carries a `hint` of `agent_generatable` or
 `third_party`, which Clyro ingests too: `agent_generatable` means Clyro mints the
 value itself and never asks you for it, `third_party` means it renders the
 `acquire_url` next to an input field you have to fill.
 
-### 🤖 Generated — Clyro provisions these automatically
+### 🤖 Generated: Clyro provisions these automatically
 
 | Key | Source | Context |
 |-----|--------|---------|
@@ -107,22 +107,22 @@ value itself and never asks you for it, `third_party` means it renders the
 | `CELERY_RESULT_BACKEND` | backend/config/settings/base.py | `CELERY_RESULT_BACKEND = os.environ['CELERY_RESULT_BACKEND']` |
 | `AWS_STORAGE_BUCKET_NAME` | backend/config/settings/base.py | `AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')` |
 
-### 🔑 User Secrets — you must provide these
+### 🔑 User Secrets: you must provide these
 
 | Key | Source | Context | Hint | Where to get it |
 |-----|--------|---------|------|-----------------|
-| `DJANGO_SECRET_KEY` | backend/config/settings/base.py | `SECRET_KEY = os.environ['DJANGO_SECRET_KEY']` | agent_generatable | nothing to fetch — Clyro mints one at deploy; `--fix` also writes a local one to `.env.clyro` |
+| `DJANGO_SECRET_KEY` | backend/config/settings/base.py | `SECRET_KEY = os.environ['DJANGO_SECRET_KEY']` | agent_generatable | nothing to fetch, Clyro mints one at deploy; `--fix` also writes a local one to `.env.clyro` |
 | `STRIPE_SECRET_KEY` | backend/payments/views.py | `stripe.api_key = os.environ['STRIPE_SECRET_KEY']` | third_party | <https://dashboard.stripe.com/apikeys> |
 | `SENDGRID_API_KEY` | backend/notifications/email.py | `sg = SendGridAPIClient(os.environ.get('SENDGRID_API_KEY'))` | third_party | <https://app.sendgrid.com/settings/api_keys> |
 
-### ⚙️ Optional — safe production defaults exist
+### ⚙️ Optional: safe production defaults exist
 
 | Key | Source | Default |
 |-----|--------|---------|
 | `DEBUG` | backend/config/settings/base.py | `False` |
 | `ALLOWED_HOSTS` | backend/config/settings/base.py | set permissively by Clyro at deploy time |
 
-Machine-parseable — one entry per variable:
+Machine-parseable, one entry per variable:
 
 ```yaml
 env_vars:
@@ -201,10 +201,10 @@ and listed under *Conditional / not-applicable* with its reason.
 
 ### Remediation
 
-- **`health_endpoint`** — Add a route at `/health` returning 200 with no auth:
+- **`health_endpoint`**: Add a route at `/health` returning 200 with no auth:
   `path("health", lambda request: HttpResponse("ok"))` (import `HttpResponse`)
   in the root `urls.py`. Clyro's ALB health check is hardcoded to `GET /health`.
-- **`dockerfile_registry`** — Change `FROM python:3.12-slim` to
+- **`dockerfile_registry`**: Change `FROM python:3.12-slim` to
   `FROM public.ecr.aws/docker/library/python:3.12-slim`. Docker Hub rate-limits
   anonymous pulls (~100/6hr shared), a real CodeBuild 429 failure.
 
@@ -217,11 +217,11 @@ reason is recorded here so the contract is explicit about what was skipped.
 | ID | Runs only when | If omitted here, why | Remedy if you later add it |
 |----|----------------|----------------------|-----------------------------|
 | `database_url_env` | a database is detected | omit for a legitimately DB-less Django backend (no connection string to read) | once a DB is added, read a single `DATABASE_URL` (e.g. `dj-database-url`), not split `DB_HOST`/`DB_USER`/`DB_PASSWORD` |
-| `dockerfile_registry` | a Dockerfile is committed in the backend dir | omit when Clyro generates the Dockerfile (`dockerfile_generated: true`) — Clyro's generated image already uses a non-Docker-Hub base | if you commit your own Dockerfile, base it on `public.ecr.aws/docker/library/...` (or any registry host, i.e. first path segment has a `.`/`:` or is `localhost`) |
+| `dockerfile_registry` | a Dockerfile is committed in the backend dir | omit when Clyro generates the Dockerfile (`dockerfile_generated: true`), because Clyro's generated image already uses a non-Docker-Hub base | if you commit your own Dockerfile, base it on `public.ecr.aws/docker/library/...` (or any registry host, i.e. first path segment has a `.`/`:` or is `localhost`) |
 | `frontend_lockfile` | a React frontend is detected | omit for a backend-only repo (no frontend build) | if you add a React frontend, commit `package-lock.json`/`yarn.lock`/`pnpm-lock.yaml` (root lockfile is fine for workspace monorepos); build runs `npm ci` |
 | `frontend_build_script` | a React frontend is detected | omit for a backend-only repo | if you add a React frontend, define `scripts.build` in `package.json` writing to `dist/` or `build/` |
 
-Machine-parseable — applied findings only (omitted checks are documented above,
+Machine-parseable, applied findings only (omitted checks are documented above,
 not emitted as findings):
 
 ```yaml
@@ -288,19 +288,19 @@ block_message: null
 ```
 
 On a block, the resource and env sections above are null and this message tells
-the user what to fix (e.g. *"No requirements.txt found — Clyro supports
-Python/Django backends only"*, or *"This repo uses MySQL — Clyro supports
+the user what to fix (e.g. *"No requirements.txt found. Clyro supports
+Python/Django backends only"*, or *"This repo uses MySQL. Clyro supports
 PostgreSQL only"*).
 
 ---
 
 ## Companion files
 
-- `.env.clyro` — agent-generated secret values (e.g. `DJANGO_SECRET_KEY`) for
+- `.env.clyro`: agent-generated secret values (e.g. `DJANGO_SECRET_KEY`) for
   running the app locally. **Gitignored, never committed.** Only written by
-  `/clyro-scan --fix`. Clyro never reads it — it mints its own value for anything
+  `/clyro-scan --fix`. Clyro never reads it, and mints its own value for anything
   hinted `agent_generatable`.
-- This `CLYRO.md` — committed and reviewed in PRs. `/clyro-scan --fix` commits it
+- This `CLYRO.md`: committed and reviewed in PRs. `/clyro-scan --fix` commits it
   for you, alongside one commit per compliance fix, and pushes to the branch you
   are deploying.
 
@@ -318,7 +318,7 @@ schema_version: 1
 ```
 
 `commit_sha` is HEAD **at the moment of the scan**, so it is normally one commit
-behind the commit that adds this file — that is expected, not staleness. Clyro
+behind the commit that adds this file, which is expected, not staleness. Clyro
 treats the contract as stale only when a detection-relevant file
 (`requirements.txt`, `package.json`, `*settings*.py`, `Dockerfile`, `urls.py`,
 `migrations/`) changed between that sha and the branch head.
