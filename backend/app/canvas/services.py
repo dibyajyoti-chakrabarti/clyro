@@ -88,7 +88,7 @@ def ensure_initial_canvas(project: Project) -> CanvasVersion | None:
     the old ``seed_step3`` fixture with the real records."""
     existing = latest_version(project)
     if existing is not None:
-        return existing
+        return refresh_cost_estimate(project, existing)
 
     scan = (
         ScanResult.objects.filter(project=project, status=ScanResult.Status.COMPLETE)
@@ -118,6 +118,40 @@ def ensure_initial_canvas(project: Project) -> CanvasVersion | None:
     if project.status not in (Project.Status.CANVAS_DRAFT, Project.Status.CANVAS_FINALIZED):
         project.status = Project.Status.CANVAS_DRAFT
         project.save(update_fields=["status", "updated_at"])
+    return version
+
+
+def refresh_cost_estimate(project: Project, version: CanvasVersion) -> CanvasVersion:
+    """Re-price an existing version against the connection as it stands now.
+
+    The estimate is derived from the canvas, the intent and the AWS connection,
+    but it was only ever computed when the version was written. Nothing
+    recomputed it afterwards, so a user who switched Step 2 to Free Tier and
+    walked back to Step 4 still read "Free tier not applied" and the paid
+    total, while the template generated from the very same records had already
+    dropped its NAT gateways. The panel contradicted the infrastructure.
+
+    Re-pricing in place rather than cutting a new version: a price is a
+    projection of the current world, not an edit the user made, and the version
+    history exists to record edits. Nothing is written unless the number
+    actually moved, so a reload of an unchanged project is a read.
+    """
+    canvas = canvas_ops.parse_canvas(version.canvas_yaml)
+    cost = cost_engine.estimate_cost(canvas, intent_dict(project), **_pricing_context(project))
+    if cost == version.estimated_cost:
+        return version
+
+    version.estimated_cost = cost
+    # canvas_snapshot carries its own copy, and serialize_version reads the
+    # field while other consumers read the snapshot. Leaving one behind would
+    # just move the staleness somewhere harder to see.
+    snapshot = dict(version.canvas_snapshot or {})
+    if snapshot:
+        snapshot["cost"] = cost
+        version.canvas_snapshot = snapshot
+        version.save(update_fields=["estimated_cost", "canvas_snapshot"])
+    else:
+        version.save(update_fields=["estimated_cost"])
     return version
 
 

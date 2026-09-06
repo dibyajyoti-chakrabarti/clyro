@@ -1351,3 +1351,62 @@ class AccountTypeRoundTripTests(TestCase):
     def test_pricing_context_is_empty_before_a_connection_exists(self):
         AWSAccountConnection.objects.filter(project=self.project).delete()
         self.assertEqual(canvas_services._pricing_context(self.project), {})
+
+    def test_the_step_4_estimate_is_repriced_after_the_toggle_moves(self):
+        # The panel read "Free tier not applied" and the paid total on a
+        # free-tier project whose generated template had already dropped its
+        # NAT gateways, because the estimate was only ever computed when the
+        # version was written.
+        IntentRecord.objects.create(
+            project=self.project,
+            scale=IntentRecord.Scale.SOLO,
+            environment=IntentRecord.Environment.DEVELOPMENT,
+            domain_has=IntentRecord.DomainHas.NO,
+            completed_at=timezone.now(),
+        )
+        canvas_yaml = (
+            "version: 1\n"
+            "nodes:\n"
+            "  - id: db\n"
+            "    type: rds_postgres\n"
+            "    label: PostgreSQL\n"
+            "connections: []\n"
+        )
+        version = CanvasVersion.objects.create(
+            project=self.project, version_number=1,
+            status=CanvasVersion.Status.DRAFT,
+            canvas_yaml=canvas_yaml,
+            canvas_snapshot={"nodes": [], "connections": [], "positions": {}, "cost": {}},
+            estimated_cost={"total": 999, "line_items": [], "assumptions": ["stale"]},
+        )
+
+        self._patch_account_type('free_tier')
+        refreshed = canvas_services.ensure_initial_canvas(self.project)
+
+        self.assertEqual(refreshed.pk, version.pk, "re-pricing must not cut a new version")
+        self.assertEqual(refreshed.version_number, 1)
+        self.assertNotIn('Free tier not applied', refreshed.estimated_cost['assumptions'])
+        self.assertIn('ap-south-1 pricing', refreshed.estimated_cost['assumptions'])
+        # The snapshot carries its own copy; leaving it behind just hides the staleness.
+        self.assertEqual(refreshed.canvas_snapshot['cost'], refreshed.estimated_cost)
+
+    def test_repricing_an_unchanged_project_writes_nothing(self):
+        IntentRecord.objects.create(
+            project=self.project,
+            scale=IntentRecord.Scale.SOLO,
+            environment=IntentRecord.Environment.DEVELOPMENT,
+            domain_has=IntentRecord.DomainHas.NO,
+            completed_at=timezone.now(),
+        )
+        version = CanvasVersion.objects.create(
+            project=self.project, version_number=1,
+            status=CanvasVersion.Status.DRAFT,
+            canvas_yaml="version: 1\nnodes: []\nconnections: []\n",
+            canvas_snapshot={"nodes": [], "connections": [], "positions": {}, "cost": {}},
+        )
+        canvas_services.ensure_initial_canvas(self.project)
+        settled = CanvasVersion.objects.get(pk=version.pk).estimated_cost
+
+        with patch.object(CanvasVersion, 'save', side_effect=AssertionError('rewrote an unchanged estimate')):
+            again = canvas_services.ensure_initial_canvas(self.project)
+        self.assertEqual(again.estimated_cost, settled)
