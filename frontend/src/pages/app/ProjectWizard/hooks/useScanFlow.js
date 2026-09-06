@@ -35,6 +35,11 @@ export default function useScanFlow({ projectId, projectData, setProjectData, se
     } else {
       api.listInstallations().then(setExistingInstallations).catch(() => {})
     }
+    // Mount only. This reads the installation_id the GitHub App redirect put in
+    // the URL exactly once. Depending on searchParams would re-run the whole
+    // repo fetch on every unrelated query-string change and stomp the user's
+    // current selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

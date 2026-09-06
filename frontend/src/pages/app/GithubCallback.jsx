@@ -31,6 +31,10 @@ export default function GithubCallback() {
       .catch((err) => {
         setError(err.message || 'Failed to store GitHub installation.')
       })
+    // Mount only. This is a one-shot OAuth landing page: it consumes the
+    // installation_id from the URL, stores it, and navigates away. Re-running
+    // it would re-POST the same installation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (error) {

@@ -66,6 +66,10 @@ export default function SecretsWrite({ projectId, onDone }) {
       })
       .catch(() => {})
       .finally(() => setEnvVarsLoading(false))
+    // Keyed on the project, deliberately. doSave is redefined every render, so
+    // depending on it would re-fetch the env vars and re-run the auto-write on
+    // every keystroke in the secrets form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   // A required secret is satisfied if the user typed a value, it was already

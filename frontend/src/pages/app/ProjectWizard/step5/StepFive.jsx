@@ -54,6 +54,10 @@ function StepFivePanel({ projectId, projectData, setProjectData, onBackToCanvas,
     }
     hydrate()
     return () => { cancelled = true }
+    // Keyed on the project, deliberately. projectData.iac.template is the stale
+    // copy this effect exists to replace with a fresh GET, so depending on it
+    // would re-hydrate the editor and discard whatever the user has typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
   const runGenerate = async () => {
