@@ -91,6 +91,41 @@ data "aws_iam_policy_document" "cdk_exec" {
     }
   }
 
+  # Creating a runtime creates service-linked roles as a side effect, and the
+  # caller needs permission for that even though it never asks for it.
+  #
+  # This is what the second failed deploy was. CreateAgentRuntime returned a
+  # bare "Access denied for operation 'AWS::BedrockAgentCore::Runtime'" through
+  # CloudFormation, with no IAM event in CloudTrail to point at, because the
+  # service attempts the CreateServiceLinkedRole internally. The real message
+  # was only in the CloudTrail event's responseElements: "Failed creating
+  # service linked role. Please verify that the calling role has sufficient
+  # permissions to create a service linked role."
+  #
+  # The gateway, its targets and the memory all created fine, which is why the
+  # runtime looked like a permissions problem specific to that resource type.
+  # These four service names are the ones BedrockAgentCoreFullAccess itself
+  # grants, copied rather than guessed. iam:AWSServiceName is the only scope a
+  # service-linked role takes, and it is a tight one: the role AWS creates is
+  # fixed by the service, not by the caller.
+  statement {
+    sid       = "CreateAgentCoreServiceLinkedRoles"
+    effect    = "Allow"
+    actions   = ["iam:CreateServiceLinkedRole"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:AWSServiceName"
+      values = [
+        "bedrock-agentcore.amazonaws.com",
+        "network.bedrock-agentcore.amazonaws.com",
+        "runtime-identity.bedrock-agentcore.amazonaws.com",
+        "runtime-instances.bedrock-agentcore.amazonaws.com",
+      ]
+    }
+  }
+
   # The runtime code ships as a CodeZip staged in the CDK assets bucket, and
   # the template itself is read from there on anything but the smallest stack.
   statement {
