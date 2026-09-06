@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import patch
 
 from botocore.exceptions import ClientError
@@ -1410,3 +1411,46 @@ class AccountTypeRoundTripTests(TestCase):
         with patch.object(CanvasVersion, 'save', side_effect=AssertionError('rewrote an unchanged estimate')):
             again = canvas_services.ensure_initial_canvas(self.project)
         self.assertEqual(again.estimated_cost, settled)
+
+
+class BootstrapTemplateGrantsTests(SimpleTestCase):
+    """The connector role's policy is the single hardest thing to get right in
+    Clyro, because a missing action is invisible until a real deploy into a real
+    customer account hits it. Four have now been found that way: ec2:GetSecurityGroupsForVpc,
+    ECR image push, DeleteStack on the ClyroBootstrap-* stack, and ecs:RunTask.
+    Each cost a full provisioning run to discover. Pin the actions whose absence
+    is not caught by anything else."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.template = (
+            Path(__file__).resolve().parent.parent / 'cfn-templates' / 'bootstrap.yaml'
+        ).read_text()
+
+    def assertGrants(self, *actions):
+        missing = [a for a in actions if f'- {a}\n' not in self.template]
+        self.assertEqual(missing, [], f'bootstrap.yaml grants none of: {missing}')
+
+    def test_it_can_run_and_watch_the_one_off_migration_task(self):
+        # deploy.run_migrations() -> aws_client.run_task, then _wait_migrate_task
+        # polls describe_task until STOPPED. Without these the stack reaches
+        # CREATE_COMPLETE, the image builds, and the deploy dies at 100%.
+        self.assertGrants('ecs:RunTask', 'ecs:DescribeTasks', 'ecs:ListTasks', 'ecs:StopTask')
+
+    def test_it_can_manage_the_services_the_stack_creates(self):
+        self.assertGrants(
+            'ecs:CreateService', 'ecs:UpdateService', 'ecs:DeleteService',
+            'ecs:DescribeServices', 'ecs:RegisterTaskDefinition', 'ecs:DescribeTaskDefinition',
+        )
+
+    def test_it_can_delete_its_own_connector_stack(self):
+        # deploy.destroy() finishes a project delete by deleting the
+        # ClyroBootstrap-<project> stack. IAM matches stack ARNs case-sensitively,
+        # so the clyro-* pattern alone never covered it.
+        self.assertIn("stack/ClyroBootstrap-*/*", self.template)
+
+    def test_it_can_read_the_logs_it_quotes_back_on_failure(self):
+        # _wait_migrate_task tails the task's log group so the user sees the real
+        # migration error instead of "the task stopped".
+        self.assertGrants('logs:GetLogEvents', 'logs:FilterLogEvents')

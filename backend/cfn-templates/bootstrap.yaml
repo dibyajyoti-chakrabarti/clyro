@@ -110,6 +110,20 @@ Resources:
                   - ecs:ListTaskDefinitions
                   - ecs:TagResource
                   - ecs:UntagResource
+                  # Found live: the whole stack reached CREATE_COMPLETE and the
+                  # image built, then deploy.run_migrations() called RunTask to
+                  # apply the app's migrations on the freshly-pushed image and
+                  # was denied. Only the service-management actions were ever
+                  # granted, so the one-off migration task could not start and
+                  # every first deploy into a customer account died at 100% with
+                  # "Could not start the database migration". DescribeTasks and
+                  # ListTasks back _wait_migrate_task's poll to STOPPED, and
+                  # StopTask is what lets a timed-out migration be cleaned up
+                  # instead of billing until the task exits on its own.
+                  - ecs:RunTask
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:StopTask
                 Resource: '*'
               # Container autoscaling
               - Effect: Allow
