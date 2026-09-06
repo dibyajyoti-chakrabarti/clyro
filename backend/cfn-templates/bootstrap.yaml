@@ -473,13 +473,28 @@ Resources:
                   - sqs:ListQueues
                 Resource: '*'
               # CloudFormation — create/update/delete the app stack this role provisions,
-              # scoped to clyro-* named stacks; describe/validate need no resource scoping.
+              # plus DeleteStack on this connector stack itself; describe/validate
+              # need no resource scoping.
+              #
+              # ClyroBootstrap-* is listed separately and deliberately. IAM matches
+              # resource ARNs case-sensitively, and this stack is named
+              # ClyroBootstrap-<project>, so the clyro-* pattern below never covered
+              # it. deploy.destroy() finishes a project delete by deleting this very
+              # stack, that call was denied every time, and the except ClientError
+              # around it is best-effort, so nothing surfaced: every deleted project
+              # left its connector stack and its clyro-provisioning-<uuid> role
+              # behind in the user's account, still trusting Clyro to assume it.
+              # Found by auditing an account after two project deletes and seeing
+              # two orphaned roles. Both this template and its own description
+              # promise the role goes away, so this is the promise being kept.
               - Effect: Allow
                 Action:
                   - cloudformation:CreateStack
                   - cloudformation:UpdateStack
                   - cloudformation:DeleteStack
-                Resource: !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/clyro-*/*'
+                Resource:
+                  - !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/clyro-*/*'
+                  - !Sub 'arn:aws:cloudformation:*:${AWS::AccountId}:stack/ClyroBootstrap-*/*'
               - Effect: Allow
                 Action:
                   - cloudformation:DescribeStacks
