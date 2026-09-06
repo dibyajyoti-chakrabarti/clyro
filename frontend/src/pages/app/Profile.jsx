@@ -30,7 +30,7 @@ const GENERAL_ROWS = [
 ]
 
 function formatJoinedDate(iso) {
-  if (!iso) return '—'
+  if (!iso) return '-'
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(new Date(iso))
 }
 
@@ -210,8 +210,8 @@ export default function Profile() {
           <div className='flex flex-col items-center gap-4 text-center lg:flex-row lg:text-left'>
             <Avatar name={profile?.name} avatarUrl={profile?.avatar_url} />
             <div className='min-w-0'>
-              <p className='truncate text-4xl font-semibold tracking-tight text-text-primary'>{profile?.name || '—'}</p>
-              <p className='mt-1 truncate text-lg text-text-muted'>{profile?.email || '—'}</p>
+              <p className='truncate text-4xl font-semibold tracking-tight text-text-primary'>{profile?.name || '-'}</p>
+              <p className='mt-1 truncate text-lg text-text-muted'>{profile?.email || '-'}</p>
               <div className='mt-3 flex flex-wrap justify-center gap-2 lg:justify-start'>
                 <span className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium ${tierMeta.badge}`}>
                   <BadgeCheck size={14} />
@@ -237,7 +237,7 @@ export default function Profile() {
             icon={GENERAL_ROWS[0].icon}
             label={GENERAL_ROWS[0].label}
             description={GENERAL_ROWS[0].description}
-            value={profile?.name || '—'}
+            value={profile?.name || '-'}
             showEdit
             onEdit={() => setEditing(true)}
             editing={editing}
@@ -257,7 +257,7 @@ export default function Profile() {
             icon={GENERAL_ROWS[1].icon}
             label={GENERAL_ROWS[1].label}
             description={GENERAL_ROWS[1].description}
-            value={profile?.email || '—'}
+            value={profile?.email || '-'}
           />
           <CompactRow
             icon={GENERAL_ROWS[2].icon}

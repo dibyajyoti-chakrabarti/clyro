@@ -62,7 +62,7 @@ function StepSevenPanel({ projectId }) {
         setStackStatus(data.stack ? {
           stackName: data.stack.name,
           status: data.stack.status,
-          lastUpdated: data.stack.last_updated ? new Date(data.stack.last_updated).toLocaleString() : '—',
+          lastUpdated: data.stack.last_updated ? new Date(data.stack.last_updated).toLocaleString() : '-',
         } : null)
         setWarnings(data.warnings || [])
       } catch {

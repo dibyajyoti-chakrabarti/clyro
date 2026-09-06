@@ -141,9 +141,9 @@ export default function Dashboard() {
 
       {/* Stats */}
       <div className='grid gap-3 sm:grid-cols-3'>
-        <StatCard icon={FolderKanban} label='Total Projects' value={loading ? '—' : total} />
-        <StatCard icon={RefreshCw} label='In Progress' value={loading ? '—' : inProgress} glow={inProgress > 0} />
-        <StatCard icon={Activity} label='Live' value={loading ? '—' : live} glow={live > 0} />
+        <StatCard icon={FolderKanban} label='Total Projects' value={loading ? '-' : total} />
+        <StatCard icon={RefreshCw} label='In Progress' value={loading ? '-' : inProgress} glow={inProgress > 0} />
+        <StatCard icon={Activity} label='Live' value={loading ? '-' : live} glow={live > 0} />
       </div>
 
       {/* Recent projects */}

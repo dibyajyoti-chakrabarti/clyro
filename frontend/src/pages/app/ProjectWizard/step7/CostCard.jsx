@@ -3,9 +3,9 @@ import RingGauge from './RingGauge'
 
 // Cost figures aren't wired to a source yet — the tiles render their empty state.
 const TILES = [
-  ['This month so far', '—'],
-  ['Projected', '—'],
-  ['Last month', '—'],
+  ['This month so far', '-'],
+  ['Projected', '-'],
+  ['Last month', '-'],
 ]
 
 function CostCard({ className = '' }) {

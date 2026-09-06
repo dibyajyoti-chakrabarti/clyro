@@ -52,7 +52,7 @@ function UptimeSection({ projectId, uptimeClassName = '', timelineClassName = ''
             <RingGauge
               key={label}
               percent={value ?? null}
-              label={value != null ? `${value}%` : '—'}
+              label={value != null ? `${value}%` : '-'}
               caption={label}
             />
           ))}

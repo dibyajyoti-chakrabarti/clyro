@@ -14,7 +14,7 @@ export default function Navbar() {
         <a
           href="/"
           className="inline-flex items-center gap-3 rounded-md text-lg font-semibold tracking-normal transition-colors hover:text-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          aria-label="Crylo home"
+          aria-label="Clyro home"
         >
           <img src={clyroLogo} alt="Clyro Logo" className="h-9 w-auto" />
           <span>Clyro</span>

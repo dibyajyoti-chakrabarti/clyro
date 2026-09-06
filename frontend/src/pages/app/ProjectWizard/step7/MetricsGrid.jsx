@@ -3,13 +3,13 @@ import Sparkline from './Sparkline'
 
 function MetricsGrid({ metrics, series, className = '' }) {
   const rows = [
-    ['API response time', metrics?.response_time_ms != null ? `${metrics.response_time_ms} ms` : '—',
+    ['API response time', metrics?.response_time_ms != null ? `${metrics.response_time_ms} ms` : '-',
       series?.response_time_ms, (v) => `${v} ms`],
-    ['Request rate', metrics?.request_rate != null ? `${metrics.request_rate}/min` : '—',
+    ['Request rate', metrics?.request_rate != null ? `${metrics.request_rate}/min` : '-',
       series?.request_rate, (v) => `${v}/min`],
-    ['Error rate', metrics?.error_rate != null ? `${metrics.error_rate}%` : '—',
+    ['Error rate', metrics?.error_rate != null ? `${metrics.error_rate}%` : '-',
       series?.error_rate, (v) => `${v}%`],
-    ['Backend CPU', metrics?.cpu_percent != null ? `${metrics.cpu_percent}%` : '—',
+    ['Backend CPU', metrics?.cpu_percent != null ? `${metrics.cpu_percent}%` : '-',
       series?.cpu_percent, (v) => `${v}%`],
   ]
 
