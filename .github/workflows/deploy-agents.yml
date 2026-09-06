@@ -207,10 +207,22 @@ jobs:
           # admin role. It is a one-time, account-level action and belongs with
           # the hand-applied Terraform bootstrap layer.
           if ! aws ssm get-parameter --name /cdk-bootstrap/hnb659fds/version >/dev/null 2>&1; then
+            ACCT=$(aws sts get-caller-identity --query Account --output text)
             echo "::error::This account and region are not CDK-bootstrapped, so"
             echo "there is nowhere to stage the runtime bundle. Run once, by hand,"
             echo "with credentials that can create IAM roles:"
-            echo "  AWS_PROFILE=jan-saathi npx cdk bootstrap aws://$(aws sts get-caller-identity --query Account --output text)/${AWS_REGION}"
+            # By path, not `npx cdk`, for the reason given above: npx would run
+            # this package's own synth entrypoint, which ignores `bootstrap`
+            # and exits 0 having done nothing.
+            echo "  cd backend/agents/CryloIac/agentcore/cdk"
+            echo "  AWS_PROFILE=jan-saathi ./node_modules/.bin/cdk bootstrap aws://${ACCT}/${AWS_REGION} \\"
+            echo "    --cloudformation-execution-policies arn:aws:iam::${ACCT}:policy/clyro-cdk-exec"
+            echo ""
+            echo "The execution policy matters. A default bootstrap gives"
+            echo "cdk-hnb659fds-cfn-exec-role AdministratorAccess, and this role"
+            echo "can assume it, which is the admin path the clyro-* IAM scoping"
+            echo "exists to prevent. clyro-cdk-exec is created by the bootstrap"
+            echo "Terraform layer (infrastructure/bootstrap/cdk_exec.tf)."
             exit 1
           fi
 

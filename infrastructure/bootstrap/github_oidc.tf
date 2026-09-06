@@ -225,6 +225,19 @@ data "aws_iam_policy_document" "terraform_build" {
     ]
   }
 
+  # `cdk deploy` never calls AWS as the caller. It assumes the roles
+  # `cdk bootstrap` creates (deploy, file-publishing, lookup) and works through
+  # them, so without this the agentcore job fails on AssumeRole the moment the
+  # bootstrap check passes. Scoped to the bootstrap qualifier, and safe only
+  # because the account is bootstrapped against clyro-cdk-exec rather than the
+  # default AdministratorAccess execution role. See cdk_exec.tf.
+  statement {
+    sid       = "AssumeCdkBootstrapRoles"
+    effect    = "Allow"
+    actions   = ["sts:AssumeRole"]
+    resources = ["arn:aws:iam::${local.account_id}:role/cdk-hnb659fds-*"]
+  }
+
   # Read-only IAM. Terraform's plans reference the OIDC provider and AWS
   # managed policies, and refreshing an existing role reads it back.
   statement {
