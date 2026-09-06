@@ -11,6 +11,7 @@ import AwsConnectCard from './AwsConnectCard'
 export default function AwsSetup({ projectId, initialAccountType, initiallyConnected, onConnected, onBack, onContinue }) {
   const { preferredRegion } = usePreferences()
   const [accountType, setAccountType] = useState(initialAccountType || 'paid')
+  const [accountTypeSaving, setAccountTypeSaving] = useState(false)
   const [cfnConsoleUrl, setCfnConsoleUrl] = useState(null)
   const [urlLoading, setUrlLoading] = useState(false)
   const [stackOpened, setStackOpened] = useState(false)
@@ -49,6 +50,28 @@ export default function AwsSetup({ projectId, initialAccountType, initiallyConne
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roleConnected])
 
+  // Once the role is connected, verify never runs again, so changing the
+  // toggle used to move the highlight and persist nothing: the canvas kept
+  // pricing the project as paid and the generated IaC kept the NAT Gateway.
+  // Persist the change on its own instead.
+  const handleAccountTypeChange = async (next) => {
+    if (next === accountType) return
+    setAccountType(next)
+    if (!roleConnected || !projectId) return
+    setAccountTypeSaving(true)
+    try {
+      const data = await api.setAwsAccountType(projectId, next)
+      setAccountTypeMismatch(Boolean(data?.account_type_mismatch))
+      onConnected?.({ connected: true, accountType: next })
+    } catch {
+      // Leave the selection where the user put it and let them retry; the
+      // stored claim is unchanged, and Step 5 reads the stored one.
+      setAccountType(accountType)
+    } finally {
+      setAccountTypeSaving(false)
+    }
+  }
+
   const handleOpenStack = () => {
     if (cfnConsoleUrl) {
       window.open(cfnConsoleUrl, '_blank', 'noopener,noreferrer')
@@ -81,7 +104,8 @@ export default function AwsSetup({ projectId, initialAccountType, initiallyConne
     <div className='flex h-full min-h-0 w-full flex-col items-center overflow-y-auto py-2'>
       <AwsConnectCard
         accountType={accountType}
-        onAccountTypeChange={setAccountType}
+        onAccountTypeChange={handleAccountTypeChange}
+        accountTypeSaving={accountTypeSaving}
         cfnConsoleUrl={cfnConsoleUrl}
         urlLoading={urlLoading}
         stackOpened={stackOpened}

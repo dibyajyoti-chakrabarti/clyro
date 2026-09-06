@@ -143,6 +143,59 @@ def aws_connection_init(request, pk):
     return Response({'cfn_console_url': cfn_console_url, 'external_id': external_id})
 
 
+@api_view(['PATCH'])
+@authentication_classes(_AUTH)
+@permission_classes(_PERMS)
+def aws_connection_account_type(request, pk):
+    """Update the user's self-reported account type on an already-connected
+    account.
+
+    account_type used to be sent only by aws_connection_verify, which runs once.
+    The Step 2 toggle stays live after the role is connected, so a user who
+    connected as "Paid account" and then picked "Free Tier" saw the selection
+    move and nothing else happen: the canvas kept pricing as paid and the
+    generated IaC kept the NAT Gateway that free tier is meant to avoid. Found
+    walking the wizard against production, where a free-tier project produced a
+    cost panel reading "Free tier not applied".
+    """
+    try:
+        project = Project.objects.get(pk=pk, user=request.user)
+    except Project.DoesNotExist:
+        return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    account_type = (request.data.get('account_type') or '').strip()
+    valid = {choice.value for choice in IntentRecord.AwsAccountType}
+    if account_type not in valid:
+        return Response(
+            {'error': f"account_type must be one of: {', '.join(sorted(valid))}."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    connection = AWSAccountConnection.objects.filter(
+        project=project, connected_at__isnull=False
+    ).order_by('-connected_at').first()
+    if not connection:
+        return Response(
+            {'error': 'No connected AWS account for this project.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    connection.claimed_account_type = account_type
+    connection.save(update_fields=['claimed_account_type', 'updated_at'])
+
+    # verified_account_type is what AWS itself said, so it still wins for
+    # pricing. Report the mismatch back so Step 2 can keep warning about it
+    # rather than quietly showing the new claim as accepted.
+    mismatch = bool(
+        connection.verified_account_type and connection.verified_account_type != account_type
+    )
+    return Response({
+        'account_type': account_type,
+        'effective_account_type': connection.verified_account_type or account_type,
+        'account_type_mismatch': mismatch,
+    })
+
+
 @api_view(['POST'])
 @authentication_classes(_AUTH)
 @permission_classes(_PERMS)

@@ -50,6 +50,7 @@ function AwsConnectCard({
   verifyError,
   roleConnected,
   accountTypeMismatch,
+  accountTypeSaving,
   onOpenStack,
   onVerify,
   onBack,
@@ -130,12 +131,15 @@ function AwsConnectCard({
               <button
                 type='button'
                 onClick={() => onAccountTypeChange('paid')}
+                aria-pressed={accountType === 'paid'}
+                disabled={accountTypeSaving}
                 style={{
                   textAlign: 'left',
                   borderRadius: 16,
                   padding: 20,
-                  cursor: 'pointer',
-                  transition: 'border-color 150ms, background 150ms',
+                  cursor: accountTypeSaving ? 'wait' : 'pointer',
+                  opacity: accountTypeSaving ? 0.6 : 1,
+                  transition: 'border-color 150ms, background 150ms, opacity 150ms',
                   border: accountType === 'paid' ? `1.5px solid ${GOLD_60}` : `1px solid ${WHITE_08}`,
                   background: accountType === 'paid' ? GOLD_08 : WHITE_03,
                 }}
@@ -179,12 +183,15 @@ function AwsConnectCard({
               <button
                 type='button'
                 onClick={() => onAccountTypeChange('free_tier')}
+                aria-pressed={accountType === 'free_tier'}
+                disabled={accountTypeSaving}
                 style={{
                   textAlign: 'left',
                   borderRadius: 16,
                   padding: 20,
-                  cursor: 'pointer',
-                  transition: 'border-color 150ms, background 150ms',
+                  cursor: accountTypeSaving ? 'wait' : 'pointer',
+                  opacity: accountTypeSaving ? 0.6 : 1,
+                  transition: 'border-color 150ms, background 150ms, opacity 150ms',
                   border: accountType === 'free_tier' ? `1.5px solid ${GOLD_60}` : `1px solid ${WHITE_08}`,
                   background: accountType === 'free_tier' ? GOLD_08 : WHITE_03,
                 }}

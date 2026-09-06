@@ -87,6 +87,9 @@ export const api = {
   // Step 2 — AWS connection
   initAwsConnection: (id) => request('POST', `/api/projects/${id}/aws-connection/`),
   verifyAwsConnection: (id, payload) => request('POST', `/api/projects/${id}/aws-connection/verify/`, payload),
+  // Changing the account type after the role is connected: verify only runs
+  // once, so without this the toggle moved and nothing was ever persisted.
+  setAwsAccountType: (id, accountType) => request('PATCH', `/api/projects/${id}/aws-connection/account-type/`, { account_type: accountType }),
 
   // Env vars — staged in Step 1 (no AWS connection required yet, values held
   // pending), written for real in Step 6 (requires a connected AWS account).

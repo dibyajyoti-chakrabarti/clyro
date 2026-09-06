@@ -240,6 +240,11 @@ def wizard_state(request, pk):
         project=project, connected_at__isnull=False
     ).order_by('-connected_at').first()
 
+    # account_type has to come back here or Step 2 cannot resume honestly:
+    # AwsSetup seeds its toggle from connection.account_type and falls back to
+    # 'paid', so leaving it out made every reload show "Paid account" selected
+    # even for a project stored as free_tier. verified wins over claimed, the
+    # same precedence canvas.services._account_type_for uses to price the canvas.
     return Response({
         'project': ProjectSerializer(project).data,
         'scan': ScanResultSerializer(scan).data if scan else None,
@@ -248,6 +253,9 @@ def wizard_state(request, pk):
             'connected': bool(connection),
             'region': connection.aws_region if connection else None,
             'health_status': connection.health_status if connection else None,
+            'account_type': (
+                connection.verified_account_type or connection.claimed_account_type
+            ) if connection else None,
         },
     })
 

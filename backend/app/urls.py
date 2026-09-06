@@ -36,6 +36,7 @@ from .views import (
     wizard_state,
 )
 from .provisioning.views import (
+    aws_connection_account_type,
     aws_connection_init,
     aws_connection_verify,
     env_vars_list,
@@ -83,6 +84,7 @@ urlpatterns = [
     path('projects/<uuid:pk>/canvas/finalize/', canvas_finalize),
     path('projects/<uuid:pk>/aws-connection/', aws_connection_init),
     path('projects/<uuid:pk>/aws-connection/verify/', aws_connection_verify),
+    path('projects/<uuid:pk>/aws-connection/account-type/', aws_connection_account_type),
     path('projects/<uuid:pk>/env-vars/', env_vars_list),
     path('projects/<uuid:pk>/env-vars/stage/', env_vars_stage),
     path('projects/<uuid:pk>/env-vars/save/', env_vars_save),
