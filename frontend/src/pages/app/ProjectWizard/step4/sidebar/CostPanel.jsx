@@ -17,11 +17,21 @@ const ENVIRONMENT_LABELS = {
   development: 'Development',
 }
 
-const DEFAULT_ASSUMPTIONS = ['Region: us-east-1', 'Runtime: 730 hrs/month', 'Data transfer excluded']
+const DEFAULT_ASSUMPTIONS = ['Runtime: 730 hrs/month', 'Data transfer excluded']
+
+// The estimate is priced in the region the project connected, and the backend
+// already says which in its assumptions ("<region> pricing"). Reading it back
+// out beats the hardcoded us-east-1 that used to sit in the header, which
+// mislabelled every project connected anywhere else.
+const regionFromAssumptions = (assumptions) => {
+  const match = (assumptions || []).map((line) => /^(\S+) pricing$/.exec(line)).find(Boolean)
+  return match ? match[1] : null
+}
 
 export default function CostPanel({ canvasCost, totalCost, assumptions, environment, onClose }) {
   const environmentLabel = ENVIRONMENT_LABELS[environment] || 'Production'
   const displayedAssumptions = assumptions && assumptions.length > 0 ? assumptions : DEFAULT_ASSUMPTIONS
+  const region = regionFromAssumptions(assumptions)
   return (
     <div className='flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-[rgba(255,193,7,0.10)] bg-[rgba(10,10,10,0.42)] shadow-[0_24px_80px_rgba(0,0,0,0.28),0_0_60px_rgba(255,193,7,0.05)] backdrop-blur-[20px]'>
       <div className='shrink-0 px-4 pt-4 pb-3'>
@@ -58,7 +68,7 @@ export default function CostPanel({ canvasCost, totalCost, assumptions, environm
           </div>
           <div className='mt-4 flex items-center gap-2'>
             <span className='h-1.5 w-1.5 rounded-full bg-emerald-400' />
-            <p className='text-xs text-text-muted'>Live estimate · {environmentLabel} · us-east-1</p>
+            <p className='text-xs text-text-muted'>Live estimate · {environmentLabel}{region ? ` · ${region}` : ''}</p>
           </div>
         </div>
 
