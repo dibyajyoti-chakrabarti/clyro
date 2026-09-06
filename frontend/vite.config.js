@@ -13,4 +13,22 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ["monaco-editor", "monaco-yaml"],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Everything used to land in one 5.9 MB entry chunk, so a visitor to the
+        // landing page downloaded the CloudFormation editor and the animation
+        // libraries before anything rendered. Monaco is code-split at its import
+        // site instead (see step5/IacEditor.jsx); these are the remaining vendors
+        // big enough to be worth caching separately from application code, which
+        // changes far more often than they do.
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          amplify: ["aws-amplify"],
+          motion: ["gsap", "@gsap/react", "lenis", "lottie-react"],
+          markdown: ["react-markdown"],
+        },
+      },
+    },
+  },
 });

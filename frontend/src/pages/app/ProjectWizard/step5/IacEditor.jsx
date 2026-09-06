@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, ArrowLeft, ArrowRight, ArrowUp, Bell, Check, CheckCheck, CheckCircle2, ChevronDown, Copy, Database, FileCode2, Quote, RefreshCw, RotateCcw, Settings, Sparkles, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import Button from '../../../../components/ui/Button'
-import CfnEditor from '../../../../components/wizard/CfnEditor'
+// Monaco, monaco-yaml and their language workers are about four fifths of the
+// whole bundle, and Step 5 is the only screen that renders an editor. Loading it
+// lazily keeps all of that out of the entry chunk, so the landing page and the
+// first four wizard steps no longer pay for it.
+const CfnEditor = lazy(() => import('../../../../components/wizard/CfnEditor'))
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -357,12 +361,20 @@ export default function IacEditor({
                 </div>
               )}
 
-              <CfnEditor
-                value={template}
-                onChange={onTemplateChange}
-                markers={validation?.diagnostics || []}
-                readOnly={refining || generating}
-              />
+              <Suspense
+                fallback={
+                  <div className='flex h-full items-center justify-center text-sm text-text-muted'>
+                    Loading the editor...
+                  </div>
+                }
+              >
+                <CfnEditor
+                  value={template}
+                  onChange={onTemplateChange}
+                  markers={validation?.diagnostics || []}
+                  readOnly={refining || generating}
+                />
+              </Suspense>
 
               {/* Floating assistant button — same button chrome/animation as the Step 4 Canvas Agent trigger,
                   anchored to this editor pane (not the viewport or the status bar below it) */}
