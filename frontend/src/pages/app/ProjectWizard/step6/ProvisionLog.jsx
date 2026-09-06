@@ -18,7 +18,13 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
   // only the build needs retrying (see StepFour.jsx's handleRetryBuild).
   const building = deployStatus === 'building'
   const buildFailed = deployStatus === 'build_failed'
-  const isCancelable = !rollingBack && !deployFailed && !buildFailed && deployStatus !== 'deleting' && deployStatus !== 'deleted'
+  // Teardown reuses this screen, so it needs its own two states. Without them
+  // both fell through to the final else of the heading chain and the panel sat
+  // on "Provisioning infrastructure" with a spinner while the stack was being
+  // destroyed — and kept saying it forever once the stack was gone.
+  const deleting = deployStatus === 'deleting'
+  const deleted = deployStatus === 'deleted'
+  const isCancelable = !rollingBack && !deployFailed && !buildFailed && !deleting && !deleted
 
   // Track only the latest event per resource — CFN emits both an IN_PROGRESS and a
   // COMPLETE/FAILED event per resource, so counting raw log rows overstates the total.
@@ -48,11 +54,17 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
         <div className='flex items-center gap-2'>
           {deployFailed || buildFailed ? (
             <XCircle className='h-5 w-5 text-red-400' />
+          ) : deleted ? (
+            <Check className='h-5 w-5 text-text-muted' />
           ) : (
             <span className='h-4 w-4 rounded-full border-2 border-accent border-t-transparent animate-spin' />
           )}
           <h3 className='text-lg font-semibold'>
-            {deployFailed
+            {deleted
+              ? 'Infrastructure deleted'
+              : deleting
+              ? 'Deleting infrastructure…'
+              : deployFailed
               ? 'Provisioning failed'
               : rollingBack
                 ? 'Provisioning failed, rolling back…'
@@ -65,7 +77,17 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
                     : 'Provisioning infrastructure'}
           </h3>
         </div>
-        {rollingBack ? (
+        {deleted ? (
+          <p className='mt-1 text-sm text-text-muted'>
+            Every resource this project provisioned has been removed from your AWS account,
+            and it has stopped billing. You can provision it again whenever you want.
+          </p>
+        ) : deleting ? (
+          <p className='mt-1 text-sm text-text-muted'>
+            AWS is removing the CloudFormation stack and everything it created. This usually
+            takes 5 to 10 minutes, and finishes on its own if you close this tab.
+          </p>
+        ) : rollingBack ? (
           <p className='mt-1 text-sm text-text-muted'>
             AWS is removing the resources from the failed attempt. Clyro will report the
             root cause once rollback completes.
@@ -90,7 +112,7 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
         ) : null}
 
         {/* ── Progress summary ── */}
-        {total > 0 && (
+        {total > 0 && !deleting && !deleted && (
           <div className='mt-4 space-y-1.5'>
             <div className='flex items-center justify-between text-xs text-text-muted'>
               <span>{done + failed + rolledBack} of {total} resources processed{failed ? ` · ${failed} failed` : ''}{rolledBack ? ` · ${rolledBack} rolled back` : ''}</span>
@@ -226,6 +248,13 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
                 {cancelLoading ? 'Cleaning up…' : 'Delete leftover infrastructure'}
               </button>
             </div>
+          </div>
+        ) : deleted ? (
+          <div className='mt-5 flex items-center gap-4'>
+            <Button variant='primary' onClick={onBack}>
+              Back to review
+              <ArrowRight className='h-4 w-4' />
+            </Button>
           </div>
         ) : buildFailed ? (
           <div className='mt-5'>

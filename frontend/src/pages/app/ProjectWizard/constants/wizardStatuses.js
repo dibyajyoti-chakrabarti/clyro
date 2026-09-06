@@ -13,7 +13,12 @@ export const STATUS_STEP = {
   canvas_draft: 4, canvas_finalized: 4,
   iac_generated: 5, iac_validated: 5,
   provisioning: 6, failed: 6,
-  live: 7,
+  // A torn-down project still has its repo, canvas and template — Step 6 is
+  // where it can be provisioned again. Without these three the lookup fell
+  // through to `?? 1` in ProjectWizard.jsx and reopening a deleted or paused
+  // project dropped the user back on "Connect your repository".
+  deleting: 6, deleted: 6,
+  live: 7, paused: 7,
 }
 
 // Derives completed steps from STATUS_STEP rather than a hardcoded STATUS_ORDER

@@ -9,10 +9,14 @@ import ReviewArchitecture from './ReviewArchitecture'
 import SecretsWrite from './SecretsWrite'
 
 // Deployment statuses that describe a stack the provisioning screen can show.
-// Anything else (iac_ready, pending, deleted) means we haven't submitted yet.
+// Anything else (iac_ready, pending) means we haven't submitted yet.
+//
+// 'deleting' belongs here: a teardown takes 5 to 10 minutes, and a refresh
+// during one used to land back on the review screen offering to provision a
+// stack that was busy being destroyed.
 const DEPLOY_PHASE_STATUSES = [
   'submitting', 'in_progress', 'rolling_back', 'building', 'complete',
-  'failed', 'rolled_back', 'build_failed',
+  'failed', 'rolled_back', 'build_failed', 'deleting',
 ]
 
 // Step 6: review the generated template, write the staged secrets for real
@@ -78,7 +82,7 @@ function StepSixPanel({ projectId, onBackToIac, onAdvanceToStepSeven }) {
             setPhase('success')
           } else {
             setPhase('provisioning')
-            if (['submitting', 'in_progress', 'rolling_back', 'building'].includes(deployData.status)) {
+            if (['submitting', 'in_progress', 'rolling_back', 'building', 'deleting'].includes(deployData.status)) {
               startDeployPoll()
             }
           }
@@ -134,6 +138,26 @@ function StepSixPanel({ projectId, onBackToIac, onAdvanceToStepSeven }) {
       if (data.status === 'complete') {
         stopDeployPoll()
         setPhase('success')
+        return
+      }
+
+      // Teardown terminates here. Without this the poll had no branch for
+      // 'deleted', so it kept hitting the backend every 4s forever, and a
+      // teardown started from the success screen left that screen showing the
+      // live endpoints of a stack that no longer exists.
+      if (data.status === 'deleted') {
+        stopDeployPoll()
+        setStackOutputs([])
+        setDeployError(null)
+        setPhase('provisioning')
+        return
+      }
+
+      // Mid-teardown: same screen, but the success view must step aside for it.
+      if (data.status === 'deleting') {
+        setStackOutputs([])
+        setDeployError(null)
+        setPhase('provisioning')
         return
       }
 
@@ -253,6 +277,12 @@ function StepSixPanel({ projectId, onBackToIac, onAdvanceToStepSeven }) {
       const data = await api.teardownDeploy(projectId)
       setDeployStatus(data.status)
       setTeardownOpen(false)
+      // Leave the success screen immediately: its endpoints and "your
+      // infrastructure is live" copy describe a stack that is now being
+      // destroyed. ProvisionLog owns the deleting/deleted states.
+      setStackOutputs([])
+      setDeployError(null)
+      setPhase('provisioning')
       startDeployPoll()
     } catch (err) {
       setInfraActionError(err.data?.error || 'Failed to delete infrastructure.')
