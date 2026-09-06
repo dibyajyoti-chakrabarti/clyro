@@ -68,6 +68,49 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   }
 }
 
+# Clyro provisions customer infrastructure by assuming a clyro-provisioning-*
+# role created from backend/cfn-templates/bootstrap.yaml, and that role grants
+# s3:DeleteBucket plus full object access on arn:aws:s3:::clyro-* because every
+# resource Clyro creates is clyro-prefixed. Point the wizard at an account that
+# is not a customer's, such as this one during end-to-end testing, and that
+# pattern also matches this bucket: an LLM-authored CloudFormation template
+# would be running with delete access to Terraform's own state.
+#
+# The provisioning role has no legitimate reason to touch state, so deny it
+# outright. An explicit deny cannot be overridden by any grant the bootstrap
+# template makes now or later.
+data "aws_iam_policy_document" "state_deny_provisioning" {
+  statement {
+    sid       = "DenyClyroProvisioningRoles"
+    effect    = "Deny"
+    actions   = ["s3:*"]
+    resources = [aws_s3_bucket.state.arn, "${aws_s3_bucket.state.arn}/*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["*"]
+    }
+
+    # Matches the assumed-role session, which is what actually shows up as the
+    # caller, rather than the role ARN, which does not.
+    condition {
+      test     = "ArnLike"
+      variable = "aws:PrincipalArn"
+      values   = ["arn:aws:sts::${local.account_id}:assumed-role/clyro-provisioning-*/*"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "state" {
+  bucket = aws_s3_bucket.state.id
+  policy = data.aws_iam_policy_document.state_deny_provisioning.json
+
+  # block_public_policy rejects a policy that AWS reads as public, and this one
+  # has Principal "*". It is not public (the deny is conditioned on a specific
+  # role pattern), but the ordering still has to be explicit.
+  depends_on = [aws_s3_bucket_public_access_block.state]
+}
+
 resource "aws_s3_bucket_public_access_block" "state" {
   bucket                  = aws_s3_bucket.state.id
   block_public_acls       = true
