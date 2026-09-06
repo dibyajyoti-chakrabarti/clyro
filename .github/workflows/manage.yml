@@ -17,6 +17,7 @@ on:
         required: true
         type: choice
         options:
+          - show_accounts
           - whitelist_email list
           - whitelist_email add
           - whitelist_email remove
