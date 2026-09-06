@@ -1450,6 +1450,16 @@ class BootstrapTemplateGrantsTests(SimpleTestCase):
         # so the clyro-* pattern alone never covered it.
         self.assertIn("stack/ClyroBootstrap-*/*", self.template)
 
+    def test_it_can_empty_the_bucket_and_repo_that_block_a_stack_delete(self):
+        # _empty_undeletable_resources() clears both before delete_stack, because
+        # CloudFormation will not delete a non-empty bucket or a repository that
+        # still holds images. empty_s3_bucket paginates list_object_versions and
+        # deletes by VersionId, so ListBucket and DeleteObject are not enough.
+        self.assertGrants(
+            's3:ListBucketVersions', 's3:DeleteObjectVersion',
+            'ecr:ListImages', 'ecr:BatchDeleteImage',
+        )
+
     def test_it_can_read_the_logs_it_quotes_back_on_failure(self):
         # _wait_migrate_task tails the task's log group so the user sees the real
         # migration error instead of "the task stopped".

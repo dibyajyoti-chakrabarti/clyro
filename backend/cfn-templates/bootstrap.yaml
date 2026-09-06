@@ -160,6 +160,16 @@ Resources:
                   - ecr:CompleteLayerUpload
                   - ecr:PutImage
                   - ecr:BatchGetImage
+                  # Found live: deploy._empty_undeletable_resources() clears the
+                  # repository before the stack delete, because CloudFormation
+                  # refuses to delete a repository that still holds images. It
+                  # paginates ListImages and calls BatchDeleteImage, neither of
+                  # which was granted, and its `except ClientError` made the
+                  # denial silent. The delete then failed on the repository the
+                  # build had just pushed to, which is every project that ever
+                  # deployed.
+                  - ecr:ListImages
+                  - ecr:BatchDeleteImage
                 Resource: '*'
               # CodeBuild — the build step that gets a customer's application
               # code into the ECR repos / S3 bucket the generated template
@@ -434,6 +444,13 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                   - s3:DeleteObject
+                  # Same teardown path as ecr:ListImages above. empty_s3_bucket()
+                  # paginates list_object_versions and deletes by VersionId, so
+                  # ListBucket and DeleteObject are not the actions it needs.
+                  # These are required even on an unversioned bucket, where the
+                  # version id is the literal string "null".
+                  - s3:ListBucketVersions
+                  - s3:DeleteObjectVersion
                   - s3:GetObjectAcl
                   - s3:PutObjectAcl
                   - s3:GetBucketTagging

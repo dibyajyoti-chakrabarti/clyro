@@ -1105,7 +1105,13 @@ def _empty_undeletable_resources(creds: dict, region: str, stack_name: str) -> N
             elif resource["resource_type"] == "AWS::ECR::Repository" and resource["physical_id"]:
                 aws_client.empty_ecr_repository(creds, region, resource["physical_id"])
         except ClientError:
-            pass
+            # Best-effort, but never silent. A bare `pass` here is what hid two
+            # missing grants (ecr:ListImages/BatchDeleteImage and
+            # s3:ListBucketVersions/DeleteObjectVersion) until a live teardown
+            # hit DELETE_FAILED with nothing in the logs to say why.
+            log.warning("could not empty %s %s before deleting stack %s",
+                        resource["resource_type"], resource["physical_id"], stack_name,
+                        exc_info=True)
 
 
 def teardown(project: Project) -> dict[str, Any]:

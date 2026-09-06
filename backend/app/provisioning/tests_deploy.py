@@ -12,6 +12,7 @@ own framing (highest-risk first):
 
 from __future__ import annotations
 
+import os
 import time
 from unittest.mock import patch
 
@@ -176,7 +177,14 @@ class EmptyUndeletableResourcesTests(SimpleTestCase):
     repository — found live: teardown hit DELETE_FAILED on both."""
 
     @mock_aws
+    @patch.dict(os.environ, {"AWS_PROFILE": ""})
     def test_empties_bucket_and_tolerates_a_failing_resource(self):
+        # boto3's default session resolves AWS_PROFILE, and backend/.env.local
+        # sets AWS_PROFILE=clyro for local development, so on a developer's
+        # machine this test died in ProfileNotFound before reaching a single
+        # assertion. Clear it for the duration rather than depend on whose
+        # machine is running the suite.
+        os.environ.pop("AWS_PROFILE", None)
         creds = {"AccessKeyId": "a", "SecretAccessKey": "b", "SessionToken": "c"}
         region = "us-east-1"
         s3 = boto3.client("s3", region_name=region, aws_access_key_id="a", aws_secret_access_key="b")
