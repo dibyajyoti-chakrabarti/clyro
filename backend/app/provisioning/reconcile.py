@@ -90,7 +90,7 @@ def _resolve_stuck_deletion(deployment: Deployment) -> bool:
         deployment.save(update_fields=["status", "updated_at"])
         _append_log_entry(
             deployment,
-            "Could not confirm deletion — your AWS connection is no longer valid. "
+            "Could not confirm deletion: your AWS connection is no longer valid. "
             "If you deleted the bootstrap stack yourself, this infrastructure is "
             "gone; reconnect your AWS account if you need to confirm or manage it further.",
         )

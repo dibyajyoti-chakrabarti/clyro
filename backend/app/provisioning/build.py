@@ -212,7 +212,7 @@ def _poll_build_to_terminal(started: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "status": Deployment.Status.BUILD_FAILED,
-        "error": "Build timed out — this took longer than expected.",
+        "error": "Build timed out. This took longer than expected.",
     }
 
 

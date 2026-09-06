@@ -195,7 +195,7 @@ def _add_literal_env(generated_env: list[dict[str, Any]], env_vars: list[dict[st
         if key in declared and key not in present:
             generated_env.append({
                 "key_name": key,
-                "hint": f"set to {value} — the load balancer is the host gate, not the app",
+                "hint": f"set to {value}, because the load balancer is the host gate, not the app",
                 "value": value,
             })
 
@@ -346,7 +346,7 @@ def build_spec(
             network_edges.append({
                 "kind": "none",
                 "from": frm, "to": to,
-                "reason": "asynchronous / IAM-scoped access — no security-group ingress required",
+                "reason": "asynchronous / IAM-scoped access, so no security-group ingress required",
                 "description": f"{frm} -> {to} (no ingress)",
             })
 

@@ -143,7 +143,7 @@ def check_operation(canvas: Canvas, operation: Operation) -> ConstraintResult:
                 ok=False,
                 reason=(
                     "Networking resources (ALB, VPC, subnets, security groups) "
-                    "aren't placed on the canvas — they're derived from your "
+                    "are not placed on the canvas. They are derived from your "
                     "connection graph when the infrastructure is generated."
                 ),
             )
@@ -171,7 +171,7 @@ def check_operation(canvas: Canvas, operation: Operation) -> ConstraintResult:
         if is_backend_node(node):
             return ConstraintResult(
                 ok=False,
-                reason="Every Crylo project needs a backend — it can't be removed.",
+                reason="Every Clyro project needs a backend, so it cannot be removed.",
             )
         if node.get("locked"):
             label = node.get("label", target)
@@ -179,7 +179,7 @@ def check_operation(canvas: Canvas, operation: Operation) -> ConstraintResult:
                 ok=False,
                 reason=(
                     f"The {label} maps to a service detected in your codebase, so it "
-                    "can't be removed — your application depends on it."
+                    "cannot be removed. Your application depends on it."
                 ),
                 alternative="You can change its service type instead, or remove a node you added yourself.",
             )
@@ -194,8 +194,8 @@ def check_operation(canvas: Canvas, operation: Operation) -> ConstraintResult:
             return ConstraintResult(
                 ok=False,
                 reason=(
-                    "Containerization is standardized — the backend and workers "
-                    "always ship as a container image to ECR, so this can't change."
+                    "Containerization is standardized. The backend and workers "
+                    "always ship as a container image to ECR, so this cannot change."
                 ),
             )
         for locked_field in ("path", "dockerfile_generated"):
@@ -203,7 +203,7 @@ def check_operation(canvas: Canvas, operation: Operation) -> ConstraintResult:
                 return ConstraintResult(
                     ok=False,
                     reason=(
-                        "The build path is derived from your repository scan — editing it here "
+                        "The build path is derived from your repository scan, so editing it here "
                         "without re-scanning would silently break the build. Re-run the scan if "
                         "your code moved."
                     ),

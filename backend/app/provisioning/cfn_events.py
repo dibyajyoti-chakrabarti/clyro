@@ -40,8 +40,8 @@ RESOURCE_LABELS: dict[str, str] = {
 
 # Resources that legitimately take several minutes — worth flagging in the feed.
 _SLOW_RESOURCES = {
-    "AWS::RDS::DBInstance": "this typically takes 3–5 minutes",
-    "AWS::RDS::DBCluster": "this typically takes 3–5 minutes",
+    "AWS::RDS::DBInstance": "this typically takes 3 to 5 minutes",
+    "AWS::RDS::DBCluster": "this typically takes 3 to 5 minutes",
     "AWS::CloudFront::Distribution": "this can take several minutes",
     "AWS::ElastiCache::ReplicationGroup": "this typically takes a few minutes",
     "AWS::CertificateManager::Certificate": "waiting on DNS validation",
@@ -107,7 +107,7 @@ def translate_event(event: dict[str, Any], sequence: int) -> dict[str, Any]:
     is_stack = resource_type == "AWS::CloudFormation::Stack"
 
     if kind == "failed":
-        message = f"❌ {label} failed — {translate_failure_reason(reason)}"
+        message = f"❌ {label} failed: {translate_failure_reason(reason)}"
     elif kind == "rolled_back":
         if (resource_status or "").endswith("_IN_PROGRESS"):
             message = f"↩️ Rolling back {label}…"

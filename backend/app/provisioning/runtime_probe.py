@@ -84,7 +84,7 @@ def _target_health_reasons(credentials: dict, region: str, service: dict) -> lis
                 continue
             description = target.get("description") or ""
             reason = target.get("reason") or ""
-            detail = f" — {description}" if description else ""
+            detail = f": {description}" if description else ""
             qualifier = f" ({reason})" if reason else ""
             lines.append(
                 f"The load balancer marks this service's target {state}{qualifier}{detail}"
@@ -174,7 +174,7 @@ def build_root_cause(credentials: dict, region: str, build_ids: list[str]) -> st
                 for c in phase.get("contexts") or []
                 if c.get("message")
             ]
-            detail = f" — {'; '.join(contexts)}" if contexts else ""
+            detail = f": {'; '.join(contexts)}" if contexts else ""
             lines.append(f"phase {phase.get('phaseType')} {phase.get('phaseStatus')}{detail}")
         report = f"{name}: " + ("; ".join(lines) if lines else build.get("buildStatus", "failed"))
 

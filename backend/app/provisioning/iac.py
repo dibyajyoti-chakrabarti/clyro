@@ -505,7 +505,7 @@ def check_ecs_network_reachability(template: str, spec: dict) -> list[dict[str, 
                 "severity": "blocker",
                 "message": f"ECS Service '{logical_id}' isn't placed in public subnets "
                            "with AssignPublicIp ENABLED, but this deployment has no NAT "
-                           "gateway (free-tier) — it has no network path to ECR/"
+                           "gateway (free-tier), so it has no network path to ECR/"
                            "CloudWatch Logs/Secrets Manager and will never start.",
             })
     return findings
@@ -539,7 +539,7 @@ def check_secret_interpolation(template: str, spec: dict) -> list[dict[str, str]
         findings.append({
             "severity": "blocker",
             "message": f"A dynamic reference extracts a JSON field '{field}' via "
-                       f"`:SecretString:{field}` — but secrets[] entries are stored as "
+                       f"`:SecretString:{field}`, but secrets[] entries are stored as "
                        "plain strings, not JSON. This fails at deploy time with 'Could "
                        "not parse SecretString JSON'. Use "
                        "`{{resolve:secretsmanager:<arn>}}` or "
@@ -566,7 +566,7 @@ def check_required_secrets_present(project: Project) -> list[dict[str, str]]:
     return [
         {
             "severity": "blocker",
-            "message": f"'{var.key_name}' has no value — go back to the secrets step "
+            "message": f"'{var.key_name}' has no value. Go back to the secrets step "
                        "and provide one before provisioning.",
         }
         for var in missing
@@ -1762,14 +1762,14 @@ def security_scan(template: str) -> list[dict[str, str]]:
             findings.append({
                 "severity": "blocker",
                 "message": f"Container image '{image}' looks like a generic placeholder, "
-                           "not the project's own ECR image — the stack would deploy "
+                           "not the project's own ECR image, so the stack would deploy "
                            "successfully while never running the real app.",
             })
         elif _PLACEHOLDER_TOKEN_RE.search(image):
             findings.append({
                 "severity": "blocker",
                 "message": f"Container image '{image}' looks like an unfilled placeholder "
-                           "token, not a real image reference — ECS will reject it "
+                           "token, not a real image reference, so ECS will reject it "
                            "(invalid image reference) or, worse, silently fail to start.",
             })
 
@@ -1777,7 +1777,7 @@ def security_scan(template: str) -> list[dict[str, str]]:
         findings.append({
             "severity": "critical",
             "message": "Found a connection string with an empty username or password "
-                       "(e.g. '://user:@' or '://:@') — a credential failed to interpolate.",
+                       "(e.g. '://user:@' or '://:@'). A credential failed to interpolate.",
         })
 
     if _BROKEN_CRED_REF_RE.search(template):
@@ -1786,7 +1786,7 @@ def security_scan(template: str) -> list[dict[str, str]]:
             "message": "A connection string interpolates a bare `${LogicalId}` directly as "
                        "the credential (this resolves to that resource's ARN, not its actual "
                        "value) instead of a `{{resolve:secretsmanager:<arn-or-ref>:"
-                       "SecretString:<key>}}` dynamic reference — the app would get the "
+                       "SecretString:<key>}}` dynamic reference. The app would get the "
                        "literal secret ARN as its password and fail to connect.",
         })
 
@@ -1795,7 +1795,7 @@ def security_scan(template: str) -> list[dict[str, str]]:
             "severity": "blocker",
             "message": f"An IAM Resource/Principal grant hardcodes a 12-digit AWS account ID "
                        f"('{match.group(1)}') instead of using `${{AWS::AccountId}}`/"
-                       "`${AWS::Region}` — this won't resolve correctly if deployed into a "
+                       "`${AWS::Region}`. This won't resolve correctly if deployed into a "
                        "different account, and silently references whatever account the "
                        "number happens to belong to.",
         })
@@ -1808,7 +1808,7 @@ def security_scan(template: str) -> list[dict[str, str]]:
             findings.append({
                 "severity": "critical",
                 "message": "A resource policy allows Principal '*' with no Condition "
-                           "scoping it (e.g. aws:SourceArn/aws:PrincipalOrgID) — this "
+                           "scoping it (e.g. aws:SourceArn/aws:PrincipalOrgID), which "
                            "opens the resource to the public internet.",
             })
 
@@ -1819,7 +1819,7 @@ def security_scan(template: str) -> list[dict[str, str]]:
                 findings.append({
                     "severity": "warning",
                     "message": f"IAM action '{match.group(0)}' is granted with "
-                               "Resource: \"*\" — should be scoped to the specific ARN "
+                               "Resource: \"*\", which should be scoped to the specific ARN "
                                "of the resource this template creates.",
                 })
 
@@ -1828,7 +1828,7 @@ def security_scan(template: str) -> list[dict[str, str]]:
             findings.append({
                 "severity": "blocker",
                 "message": f"CloudFront {prop_name} '{policy_id}' isn't one of the "
-                           "verified AWS-managed policy IDs — it's either hallucinated "
+                           "verified AWS-managed policy IDs. It's either hallucinated "
                            "or a policy ID that doesn't exist in this account/region, "
                            "and CreateDistribution will fail with 'InvalidRequest: The "
                            "specified origin request policy does not exist.'",
@@ -1944,7 +1944,7 @@ def check_within_capabilities(template: str, spec: dict) -> list[dict[str, str]]
             message = (
                 f"The Clyro provisioning role has no permission to create {rtype} (it needs "
                 f"{', '.join(required)}, which the bootstrap role does not grant). This "
-                "resource type isn't part of what Clyro can provision — remove it or replace "
+                "resource type isn't part of what Clyro can provision. Remove it or replace "
                 "it with a supported resource.")
         findings.append({"severity": "blocker", "message": message})
     return findings
@@ -2117,7 +2117,7 @@ def check_spec_conformance(template: str, spec: dict) -> list[dict[str, str]]:
             expected = f"{prefix}-{owner}"
             if expected not in declared:
                 findings.append({"severity": "blocker", "message": (
-                    f"No AWS::ECR::Repository named '{expected}' — CodeBuild pushes the "
+                    f"No AWS::ECR::Repository named '{expected}'. CodeBuild pushes the "
                     f"{owner} image there and does not create the repository itself. "
                     f"The template declares: {', '.join(sorted(d for d in declared if d)) or 'none'}.")})
 
@@ -2128,7 +2128,7 @@ def check_spec_conformance(template: str, spec: dict) -> list[dict[str, str]]:
         if isinstance(res, dict) and res.get("Type") == _MANAGED_POLICY_TYPE:
             findings.append({"severity": "blocker", "message": (
                 f"{logical_id} is an {_MANAGED_POLICY_TYPE}, which Clyro's bootstrap role "
-                "cannot create — it grants iam:PutRolePolicy and iam:AttachRolePolicy but "
+                "cannot create: it grants iam:PutRolePolicy and iam:AttachRolePolicy but "
                 "not iam:CreatePolicy. Attach the policy document inline to the role's "
                 "Policies list instead.")})
 
@@ -2412,7 +2412,7 @@ def refine(project: Project, instruction: str, history: list | None = None,
     if "Resources:" not in new_template:
         log.warning("refine: agent response didn't look like a CFN template; keeping current")
         new_template = current
-        message = "Couldn't apply that change — the response wasn't a valid template edit."
+        message = "Couldn't apply that change. The response wasn't a valid template edit."
 
     new_template = _apply_enforcers(new_template, spec)
     validation = lint_template(new_template, region)

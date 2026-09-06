@@ -32,7 +32,7 @@ def _run(job_id: str, fn, *args, **kwargs):
         # time to mark the job FAILED cleanly before the hard kill lands.
         log.error("AgentJob %s (%s) hit its soft time limit", job_id, job.kind)
         job.status = AgentJob.Status.FAILED
-        job.error = "Timed out — this took longer than expected."
+        job.error = "Timed out. This took longer than expected."
         job.save(update_fields=["status", "error", "updated_at"])
     except Exception as exc:
         log.exception("AgentJob %s (%s) failed", job_id, job.kind)
@@ -216,7 +216,7 @@ def run_delete_project_task(job_id: str, project_id: str):
         project.delete()
     except SoftTimeLimitExceeded:
         log.error("AgentJob %s (delete) hit its soft time limit", job_id)
-        _fail("Timed out — infrastructure teardown took longer than expected; delete again to retry.")
+        _fail("Timed out. Infrastructure teardown took longer than expected, so delete again to retry.")
     except Exception as exc:
         log.exception("AgentJob %s (delete) failed", job_id)
         _fail(str(exc))

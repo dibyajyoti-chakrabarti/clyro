@@ -70,7 +70,7 @@ def run_compliance_checks(
             'title': 'Could not read repository file tree',
             'passed': False,
             'severity': 'warning',
-            'detail': 'GitHub API call to list repo files failed — compliance checks were skipped.',
+            'detail': 'GitHub API call to list repo files failed, so compliance checks were skipped.',
             'fix_hint': None,
         }]
 
@@ -127,7 +127,7 @@ def _check_frontend_lockfile(fe_path: str, tree: set[str]) -> dict[str, Any]:
         'severity': 'blocker',
         'detail': (
             f'Found {found}.' if passed else
-            'No package-lock.json/yarn.lock/pnpm-lock.yaml found — the build runs `npm ci`, '
+            'No package-lock.json/yarn.lock/pnpm-lock.yaml found. The build runs `npm ci`, '
             'which hard-fails without a committed lockfile.'
         ),
         'fix_hint': None if passed else (
@@ -161,7 +161,7 @@ def _check_frontend_build_script(token, repo_full_name, branch, fe_path, tree, g
         'severity': 'blocker',
         'detail': (
             '"scripts.build" is defined.' if has_build else
-            'No "build" script in package.json — the build runs `npm run build` unconditionally, '
+            'No "build" script in package.json. The build runs `npm run build` unconditionally, '
             'and output must land in dist/ or build/.'
         ),
         'fix_hint': None if has_build else (
@@ -180,7 +180,7 @@ def _check_database_url_env(env_keys: set[str]) -> dict[str, Any]:
         'severity': 'blocker',
         'detail': (
             'DATABASE_URL detected.' if passed else
-            'No DATABASE_URL usage detected — Clyro injects a single Postgres connection '
+            'No DATABASE_URL usage detected. Clyro injects a single Postgres connection '
             'string (postgres://user:pass@host:port/db) into this env var.'
         ),
         'fix_hint': None if passed else (
@@ -199,10 +199,10 @@ def _check_allowed_hosts_env(env_keys: set[str]) -> dict[str, Any]:
         'passed': passed,
         'severity': 'warning',
         'detail': (
-            'ALLOWED_HOSTS is read from env — Clyro sets this permissively at deploy time '
+            'ALLOWED_HOSTS is read from env. Clyro sets this permissively at deploy time '
             'since its ALB health check sends the target\'s private IP as the Host header, '
             'which no static hostname can match.' if passed else
-            'ALLOWED_HOSTS does not appear to be read from environment — if it\'s hardcoded, '
+            'ALLOWED_HOSTS does not appear to be read from environment. If it is hardcoded, '
             'the ALB health check will get a 400 and the service will never stabilize.'
         ),
         'fix_hint': None if passed else (
@@ -261,7 +261,7 @@ def _check_dockerfile_base_image(token, repo_full_name, branch, be_path, tree, g
         'severity': 'warning',
         'detail': (
             'Base image(s) already pull from a non-Docker-Hub registry.' if passed else
-            f'Found {", ".join(bare_images)} pulled straight from Docker Hub — Docker Hub '
+            f'Found {", ".join(bare_images)} pulled straight from Docker Hub. Docker Hub '
             'rate-limits anonymous pulls (~100/6hr, shared across every build using it), a '
             'real occasional CodeBuild failure mode (429 Too Many Requests).'
         ),
@@ -303,7 +303,7 @@ def _check_django_migrations(be_path: str, tree: set[str]) -> dict[str, Any]:
         'severity': 'blocker',
         'detail': (
             'Every app with models.py has at least one migration file.' if passed else
-            f'{", ".join(missing) or "An app"} has models.py but no migrations/ files — Clyro '
+            f'{", ".join(missing) or "An app"} has models.py but no migrations/ files. Clyro '
             'runs `manage.py migrate`, not `makemigrations`, so a missing migration is a silent '
             'no-op and every query 500s with "relation ... does not exist".'
         ),
@@ -344,7 +344,7 @@ def _check_health_endpoint(token, repo_full_name, branch, be_path, tree, github_
         'severity': 'warning',
         'detail': (
             'A health-check-looking route was found.' if found else
-            'No route containing "health" was found in urls.py — Clyro\'s ALB target group '
+            'No route containing "health" was found in urls.py. Clyro\'s ALB target group '
             'health check is hardcoded to GET /health, and it needs a 200 with no auth required.'
         ),
         'fix_hint': None if found else (

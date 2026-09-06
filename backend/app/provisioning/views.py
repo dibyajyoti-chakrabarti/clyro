@@ -267,7 +267,7 @@ def aws_connection_verify(request, pk):
                 project.pk, role_arn, external_id, exc.response['Error']['Message'],
             )
             return Response(
-                {'error': 'Could not assume role — check the ARN and that the stack created successfully, then try again.'},
+                {'error': 'Could not assume role. Check the ARN and that the stack created successfully, then try again.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(

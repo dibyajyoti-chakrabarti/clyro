@@ -83,7 +83,7 @@ def _assume(deployment: Deployment) -> tuple[dict, str]:
     except ClientError as exc:
         code = exc.response["Error"]["Code"]
         if code in ("AccessDenied", "AccessDeniedException"):
-            raise DeployError("Your AWS connection is no longer valid — reconnect your AWS account.")
+            raise DeployError("Your AWS connection is no longer valid. Reconnect your AWS account.")
         raise DeployError(f"Could not access your AWS account: {exc.response['Error']['Message']}")
     return creds, (conn.aws_region or "us-east-1")
 
@@ -108,7 +108,7 @@ def start(project: Project) -> dict[str, Any]:
     template defect); only require re-validating from scratch (GENERATING_IAC/PENDING)."""
     deployment = _ready_deployment(project)
     if deployment.status not in _RETRYABLE_STATUSES:
-        raise DeployError("The template hasn't been validated yet — validate it, then provision.")
+        raise DeployError("The template hasn't been validated yet. Validate it, then provision.")
 
     # Re-check the template against the CURRENT blocker set — never trust a stale
     # IAC_READY. A template validated before a blocker check existed (e.g. the
@@ -189,7 +189,7 @@ def start(project: Project) -> dict[str, Any]:
         deployment.status = Deployment.Status.IAC_READY  # not submitted; allow another try
         deployment.save(update_fields=["status", "updated_at"])
         if "already exists" in msg or "_IN_PROGRESS" in msg:
-            raise DeployError("Removing the previous failed stack — click Provision again in a few seconds.")
+            raise DeployError("Removing the previous failed stack. Click Provision again in a few seconds.")
         raise DeployError(f"AWS error submitting the stack: {msg}")
 
     deployment.cloudformation_stack_id = stack_id
@@ -465,7 +465,7 @@ def _service_is_serving(creds: dict, region: str, cluster: str, service: str,
     for task in aws_client.describe_stopped_tasks(creds, region, cluster, service):
         stopped_at = task.get("stoppedAt")
         if stopped_at and stopped_at >= since:
-            return False, "a task was stopped after scale-up — the service is replacing tasks"
+            return False, "a task was stopped after scale-up, so the service is replacing tasks"
 
     service_detail = aws_client.describe_ecs_service(creds, region, cluster, service)
     for load_balancer in service_detail.get("loadBalancers") or []:
@@ -681,7 +681,7 @@ def logs(project: Project, service: str | None = None, level: str = "all",
         truncated = False
         if not bucket:
             warnings.append(
-                "This stack has no log archive bucket — ranges beyond the last "
+                "This stack has no log archive bucket, so ranges beyond the last "
                 "hour become available after the next re-provision.")
         else:
             try:
@@ -803,7 +803,7 @@ def export_logs(project: Project, service: str | None = None, level: str = "all"
                 query=query, limit=_EXPORT_EVENT_LIMIT, max_objects=_EXPORT_MAX_OBJECTS)
     lines = []
     if data.get("stack_status") == "not_found":
-        lines.append("# stack not found — no logs available")
+        lines.append("# stack not found, no logs available")
     if data.get("truncated"):
         lines.append("# truncated: only the most recent events in this range are included")
     for event in data.get("events") or []:
@@ -1255,9 +1255,9 @@ def _wait_stack_deleted(deployment: Deployment) -> None:
         if stack_status is None or stack_status == "DELETE_COMPLETE":
             return
         if stack_status.endswith("DELETE_FAILED"):
-            raise DeployError("Teardown failed — the stack couldn't be deleted, so a rebuild can't proceed.")
+            raise DeployError("Teardown failed. The stack couldn't be deleted, so a rebuild can't proceed.")
         time.sleep(_DELETE_POLL_SECONDS)
-    raise DeployError("Teardown is taking too long — the stack is still deleting; try the rebuild again shortly.")
+    raise DeployError("Teardown is taking too long. The stack is still deleting, so try the rebuild again shortly.")
 
 
 def recreate(project: Project) -> dict[str, Any]:
@@ -1269,8 +1269,8 @@ def recreate(project: Project) -> dict[str, Any]:
     from . import iac
     if _has_been_live(project):
         raise DeployError(
-            "Rebuild-from-scratch isn't available once a project has gone live — "
-            "it would destroy the database and every other stateful resource."
+            "Rebuild-from-scratch isn't available once a project has gone live. It "
+            "would destroy the database and every other stateful resource."
         )
     deployment = _active_deployment(project) or _ready_deployment(project)
     if deployment is None or not deployment.cloudformation_template:
@@ -1381,7 +1381,7 @@ def _poll_to_terminal(project: Project) -> dict[str, Any]:
 def _correction_instruction(root_cause: str) -> str:
     return (
         "The last deployment attempt failed with this real AWS error (not a static-"
-        "analysis finding — this happened during the actual CreateStack/UpdateStack "
+        "analysis finding: this happened during the actual CreateStack/UpdateStack "
         f"call). Fix ONLY what's needed to resolve it, changing nothing else:\n{root_cause}"
     )
 
@@ -1513,7 +1513,7 @@ def _apply_stack_update(creds: dict, region: str, stack_name: str, template: str
         detail = ", ".join(f"{c['logical_id']} ({c['resource_type']})" for c in unsafe)
         return {"applied": False, "empty": False, "reason": (
             f"this change would replace or delete stateful resource(s) {detail}, which would "
-            "destroy their data. Refusing the in-place update — tear down and re-provision if "
+            "destroy their data. Refusing the in-place update. Tear down and re-provision if "
             "this change is intended.")}
 
     aws_client.execute_change_set(creds, region, change_set_id)
@@ -1623,7 +1623,7 @@ def _heal_live_stack(project: Project, result: dict[str, Any]) -> dict[str, Any]
         return {**result, "error": f"{root_cause}\n\nGenerated a fix but couldn't apply it: {exc}"}
     if not update.get("applied"):
         if update.get("reason"):
-            return {**result, "error": f"{root_cause}\n\nGenerated a fix but did not apply it — {update['reason']}"}
+            return {**result, "error": f"{root_cause}\n\nGenerated a fix but did not apply it: {update['reason']}"}
         return result  # empty change set — the fix changed nothing; keep the original error
 
     healed = _poll_to_terminal(project)

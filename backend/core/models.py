@@ -447,7 +447,7 @@ class EnvVarKey(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.key_name} ({self.classification}) — {self.project.name}"
+        return f"{self.key_name} ({self.classification}) in {self.project.name}"
 
 
 class Deployment(models.Model):
@@ -689,4 +689,4 @@ class Subscription(models.Model):
         indexes = [models.Index(fields=['user'])]
 
     def __str__(self):
-        return f"{self.user.email} — {self.tier} ({self.status})"
+        return f"{self.user.email}: {self.tier} ({self.status})"

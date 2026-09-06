@@ -968,7 +968,7 @@ def generate_template(spec: dict[str, Any]) -> str:
             "Type": "String",
             "Default": "",
             "Description": (
-                "Route53 hosted zone id for the ACM DNS validation record — "
+                "Route53 hosted zone id for the ACM DNS validation record, "
                 "resolved live by Clyro at provisioning time. Left blank if no "
                 "matching hosted zone was found; the certificate then needs "
                 "manual DNS validation."

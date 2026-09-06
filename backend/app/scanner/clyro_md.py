@@ -181,7 +181,7 @@ def validate(parsed: dict[str, Any]) -> list[str]:
     # further to check — the block message is what Step 1 shows.
     if status != "complete":
         if not parsed.get("block_message"):
-            errors.append(f"status is {status!r} but block_message is empty — nothing to show the user.")
+            errors.append(f"status is {status!r} but block_message is empty, so there is nothing to show the user.")
         return errors
 
     errors.extend(_validate_services(parsed))
@@ -199,14 +199,14 @@ def _validate_services(parsed: dict[str, Any]) -> list[str]:
 
     backend = services.get("backend")
     if not isinstance(backend, dict):
-        return ["services.backend is missing — Clyro requires a Django backend."]
+        return ["services.backend is missing. Clyro requires a Django backend."]
     if not backend.get("detected"):
-        errors.append("services.backend.detected is false — Clyro requires a Django backend.")
+        errors.append("services.backend.detected is false. Clyro requires a Django backend.")
     framework = (backend.get("framework") or "").lower()
     if framework and framework != "django":
         errors.append(f"services.backend.framework must be 'django', got {framework!r}.")
     if not backend.get("path"):
-        errors.append("services.backend.path is empty — use '.' for a root-level backend.")
+        errors.append("services.backend.path is empty. Use '.' for a root-level backend.")
 
     frontend = services.get("frontend")
     if isinstance(frontend, dict) and frontend.get("detected"):
@@ -234,7 +234,7 @@ def _validate_infrastructure(parsed: dict[str, Any]) -> list[str]:
 
     database = infra.get("database")
     if not isinstance(database, dict) or not database.get("detected"):
-        errors.append("infrastructure.database.detected is false — Clyro requires PostgreSQL.")
+        errors.append("infrastructure.database.detected is false. Clyro requires PostgreSQL.")
     elif (database.get("engine") or "").lower() != "postgres":
         errors.append(
             f"infrastructure.database.engine must be 'postgres', got {database.get('engine')!r}."
@@ -294,7 +294,7 @@ def _validate_env_vars(parsed: dict[str, Any]) -> list[str]:
         # a secret is sitting in a committed, PR-reviewed file.
         if var.get("value") not in (None, ""):
             errors.append(
-                f"{label} contains a 'value' — CLYRO.md must never hold secret values. "
+                f"{label} contains a 'value'. CLYRO.md must never hold secret values. "
                 "Remove it (and rotate the secret if it was pushed)."
             )
     return errors

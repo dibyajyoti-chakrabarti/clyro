@@ -141,7 +141,7 @@ def apply_operation_and_persist(
         project.status = Project.Status.CANVAS_DRAFT
         project.save(update_fields=["status", "updated_at"])
 
-    return {"outcome": "applied", "message": "Done — I've updated the canvas.", "version": serialize_version(new_version)}
+    return {"outcome": "applied", "message": "Done. I've updated the canvas.", "version": serialize_version(new_version)}
 
 
 def revert_to(project: Project, version_number: int) -> dict[str, Any] | None:

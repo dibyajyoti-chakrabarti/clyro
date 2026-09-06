@@ -95,7 +95,7 @@ def _fetch_ssm_parameters(prefix: str) -> dict[str, str]:
         raise ImproperlyConfigured(
             "Missing SSM parameters: "
             + ", ".join(sorted(missing_required))
-            + " — populate them with infrastructure/scripts/put-secrets.sh"
+            + ". Populate them with infrastructure/scripts/put-secrets.sh"
         )
 
     by_name = {p["Name"]: p["Value"] for p in response["Parameters"]}
