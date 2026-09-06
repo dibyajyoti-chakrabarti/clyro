@@ -34,9 +34,11 @@ data "aws_iam_policy_document" "cdk_exec" {
   }
 
   # The five execution roles the L3 constructs create. None of them sets
-  # RoleName, so CloudFormation names them from the stack: AgentCore-CryloIac-*
-  # and AgentCore-CryloCanvas-*. Scoping to AgentCore-* keeps this role away
-  # from every clyro-* role, including the one CI runs as.
+  # RoleName, so CloudFormation names them from the stack, truncating as it
+  # goes: the observed name is AgentCore-CryloCanvas-pro-ApplicationAgentReaso
+  # ning-386NEJ0C68Eo. Only the AgentCore- prefix survives truncation intact,
+  # which is why the scope stops there. It still keeps this role away from
+  # every clyro-* role, including the one CI runs as.
   statement {
     sid    = "ScopedIAMForAgentCoreRoles"
     effect = "Allow"
@@ -61,8 +63,21 @@ data "aws_iam_policy_document" "cdk_exec" {
   }
 
   # Handing a role to a service is how a scoped policy becomes an unscoped one,
-  # so the only roles this can pass are the ones it just created, and the only
-  # service it can pass them to is the one that runs them.
+  # so the only roles this can pass are the ones it just created.
+  #
+  # IfExists, not StringEquals. bedrock-agentcore:CreateAgentRuntime does not
+  # populate iam:PassedToService, so a plain StringEquals never matched and the
+  # runtime was the one resource in the stack that failed, with a bare
+  # "Access denied for operation 'AWS::BedrockAgentCore::Runtime'" that names
+  # neither PassRole nor the condition. CreateMemory and CreateGateway pass
+  # their execution roles happily, which is what makes it look like a
+  # bedrock-agentcore permission problem rather than an IAM one.
+  #
+  # Verified with simulate-custom-policy: with no context key this now allows,
+  # with iam:PassedToService=ec2.amazonaws.com it still denies, and on any role
+  # outside AgentCore-* it still denies. The resource scope is doing the real
+  # work here, and it holds: these roles trust bedrock-agentcore.amazonaws.com
+  # and nothing else in this policy can create a service that would take one.
   statement {
     sid       = "PassAgentCoreRolesOnly"
     effect    = "Allow"
@@ -70,7 +85,7 @@ data "aws_iam_policy_document" "cdk_exec" {
     resources = ["arn:aws:iam::${local.account_id}:role/AgentCore-*"]
 
     condition {
-      test     = "StringEquals"
+      test     = "StringEqualsIfExists"
       variable = "iam:PassedToService"
       values   = ["bedrock-agentcore.amazonaws.com"]
     }
