@@ -276,9 +276,17 @@ def save_intent(request, pk):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     from django.utils import timezone
+    fields = dict(serializer.validated_data)
+    # Nothing in the wizard asks for criticality, so derive it rather than let
+    # every project inherit the `medium` default and leave Multi-AZ unreachable.
+    # An explicit value in the payload still wins.
+    if not fields.get('criticality'):
+        fields['criticality'] = IntentRecord.derive_criticality(
+            fields.get('scale'), fields.get('environment'),
+        )
     intent, _ = IntentRecord.objects.update_or_create(
         project=project,
-        defaults={**serializer.validated_data, 'completed_at': timezone.now()},
+        defaults={**fields, 'completed_at': timezone.now()},
     )
 
     # The Step 3 canvas (CanvasVersion v1) is built deterministically from the

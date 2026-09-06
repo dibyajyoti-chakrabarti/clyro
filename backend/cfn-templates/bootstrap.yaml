@@ -47,6 +47,17 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              # Account plan lookup. Found live: aws_client.get_account_plan_type()
+              # asks AWS whether this account is FREE or PAID so the canvas can be
+              # priced against the free tier the user actually has, rather than the
+              # one they told us about. The action was never granted, so the call
+              # was denied every time, verified_account_type stayed null, and every
+              # estimate silently fell back to the user's own claim. The API lives
+              # in us-east-1 only and has no resource-level scoping.
+              - Effect: Allow
+                Action:
+                  - freetier:GetAccountPlanState
+                Resource: '*'
               # Networking — VPC, subnets, security groups, gateways, route tables
               - Effect: Allow
                 Action:

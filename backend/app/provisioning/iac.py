@@ -2265,6 +2265,13 @@ def _invoke_iac(payload: dict, project: Project, on_event=None) -> dict[str, Any
     return agentcore.invoke_runtime(arn, payload, str(project.id))
 
 
+_STACK_EXISTS_STATUSES = (
+    Deployment.Status.SUBMITTING, Deployment.Status.IN_PROGRESS, Deployment.Status.BUILDING,
+    Deployment.Status.COMPLETE, Deployment.Status.BUILD_FAILED, Deployment.Status.FAILED,
+    Deployment.Status.PAUSED,
+)
+
+
 def generate(project: Project, model: str | None = None, on_event=None) -> dict[str, Any]:
     """Author a fresh template from the build spec, persist it, and return it with
     backend cfn-lint diagnostics.
@@ -2334,11 +2341,21 @@ def generate(project: Project, model: str | None = None, on_event=None) -> dict[
         )
 
     deployment.cloudformation_template = template
-    deployment.status = Deployment.Status.GENERATING_IAC
+    # Reaching this line means the guard above already found zero lint errors and
+    # no blocker findings, from the same lint_template() call Validate would make.
+    # Leaving the status at GENERATING_IAC anyway left the Continue button disabled
+    # behind "Validate the template to continue", so every user had to click a
+    # button that re-ran the check that had just passed. Promote here, on the same
+    # terms validate() uses, including its refusal to touch a deployment whose
+    # stack already exists.
+    stack_exists = (deployment.cloudformation_stack_name
+                    and deployment.status in _STACK_EXISTS_STATUSES)
+    if not stack_exists:
+        deployment.status = Deployment.Status.IAC_READY
     deployment.save(update_fields=["cloudformation_template", "status", "updated_at"])
 
-    if project.status != Project.Status.IAC_GENERATED:
-        project.status = Project.Status.IAC_GENERATED
+    if not stack_exists and project.status != Project.Status.IAC_VALIDATED:
+        project.status = Project.Status.IAC_VALIDATED
         project.save(update_fields=["status", "updated_at"])
 
     return {"template": template, "message": message, "validation": validation,
@@ -2459,13 +2476,6 @@ def refine(project: Project, instruction: str, history: list | None = None,
 
 # Statuses that mean "a CloudFormation stack exists in the user's account right now."
 # DELETED/DELETING are excluded: nothing is left to protect.
-_STACK_EXISTS_STATUSES = (
-    Deployment.Status.SUBMITTING, Deployment.Status.IN_PROGRESS, Deployment.Status.BUILDING,
-    Deployment.Status.COMPLETE, Deployment.Status.BUILD_FAILED, Deployment.Status.FAILED,
-    Deployment.Status.PAUSED,
-)
-
-
 def validate(project: Project, template: str) -> dict[str, Any]:
     """Persist the (possibly manually edited) template and lint it. On a clean
     template the deployment moves to IAC_READY (validated, ready to provision)."""

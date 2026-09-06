@@ -1464,3 +1464,57 @@ class BootstrapTemplateGrantsTests(SimpleTestCase):
         # _wait_migrate_task tails the task's log group so the user sees the real
         # migration error instead of "the task stopped".
         self.assertGrants('logs:GetLogEvents', 'logs:FilterLogEvents')
+
+
+class CriticalityDerivationTests(SimpleTestCase):
+    """Nothing in the wizard asks for criticality. It used to come from an uptime
+    question that was cut, after which every project inherited the `medium`
+    default and build_spec.plan()'s Multi-AZ gate (criticality == high and
+    environment == production) could never open."""
+
+    def test_a_public_production_app_is_high_criticality(self):
+        for scale in (IntentRecord.Scale.MEDIUM, IntentRecord.Scale.LARGE):
+            self.assertEqual(
+                IntentRecord.derive_criticality(scale, IntentRecord.Environment.PRODUCTION),
+                IntentRecord.Criticality.HIGH,
+            )
+
+    def test_a_small_production_app_does_not_pay_for_multi_az(self):
+        for scale in (IntentRecord.Scale.SOLO, IntentRecord.Scale.SMALL):
+            self.assertEqual(
+                IntentRecord.derive_criticality(scale, IntentRecord.Environment.PRODUCTION),
+                IntentRecord.Criticality.MEDIUM,
+            )
+
+    def test_nothing_outside_production_is_high_however_big_it_is(self):
+        self.assertEqual(
+            IntentRecord.derive_criticality(
+                IntentRecord.Scale.LARGE, IntentRecord.Environment.STAGING),
+            IntentRecord.Criticality.MEDIUM,
+        )
+        self.assertEqual(
+            IntentRecord.derive_criticality(
+                IntentRecord.Scale.LARGE, IntentRecord.Environment.DEVELOPMENT),
+            IntentRecord.Criticality.LOW,
+        )
+
+    def test_the_multi_az_gate_can_actually_open(self):
+        # The point of the whole change. Both gates read `criticality == "high"`,
+        # so with the field permanently `medium` the standby database was
+        # unreachable in cost_engine and in build_spec alike.
+        criticality = IntentRecord.derive_criticality(
+            IntentRecord.Scale.MEDIUM, IntentRecord.Environment.PRODUCTION)
+        intent = {
+            "scale": IntentRecord.Scale.MEDIUM,
+            "environment": IntentRecord.Environment.PRODUCTION,
+            "criticality": criticality,
+            "aws_account_type": IntentRecord.AwsAccountType.PAID,
+        }
+        self.assertTrue(cost_engine._multi_az(intent))
+
+        # And still closed for the small production app, which is the common case
+        # and must not silently start paying for a standby.
+        small = dict(intent, scale=IntentRecord.Scale.SMALL)
+        small["criticality"] = IntentRecord.derive_criticality(
+            small["scale"], small["environment"])
+        self.assertFalse(cost_engine._multi_az(small))

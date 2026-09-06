@@ -295,6 +295,27 @@ class IntentRecord(models.Model):
         db_table = 'intent_records'
         indexes = [models.Index(fields=['project'])]
 
+    @classmethod
+    def derive_criticality(cls, scale: str | None, environment: str | None) -> str:
+        """How much this deployment is expected to hurt when it goes down.
+
+        There is no criticality question in the wizard. There used to be one about
+        uptime, it was cut to keep Step 3 to three questions, and nothing took over
+        writing the field. Everything downstream then read the `medium` default, so
+        `build_spec.plan()`'s Multi-AZ gate (criticality == high and environment ==
+        production) could never open and the standby-database path was dead code.
+
+        Derive it from the two answers that are still collected instead of asking a
+        fourth question. A public product in production is what Multi-AZ is for;
+        anything not in production is not worth paying double for.
+        """
+        if environment != cls.Environment.PRODUCTION:
+            return cls.Criticality.LOW if environment == cls.Environment.DEVELOPMENT \
+                else cls.Criticality.MEDIUM
+        if scale in (cls.Scale.MEDIUM, cls.Scale.LARGE):
+            return cls.Criticality.HIGH
+        return cls.Criticality.MEDIUM
+
     def __str__(self):
         return f"Intent for {self.project.name} ({self.environment})"
 
