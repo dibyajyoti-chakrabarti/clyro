@@ -1,6 +1,25 @@
 # Chapter 20 — Step 1 Revamp: The Offline Scan Contract
 
-**Status:** implementation plan. Written 2026-07-30, on branch `dev`.
+**Status: delivered.** Written 2026-07-30 as an implementation plan, and shipped in
+full. Verified against the repo 2026-09-06: `backend/app/scanner/` now holds
+`clyro_md.py`, `classify.py`, `compliance.py` and `runner.py`;
+`deterministic_detector.py` and `backend/agents/CryloCanvas/app/RepoRecon/` are gone;
+`REPORECON_RUNTIME_ARN` is gone from `config/settings.py`, which leaves only
+`REASONING_RUNTIME_ARN` and `IAC_RUNTIME_ARN`; and `backend/skills/clyro-scan/`
+exists and is served by `GET /api/skill/clyro-scan`.
+
+Read this chapter as the rationale for the change, not as work outstanding. The
+future tense throughout, and the "(new)" and "(rewritten)" markers in sections 4
+and 5, all describe code that now exists. The present-tense descriptions of the
+*old* Step 1 in section 2, the RepoRecon fallback and its 17 to 41 second cold
+start, the warmup task that existed to hide it, and the settings-only env-var
+detection, are descriptions of what was replaced. **Chapter 8 is the authority on
+how Step 1 works now.**
+
+One correction to the text below: the security boundary in section 4 says the
+contract flows toward "the Step 3/4 LLM prompts". Under the current seven-step
+wizard those consumers are the canvas at Step 4 and `IacArchitect` at Step 5. The
+boundary itself is unchanged and still enforced.
 
 Step 1 stops scanning repos. Instead, the user runs an offline coding agent
 (Claude Code, Cursor, Aider) against their own checkout with the `/clyro-scan`

@@ -1,4 +1,34 @@
-# 🧠 CLYRO.md — Offline Agent Repo Scan Brainstorm
+# CLYRO.md: Offline Agent Repo Scan Brainstorm
+
+> **Status note added 2026-09-06. This is a brainstorm, kept for the options it
+> weighed, not a description of anything.** The idea won and shipped: see
+> [Chapter 20](ch_20_offline_scan_contract_plan.md) for the plan and
+> [Chapter 8](ch_8_wizard_step_1_connect.md) for how Step 1 works now.
+>
+> Read the "Current Architecture" section as a description of the system this
+> replaced. `deterministic_detector.py` and the RepoRecon AgentCore agent are both
+> deleted, and there are only two AgentCore runtimes left, neither of them
+> RepoRecon.
+>
+> Where the document proposes and what was actually chosen:
+>
+> - **The `derivable` classification was not adopted.** The shipped enum in
+>   `app/scanner/clyro_md.py` is `generated`, `optional`, `user_secret`, with a
+>   `hint` of `agent_generatable` or `third_party` on the last of those.
+> - **The CLI package (option D) was not built.** The skill-only path (option A)
+>   shipped, installed to `~/.claude/skills/clyro-scan/`, not to the
+>   `~/.gemini/...` path this document guesses at.
+> - **There is no fallback to a live scan when `CLYRO.md` is absent.** Chapter 20
+>   rejected that explicitly: the live scan path is deleted, not kept in reserve. A
+>   missing contract is a retryable block with setup instructions.
+> - **There is no canvas seed.** The contract carries none, and
+>   `ScanResult.draft_canvas_yaml` is written by nothing and read by nothing.
+> - **The `clyro/validate-action@v1` GitHub Action in section 9 was not built.**
+>
+> Its wizard step numbers are the retired five-step scheme. Secrets are collected in
+> **Step 1**, intent questions are **Step 3**, domain is asked in **Step 3**, the
+> canvas is **Step 4**, IaC generation is **Step 5**, and the build runs during
+> **Step 6**.
 
 ## The Core Idea
 
@@ -12,10 +42,10 @@ Based on the graph, here's what Step 1 currently produces across multiple subsys
 
 | Component | Source | What It Produces |
 |---|---|---|
-| [deterministic_detector.py](file:///home/durvesh/webDev/clyro/backend/app/scanner/deterministic_detector.py) | Manifest scan (free, fast) | `detected_resources` dict, `env_vars` list, `confidence`, `status`, `block_reason` |
-| [RepoRecon/main.py](file:///home/durvesh/webDev/clyro/backend/agents/CryloCanvas/app/RepoRecon/main.py) | AgentCore LLM agent (slow, ~41s cold start) | Same shape as above, used as fallback when deterministic confidence is "low" |
-| [compliance.py](file:///home/durvesh/webDev/clyro/backend/app/scanner/compliance.py) | Static rule-based checks | `compliance_findings[]` — each `{id, title, passed, severity, detail, fix_hint}` |
-| [runner.py](file:///home/durvesh/webDev/clyro/backend/app/scanner/runner.py) | Orchestrator | Saves to [ScanResult](file:///home/durvesh/webDev/clyro/backend/core/models.py#L193-L217) model + creates [EnvVarKey](file:///home/durvesh/webDev/clyro/backend/core/models.py#L374-L411) records |
+| [deterministic_detector.py](../backend/app/scanner/deterministic_detector.py) | Manifest scan (free, fast) | `detected_resources` dict, `env_vars` list, `confidence`, `status`, `block_reason` |
+| [RepoRecon/main.py](../backend/agents/CryloCanvas/app/RepoRecon/main.py) | AgentCore LLM agent (slow, ~41s cold start) | Same shape as above, used as fallback when deterministic confidence is "low" |
+| [compliance.py](../backend/app/scanner/compliance.py) | Static rule-based checks | `compliance_findings[]` — each `{id, title, passed, severity, detail, fix_hint}` |
+| [runner.py](../backend/app/scanner/runner.py) | Orchestrator | Saves to [ScanResult](../backend/core/models.py) model + creates [EnvVarKey](../backend/core/models.py) records |
 
 ### Current Data Shapes
 
@@ -184,7 +214,7 @@ Create a **Clyro Skill** (like graphify's `SKILL.md`) or a downloadable prompt t
 
 ### 2. The Deterministic-First, Agent-Second Hybrid
 
-The offline agent itself mirrors the [deterministic_detector.py](file:///home/durvesh/webDev/clyro/backend/app/scanner/deterministic_detector.py) pattern:
+The offline agent itself mirrors the [deterministic_detector.py](../backend/app/scanner/deterministic_detector.py) pattern:
 
 1. **Phase 1 (Deterministic)**: A script/CLI runs locally — reads `requirements.txt`, `package.json`, settings files, Dockerfiles. Produces a partial `CLYRO.md` with everything it can confidently detect.
 2. **Phase 2 (Agent)**: The AI agent fills in gaps — `wsgi_path`, `project_name`, ambiguous env var classifications, checks the agent can't do mechanically (e.g., "is this env var actually needed in production?").
@@ -193,7 +223,7 @@ This is what the current system already does (deterministic_detector → RepoRec
 
 ### 3. Secret Classification — The Two-Bucket System
 
-Your instinct to split secrets into two types is exactly right. The current [EnvVarKey.Classification](file:///home/durvesh/webDev/clyro/backend/core/models.py#L375-L378) already does this:
+Your instinct to split secrets into two types is exactly right. The current [EnvVarKey.Classification](../backend/core/models.py) already does this:
 
 | Classification | Current Name | Who Provides | Examples |
 |---|---|---|---|
@@ -268,7 +298,7 @@ Wrote CLYRO.md (5 resources, 8 env vars, 6/6 compliance checks passing)
 Wrote .env.clyro (1 generated secret — do NOT commit this file)
 ```
 
-This is possible because [compliance.py](file:///home/durvesh/webDev/clyro/backend/app/scanner/compliance.py) already has `fix_hint` on every finding — the agent can read those hints and *apply them*.
+This is possible because [compliance.py](../backend/app/scanner/compliance.py) already has `fix_hint` on every finding — the agent can read those hints and *apply them*.
 
 ### 7. Additional Sections CLYRO.md Could Carry
 
@@ -329,7 +359,7 @@ How does the user get the scan prompt/skill?
 | **D. CLI Tool** | `npx @clyro/scan` or `pip install clyro-scan` | Agent-agnostic, deterministic | Needs a maintained package |
 | **E. MCP Server** | Clyro MCP that any agent can call | Universal, structured I/O | MCP adoption still early |
 
-**Recommendation**: Start with **D (CLI)** for the deterministic part + **A (Skill)** for the agent-augmented part. The CLI handles what [deterministic_detector.py](file:///home/durvesh/webDev/clyro/backend/app/scanner/deterministic_detector.py) does today. The skill handles the LLM reasoning parts.
+**Recommendation**: Start with **D (CLI)** for the deterministic part + **A (Skill)** for the agent-augmented part. The CLI handles what [deterministic_detector.py](../backend/app/scanner/deterministic_detector.py) does today. The skill handles the LLM reasoning parts.
 
 ---
 
