@@ -1,5 +1,18 @@
 # Ch. 18 — IAM Least-Privilege Review
 
+> **Dated note added 2026-09-06. This is a historical record; the findings below
+> are left exactly as written.** The review itself is undated in the file and
+> was carried out around 2026-08.
+>
+> Two things have drifted. The `cloudwatch:*` justification below says the
+> permission "powers the Step 5 metrics panel"; under the current seven-step
+> wizard the metrics panel is Step 7. And the line-number anchors into
+> `cfn_generator.py` will have moved, so anchor by symbol name rather than line.
+>
+> The substance is unaffected: this is a review of the two roles the generator
+> emits into customer stacks and of `ClyroProvisioningRole` in
+> `backend/cfn-templates/bootstrap.yaml`, and both are still what they were.
+
 Audit items `audit/codebase/security.md` #3 and `audit/infra/security.md` #1 asked for a
 dedicated least-privilege pass over (a) the customer-facing IAM roles the deterministic
 generator emits, and (b) `ClyroProvisioningRole`'s own permissions. This chapter is that

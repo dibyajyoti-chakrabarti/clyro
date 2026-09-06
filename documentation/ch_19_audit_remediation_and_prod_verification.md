@@ -1,5 +1,27 @@
 # Chapter 19: Audit Remediation, Production Deploy & Live E2E Verification Report
 
+> **Dated note added 2026-09-06. This is a historical record; the body below is
+> left exactly as written and is not a description of the platform today.**
+>
+> The session recorded here is undated in the file and took place around
+> 2026-08, against the previous platform architecture. Every statement it makes
+> about **Clyro's own** infrastructure has since been replaced by the
+> consolidation onto a single EC2 instance:
+>
+> | This chapter says | What runs today |
+> | --- | --- |
+> | A Lambda backend behind API Gateway | uvicorn in a container on one `t4g.small`, behind nginx, with `api.clyro.cloud` as a plain Route53 A record |
+> | SQS as the Celery broker, with worker and beat on Fargate | The `redis:7-alpine` container on the same box; worker and beat are containers beside it |
+> | `clyro-prod-rds`, started and stopped on a cost schedule | `postgres:16-alpine` in a container, on a dedicated EBS volume |
+> | A `modules/nat-instance` Terraform module and its AMI footgun | No NAT of any kind, and no private subnets |
+> | An `infrastructure/workloads/celery_worker.tf` layer | No `workloads` layer at all: only `bootstrap` and `foundation` |
+>
+> See Chapter 6 for the current architecture. Note that the same superseded
+> description still survives in code comments at `backend/config/settings.py`.
+>
+> Everything else here stands: the IDOR fix, the reconcile sweep, the cost
+> engine work, and the live customer-stack provision and teardown result.
+
 This chapter records a single session's work: closing out every outstanding item in
 `audit/`, fixing a launch-blocking gap the audit never caught, pushing the result to
 production, and driving a full Step 1→7 provisioning + teardown pass against

@@ -1,5 +1,28 @@
 # Clyro Provisioning — Hardening & Latency Execution Plan
 
+> **Dated note added 2026-09-06. This is a historical record; the body below is
+> left exactly as written and is not a description of the system today.**
+>
+> This plan was verified against the repo on 2026-07-08/09 and has since been
+> overtaken in four ways:
+>
+> - It assumes the CloudFormation template is authored by the
+>   `CryloIac_IacArchitect` LLM and then corrected by `enforce_*` patch passes.
+>   The template is now authored deterministically by
+>   `backend/app/provisioning/cfn_generator.py`. See Chapter 13.
+> - It refers to the validation Lambda as `crylo-mcp-cfn`. The deployed function
+>   is `clyro-mcp-cfn`.
+> - It lists a live `REPORECON_RUNTIME_ARN` and a RepoRecon AgentCore runtime.
+>   Both are gone. Step 1 now ingests an offline `CLYRO.md` contract, and the
+>   only two runtimes are `CryloCanvas_Reasoning` and `CryloIac_IacArchitect`.
+>   See Chapters 8 and 20.
+> - Its Phase B guidance ("Sonnet is about as fast as Kimi; keep a strong model")
+>   predates the move off Anthropic models. Defaults are now MiniMax M2.5 for
+>   canvas and IaC generation, GLM-5 for refinement.
+>
+> Its step numbering is the retired five-step scheme. Where it says "Step 4"
+> meaning IaC generation, today's wizard calls that Step 5.
+
 > **Audience:** a Claude Code session executing this plan with **cold context**. Everything
 > needed to make correct changes is in this file. **Do not guess** at file paths, function
 > names, or AWS specifics — every anchor below was verified against the live repo on

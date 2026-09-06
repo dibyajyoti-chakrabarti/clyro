@@ -1,5 +1,23 @@
 # Clyro — E2E Test #2 (post-hardening) & Latency Report
 
+> **Dated note added 2026-09-06. This is a historical record; the measurements
+> and findings below are left exactly as written.**
+>
+> The run happened on 2026-07-09. Since then:
+>
+> - The template is no longer authored by the IacArchitect LLM. The model
+>   variance this report documents is what motivated the deterministic
+>   generator in Chapter 13, which now authors the initial template outright.
+> - RepoRecon is timed here as a live AgentCore scan (49.79s). That runtime was
+>   deleted; Step 1 ingests an offline contract instead. See Chapters 8 and 20.
+> - "Clyro has no stack-update path" was true then and is not now. See
+>   `_apply_stack_update` in `backend/app/provisioning/deploy.py`.
+> - Its step labels are the retired five-step scheme. Its "Step 3" is today's
+>   Step 4, and its "Step 4" spans today's Steps 2, 5 and 6.
+>
+> Fix A4, the `DesiredCount: 0` then build then scale-up ordering that this run
+> proved, is still exactly how provisioning works.
+
 **Date:** 2026-07-09
 **Driver:** Browser-driven E2E through the real Chrome UI
 **Environment:** Local dev (Docker Compose) — frontend `:5173`, backend `:8000`, Postgres, Redis, Celery worker

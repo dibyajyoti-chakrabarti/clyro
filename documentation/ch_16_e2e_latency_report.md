@@ -1,5 +1,24 @@
 # Clyro — End-to-End Test & Agent Latency Report
 
+> **Dated note added 2026-09-06. This is a historical record; the measurements
+> and findings below are left exactly as written.**
+>
+> The run happened on 2026-07-08 against local Docker Compose. Three things it
+> measured no longer exist in that form:
+>
+> - RepoRecon is timed here as a live AgentCore agent (41.2s). That runtime was
+>   deleted; Step 1 now ingests an offline `CLYRO.md` contract in about 2
+>   seconds. See Chapters 8 and 20.
+> - The model mix it measured, Kimi K2.5 to generate and MiniMax M2.5 to refine,
+>   is not the current default. Generation now defaults to MiniMax M2.5 and
+>   refinement to GLM-5.
+> - Its step labels are the retired five-step scheme. "Step 3, review
+>   architecture" is today's Step 4; "Step 4, connect AWS and IaC" is today's
+>   Steps 2 and 5; "Step 4.5 provisioning" is today's Step 6.
+>
+> Everything it says about ECS, RDS, NAT and ALBs describes the generated
+> customer stack and is unaffected.
+
 **Date:** 2026-07-08
 **Tester:** Browser-driven E2E run (Claude in Chrome)
 **Environment:** Local dev (Docker Compose) — frontend `:5173`, backend `:8000`, Postgres, Redis, Celery worker
