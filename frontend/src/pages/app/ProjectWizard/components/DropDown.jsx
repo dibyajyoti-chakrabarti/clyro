@@ -8,10 +8,22 @@ const INJECTED_CSS = `
     from { opacity: 0; transform: translateY(-6px) scale(0.98); }
     to   { opacity: 1; transform: translateY(0)    scale(1);    }
   }
-  .clyro-dropdown-panel::-webkit-scrollbar { width: 4px; }
+  .clyro-dropdown-panel { scrollbar-width: thin; scrollbar-color: rgba(245,166,35,0.45) transparent; }
+  .clyro-dropdown-panel::-webkit-scrollbar { width: 10px; }
   .clyro-dropdown-panel::-webkit-scrollbar-track { background: transparent; }
-  .clyro-dropdown-panel::-webkit-scrollbar-thumb { background: rgba(245,166,35,0.3); border-radius: 4px; }
+  .clyro-dropdown-panel::-webkit-scrollbar-thumb {
+    background: rgba(245,166,35,0.45);
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  .clyro-dropdown-panel::-webkit-scrollbar-thumb:hover { background: rgba(245,166,35,0.7); background-clip: content-box; }
 `
+
+// How tall the option list may get, and the smallest height still worth
+// showing before the panel flips above the trigger instead.
+const MAX_PANEL_HEIGHT = 320
+const MIN_PANEL_HEIGHT = 180
 
 const TRIGGER_BASE = {
   display: 'flex',
@@ -77,7 +89,7 @@ export default function DropDown({
   const [hovered, setHovered] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState(-1)
   // panelPos holds the fixed-position coordinates computed from the trigger's rect
-  const [panelPos, setPanelPos] = useState({ top: 0, left: 0, width: 0 })
+  const [panelPos, setPanelPos] = useState({ top: 0, left: 0, width: 0, maxHeight: MAX_PANEL_HEIGHT })
 
   const triggerRef = useRef(null)
   const panelRef   = useRef(null)
@@ -105,15 +117,21 @@ export default function DropDown({
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // Close if the viewport scrolls or resizes so the panel doesn't drift
+  // Keep the panel pinned to the trigger when an ancestor scrolls or the window
+  // resizes. Scrolling *inside* the panel must be ignored: it is a capture-phase
+  // listener, so the panel's own scroll would otherwise reposition/close it and
+  // make a long option list impossible to scroll through.
   useEffect(() => {
     if (!open) return
-    const close = () => setOpen(false)
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
+    const reposition = (e) => {
+      if (e?.target instanceof Node && panelRef.current?.contains(e.target)) return
+      computePos()
+    }
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
     return () => {
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
     }
   }, [open])
 
@@ -133,10 +151,23 @@ export default function DropDown({
     panelRef.current.children[focusedIndex]?.scrollIntoView({ block: 'nearest' })
   }, [open, focusedIndex])
 
+  // Place the panel below the trigger, or above it when the space below is too
+  // tight, and size it to whatever room is actually left on screen.
   const computePos = () => {
     if (!triggerRef.current) return
     const rect = triggerRef.current.getBoundingClientRect()
-    setPanelPos({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+    const gap = 4
+    const margin = 12
+    const below = window.innerHeight - rect.bottom - gap - margin
+    const above = rect.top - gap - margin
+    const dropUp = below < MIN_PANEL_HEIGHT && above > below
+    const maxHeight = Math.max(MIN_PANEL_HEIGHT, Math.min(MAX_PANEL_HEIGHT, dropUp ? above : below))
+    setPanelPos({
+      top: dropUp ? Math.max(margin, rect.top - gap - maxHeight) : rect.bottom + gap,
+      left: rect.left,
+      width: rect.width,
+      maxHeight,
+    })
   }
 
   const toggle = () => {
@@ -199,7 +230,6 @@ export default function DropDown({
     backdropFilter: 'blur(20px) saturate(160%)',
     WebkitBackdropFilter: 'blur(20px) saturate(160%)',
     borderRadius: '12px',
-    overflow: 'hidden',
     border: '1px solid rgba(245, 166, 35, 0.2)',
     boxShadow: [
       '0 20px 60px rgba(0,0,0,0.85)',
@@ -207,8 +237,13 @@ export default function DropDown({
       'inset 0 1px 0 rgba(255,200,80,0.15)',
       'inset 0 -1px 0 rgba(0,0,0,0.5)',
     ].join(', '),
-    maxHeight: '240px',
+    maxHeight: `${panelPos.maxHeight ?? MAX_PANEL_HEIGHT}px`,
     overflowY: 'auto',
+    overflowX: 'hidden',
+    // Stop the wheel from chaining to the page once the list hits its end.
+    overscrollBehavior: 'contain',
+    WebkitOverflowScrolling: 'touch',
+    paddingBlock: '4px',
     animation: 'clyroDropdownOpen 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards',
   }
 
