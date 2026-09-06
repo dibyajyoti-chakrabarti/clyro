@@ -81,6 +81,19 @@ test.describe('Full provisioning + teardown (real AWS)', () => {
     await page.locator('button:has(span)').filter({ hasNotText: 'Install' }).first().click();
     await page.locator('select, [role="combobox"]').first().selectOption({ label: E2E_TEST_REPO }).catch(() => {});
     await page.getByText(E2E_TEST_REPO).first().click().catch(() => {});
+
+    // Branch. RepositorySelector uses the themed DropDown (a role=combobox
+    // button opening a role=listbox), not a native <select>, so selectOption
+    // above never matched it and E2E_TEST_BRANCH was parsed and then never
+    // used: every run scanned whatever branch the UI happened to default to.
+    // The list loads from the API after the repo is picked, hence the wait.
+    const branchCombo = page.getByRole('combobox').nth(1);
+    await branchCombo.click();
+    const branchOption = page.getByRole('option', { name: E2E_TEST_BRANCH, exact: true });
+    await branchOption.waitFor({ timeout: 30_000 });
+    await branchOption.click();
+    await expect(branchCombo).toContainText(E2E_TEST_BRANCH);
+
     await page.locator('button', { hasText: /Scan|Connect/i }).first().click();
 
     // Scan can take a while (RepoRecon call + compliance checks).
