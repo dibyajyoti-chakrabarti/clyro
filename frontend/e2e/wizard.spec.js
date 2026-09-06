@@ -54,6 +54,68 @@ function watchForErrors(page) {
   return errors;
 }
 
+/** Remember where the API lives, so cleanup can call it directly.
+ *
+ * The deployed frontend bakes VITE_API_BASE_URL in at build time and it is not
+ * the page origin (production serves the app from clyro.cloud and the API from
+ * api.clyro.cloud), so a relative /api/ fetch would come back as the SPA's own
+ * HTML. Reading it off a request the app has already made is the only way to
+ * get it right for both local and deployed runs. */
+function trackApiBase(page) {
+  const seen = { base: null };
+  page.on('request', (r) => {
+    if (seen.base) return;
+    const url = r.url();
+    const at = url.indexOf('/api/');
+    if (at > 0) seen.base = url.slice(0, at);
+  });
+  return seen;
+}
+
+/** Delete a project this test created.
+ *
+ * Both tests below create a real project and neither used to remove it, so the
+ * bot account accumulated one per test per CI run. A project with no AWS
+ * connection is a synchronous database delete on the backend (204), so this is
+ * cheap and there is nothing in anyone's AWS account to tear down.
+ *
+ * Best-effort on purpose: a failure to clean up should never turn a passing
+ * assertion red, so it reports and moves on. */
+async function deleteProject(page, seen, projectId) {
+  if (!projectId || !seen.base) return;
+  const outcome = await page.evaluate(async ({ id, base }) => {
+    // Amplify v6 keeps the Cognito id token in localStorage. api/index.js gets
+    // it through fetchAuthSession(), which is not reachable from here, so find
+    // the key rather than hardcode the client id and username it embeds.
+    const key = Object.keys(localStorage).find((k) => k.endsWith('.idToken'));
+    const token = key ? localStorage.getItem(key) : null;
+    if (!token) return 'no id token in localStorage';
+    const res = await fetch(`${base}/api/projects/${id}/`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.status;
+  }, { id: projectId, base: seen.base }).catch((e) => `evaluate failed: ${e.message}`);
+
+  if (outcome !== 204 && outcome !== 202) {
+    console.log(`could not clean up project ${projectId}: ${outcome}`);
+  }
+}
+
+/** The wizard open on a project that exists.
+ *
+ * It has to match the id, not just "a segment". The obvious /app/projects/[^/]+
+ * also matches /app/projects/new, which is the page the form is submitted from,
+ * so both tests below were asserting a URL they already had and passing while
+ * still sitting on the creation form. */
+const PROJECT_URL = /\/app\/projects\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
+
+/** The project id out of /app/projects/<uuid>, or null if the wizard never opened. */
+function projectIdFromUrl(page) {
+  const m = PROJECT_URL.exec(page.url());
+  return m ? m[0].split('/').pop() : null;
+}
+
 test.describe('Authenticated app', () => {
   test.skip(!hasCreds, 'Set E2E_TEST_EMAIL and E2E_TEST_PASSWORD to run the authenticated suite.');
 
@@ -88,6 +150,7 @@ test.describe('Authenticated app', () => {
   test('creating a project opens the wizard at Step 1', async ({ page }) => {
     test.setTimeout(120_000);
     const errors = watchForErrors(page);
+    const seen = trackApiBase(page);
     await login(page);
 
     await page.goto('/app/projects/new');
@@ -100,7 +163,7 @@ test.describe('Authenticated app', () => {
     // appear, because that is the failure a new test account actually hits.
     const denied = page.getByText('not authorized to create projects');
     await expect
-      .poll(async () => (await denied.isVisible()) ? 'denied' : (/\/app\/projects\/[^/]+/.test(page.url()) ? 'created' : 'pending'),
+      .poll(async () => (await denied.isVisible()) ? 'denied' : (PROJECT_URL.test(page.url()) ? 'created' : 'pending'),
         { timeout: 30_000 })
       .not.toBe('pending');
     if (await denied.isVisible()) {
@@ -110,13 +173,19 @@ test.describe('Authenticated app', () => {
       );
     }
 
-    await expect(page).toHaveURL(/\/app\/projects\/[^/]+/);
-    // PremiumStepHeading splits the heading across spans, so match the role.
-    await expect(
-      page.getByRole('heading', { name: 'Connect your GitHub account' }),
-    ).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole('button', { name: 'Install Clyro GitHub App' })).toBeVisible();
-    expect(errors, `server or console errors in the wizard:\n${errors.join('\n')}`).toEqual([]);
+    await expect(page).toHaveURL(PROJECT_URL);
+    const createdId = projectIdFromUrl(page);
+
+    try {
+      // PremiumStepHeading splits the heading across spans, so match the role.
+      await expect(
+        page.getByRole('heading', { name: 'Connect your GitHub account' }),
+      ).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole('button', { name: 'Install Clyro GitHub App' })).toBeVisible();
+      expect(errors, `server or console errors in the wizard:\n${errors.join('\n')}`).toEqual([]);
+    } finally {
+      await deleteProject(page, seen, createdId);
+    }
   });
 
   test('Step 1 lists existing GitHub installations', async ({ page }) => {
@@ -128,13 +197,19 @@ test.describe('Authenticated app', () => {
       'account or org that is not already connected to another Clyro user.',
     );
     test.setTimeout(120_000);
+    const seen = trackApiBase(page);
     await login(page);
 
     await page.goto('/app/projects/new');
     await page.locator('#project-name').fill(`e2e-gh-${Date.now()}`);
     await page.getByRole('button', { name: 'Next Step' }).click();
-    await expect(page).toHaveURL(/\/app\/projects\/[^/]+/, { timeout: 30_000 });
+    await expect(page).toHaveURL(PROJECT_URL, { timeout: 30_000 });
+    const createdId = projectIdFromUrl(page);
 
-    await expect(page.getByText('OR USE AN EXISTING ACCOUNT')).toBeVisible({ timeout: 20_000 });
+    try {
+      await expect(page.getByText('OR USE AN EXISTING ACCOUNT')).toBeVisible({ timeout: 20_000 });
+    } finally {
+      await deleteProject(page, seen, createdId);
+    }
   });
 });
