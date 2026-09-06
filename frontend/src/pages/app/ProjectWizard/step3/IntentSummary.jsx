@@ -33,7 +33,7 @@ function IntentSummary({ summaryQuestions, answers, formatAnswer, isSaving, save
       ) : !isSaving ? (
         <p className='mt-4 flex items-center gap-1.5 text-xs font-normal text-text-muted'>
           <Check className='h-3.5 w-3.5 text-success' />
-          Intent saved — your architecture is ready to review
+          Intent saved. Your architecture is ready to review
         </p>
       ) : null}
     </div>

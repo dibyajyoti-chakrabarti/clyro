@@ -135,7 +135,7 @@ function ComplianceRow({ finding, expanded, onToggle }) {
             <p>{finding.detail}</p>
             {finding.fix_hint && (
               <p className='rounded-lg border border-[rgba(255,196,0,0.14)] bg-[rgba(255,196,0,0.04)] px-3 py-2 text-white/60'>
-                <span className='font-semibold text-[#E8B84B]'>Recommendation — </span>
+                <span className='font-semibold text-[#E8B84B]'>Recommendation: </span>
                 {finding.fix_hint}
               </p>
             )}
@@ -185,7 +185,7 @@ function ComplianceChecklistCard({ complianceFindings }) {
 
       {hasBlockers && (
         <p className='mt-3 text-[12.5px] leading-snug text-red-300/80'>
-          Resolve the blockers above to continue — they will fail the build.
+          Resolve the blockers above to continue. They will fail the build.
         </p>
       )}
     </div>
@@ -332,7 +332,7 @@ function ContractDriftCard({ contractDrift }) {
         ))}
       </ul>
       <p className='mt-3.5 text-[12.5px] leading-snug text-white/40'>
-        The checks below are what Clyro verified against your branch just now — they override
+        The checks below are what Clyro verified against your branch just now, and they override
         whatever CLYRO.md recorded. Re-run <span className='font-mono text-white/60'>/clyro-scan</span>{' '}
         and push to bring the contract back in line.
       </p>

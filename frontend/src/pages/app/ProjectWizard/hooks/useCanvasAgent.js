@@ -79,7 +79,7 @@ export default function useCanvasAgent({ projectId, setStep4InputPrefill, step4I
       setAssumptions(res.version.assumptions || [])
       setNodePositions(res.version.positions || {})
       setPendingOp(null)
-      appendAgent(res.message || 'Done — I updated the canvas.')
+      appendAgent(res.message || 'Done. I updated the canvas.')
     } else if (res.outcome === 'proposal') {
       setPendingOp(res.operation || null)
       appendAgent(res.message)

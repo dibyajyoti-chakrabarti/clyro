@@ -26,7 +26,7 @@ export default function SecretsWrite({ projectId, onDone }) {
       await api.saveEnvVars(projectId, { values, extra_vars: extras })
       onDone?.()
     } catch (err) {
-      setSaveError(err.data?.error || 'Failed to save secrets — please try again.')
+      setSaveError(err.data?.error || 'Failed to save secrets. Please try again.')
       throw err
     }
   }

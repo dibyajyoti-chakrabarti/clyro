@@ -269,7 +269,7 @@ export default function IacEditor({
           <div className='space-y-1'>
             <p className='text-sm font-medium text-text-primary'>{stageMessage}</p>
             <p className='text-xs text-text-muted'>
-              {elapsed < 5 ? 'Starting up…' : `${elapsed}s elapsed · usually ~3–4 min`}
+              {elapsed < 5 ? 'Starting up…' : `${elapsed}s elapsed · usually ~3 to 4 min`}
             </p>
           </div>
           <div className='flex gap-1.5'>
@@ -286,7 +286,7 @@ export default function IacEditor({
           </div>
           {elapsed > 240 && (
             <p className='max-w-xs text-xs text-text-muted/70'>
-              Taking longer than usual — the agent may be handling a complex architecture.
+              Taking longer than usual. The agent may be handling a complex architecture.
             </p>
           )}
         </div>

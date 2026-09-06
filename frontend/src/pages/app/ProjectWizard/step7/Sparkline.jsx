@@ -25,7 +25,7 @@ function Sparkline({ points, formatValue }) {
       className='mt-2 h-7 w-full text-accent'
       role='img'
     >
-      <title>{`Last hour — min ${fmt(min)}, max ${fmt(max)}`}</title>
+      <title>{`Last hour: min ${fmt(min)}, max ${fmt(max)}`}</title>
       <polyline
         points={coords.map(([x, y]) => `${x},${y}`).join(' ')}
         fill='none'

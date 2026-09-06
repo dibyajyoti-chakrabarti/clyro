@@ -71,7 +71,7 @@ export default function AwsSetup({ projectId, initialAccountType, initiallyConne
       setRoleConnected(true)
       setAccountTypeMismatch(Boolean(data?.account_type_mismatch))
     } catch (err) {
-      setVerifyError(err.data?.error || 'Verification failed — check the role ARN and try again.')
+      setVerifyError(err.data?.error || 'Verification failed. Check the role ARN and try again.')
     } finally {
       setVerifying(false)
     }

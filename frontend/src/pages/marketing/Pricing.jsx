@@ -117,7 +117,7 @@ export default function Pricing() {
       <div className='text-center'>
         <h1 className='text-4xl font-bold tracking-tight'>Simple, transparent pricing</h1>
         <p className='mt-3 text-base text-text-muted'>
-          Start free. Scale when you need it. No surprise bills from Clyro — only from AWS.
+          Start free. Scale when you need it. No surprise bills from Clyro, only from AWS.
         </p>
       </div>
 

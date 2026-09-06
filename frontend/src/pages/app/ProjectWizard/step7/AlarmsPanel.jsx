@@ -22,12 +22,12 @@ function AlarmsPanel({ data, className = '' }) {
           {data.subscription === 'pending' ? (
             <p className='mb-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.14] to-amber-500/[0.04] px-3 py-2 text-xs leading-relaxed text-amber-300'>
               <BellRing className='mt-0.5 h-4 w-4 shrink-0' />
-              Alert emails are almost ready — click the confirmation link AWS sent to your inbox.
+              Alert emails are almost ready. Click the confirmation link AWS sent to your inbox.
             </p>
           ) : null}
           {!data.configured ? (
             <p className='flex flex-1 items-center justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-4 text-center text-sm text-text-muted'>
-              No alarms in this stack yet — they're created the next time you provision.
+              No alarms in this stack yet. They're created the next time you provision.
             </p>
           ) : history.length > 0 ? (
             <div className='flex min-h-0 flex-1 flex-col'>
@@ -36,7 +36,7 @@ function AlarmsPanel({ data, className = '' }) {
                 {history.slice(0, 8).map((item, index) => (
                   <p key={index} className='text-xs leading-relaxed text-text-muted'>
                     <span className='text-text-primary'>{item.at ? new Date(item.at).toLocaleString() : ''}</span>
-                    {' — '}{item.summary}
+                    {': '}{item.summary}
                   </p>
                 ))}
               </div>

@@ -7,7 +7,7 @@ export const stepConfig = [
   {
     number: 2,
     title: 'Connect your AWS account',
-    subtitle: 'Tell us your account type and connect AWS — we verify it for you.',
+    subtitle: 'Tell us your account type and connect AWS. We verify it for you.',
   },
   {
     number: 3,

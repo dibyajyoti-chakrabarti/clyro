@@ -52,7 +52,7 @@ export default function SecretsCollect({ projectId, onDone }) {
       await api.stageEnvVars(projectId, { values: secretValues, extra_vars: extraVars })
       onDone?.()
     } catch (err) {
-      setSaveError(err.data?.error || 'Failed to save secrets — please try again.')
+      setSaveError(err.data?.error || 'Failed to save secrets. Please try again.')
     } finally {
       setSavingEnvVars(false)
     }

@@ -24,7 +24,7 @@ function HealthOverview({ healthItems, statusIcon, notFound, className = '' }) {
     <MonitorCard title='Health overview' tint='green' className={className}>
       {notFound ? (
         <p className='rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-6 text-center text-sm text-red-300'>
-          This project's AWS infrastructure could not be found — it may have been deleted outside Clyro.
+          This project's AWS infrastructure could not be found. It may have been deleted outside Clyro.
         </p>
       ) : healthItems.length === 0 ? (
         <p className='rounded-lg border border-dashed border-border bg-surface/40 px-4 py-6 text-center text-sm text-text-muted'>

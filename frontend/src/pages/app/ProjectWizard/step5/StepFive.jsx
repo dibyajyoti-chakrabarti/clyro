@@ -74,9 +74,9 @@ function StepFivePanel({ projectId, projectData, setProjectData, onBackToCanvas,
       })
       const hasBlockers = (data.security_findings || []).some((f) => f.severity === 'blocker')
       if (!data.template) {
-        setIacError('Generation returned an empty template — please try again.')
+        setIacError('Generation returned an empty template. Please try again.')
       } else if ((data.validation && data.validation.errors > 0) || hasBlockers) {
-        setIacError('Generation finished but the template still has unresolved errors — please retry.')
+        setIacError('Generation finished but the template still has unresolved errors. Please retry.')
       } else {
         setIacTemplate(data.template)
         setIacValidation(data.validation || null)
@@ -149,7 +149,7 @@ function StepFivePanel({ projectId, projectData, setProjectData, onBackToCanvas,
       setIacFindings(data.security_findings || [])
       setIacReady(data.status === 'iac_ready')
     } catch (err) {
-      setIacError(err.data?.error || 'Validation failed — please try again.')
+      setIacError(err.data?.error || 'Validation failed. Please try again.')
     } finally {
       setIacValidating(false)
     }

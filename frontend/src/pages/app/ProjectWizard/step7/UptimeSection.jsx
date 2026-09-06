@@ -67,21 +67,21 @@ function UptimeSection({ projectId, uptimeClassName = '', timelineClassName = ''
                 <div
                   key={bucket.t}
                   className={`min-w-0 flex-1 rounded-sm ${stripClasses(bucket.state)}`}
-                  title={`${new Date(bucket.t).toLocaleString()} — ${
+                  title={`${new Date(bucket.t).toLocaleString()}: ${
                     bucket.state === 'down' ? 'downtime detected' : bucket.state === 'up' ? 'healthy' : 'no data'
                   }`}
                 />
               ))}
             </div>
             <p className='mt-3 text-xs leading-relaxed text-text-muted'>
-              Past 24 hours, oldest to newest — each bar is 30 minutes.
+              Past 24 hours, oldest to newest. Each bar is 30 minutes.
               <br />
               Full red bars mark downtime.
             </p>
           </div>
         ) : (
           <p className='flex flex-1 items-center justify-center rounded-lg border border-dashed border-border bg-surface/40 px-4 py-4 text-center text-sm text-text-muted'>
-            No history yet — uptime starts recording once the health collector has run.
+            No history yet. Uptime starts recording once the health collector has run.
           </p>
         )}
       </MonitorCard>

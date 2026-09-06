@@ -37,7 +37,7 @@ function DotParticles() {
 const features = [
   {
     title: 'Real-time Cost Estimation',
-    description: 'See accurate AWS pricing as you design — compute, storage, and networking costs update instantly. No bill surprises. Every resource is priced before a single dollar is spent.',
+    description: 'See accurate AWS pricing as you design: compute, storage, and networking costs update instantly. No bill surprises. Every resource is priced before a single dollar is spent.',
     icon: <Receipt size={160} strokeWidth={1.2} color="#C9A84C" />,
   },
   {
@@ -47,12 +47,12 @@ const features = [
   },
   {
     title: 'Instant AWS Provisioning',
-    description: 'Go from diagram to deployed infrastructure in minutes. Clyro auto-generates production-ready Terraform — no manual scripting, no CLI. Your full stack goes live with one click.',
+    description: 'Go from diagram to deployed infrastructure in minutes. Clyro auto-generates production-ready Terraform with no manual scripting and no CLI. Your full stack goes live with one click.',
     icon: <Rocket size={160} strokeWidth={1.2} color="#C9A84C" />,
   },
   {
     title: 'Deployment Readiness',
-    description: 'Validate security and high availability before you deploy. Clyro runs pre-flight checks — catching misconfigurations, open security groups, and single points of failure automatically.',
+    description: 'Validate security and high availability before you deploy. Clyro runs pre-flight checks, catching misconfigurations, open security groups, and single points of failure automatically.',
     icon: <ShieldCheck size={160} strokeWidth={1.2} color="#C9A84C" />,
   },
 ]

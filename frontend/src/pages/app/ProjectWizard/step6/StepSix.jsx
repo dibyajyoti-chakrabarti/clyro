@@ -266,7 +266,7 @@ function StepSixPanel({ projectId, onBackToIac, onAdvanceToStepSeven }) {
     <ConfirmDialog
       open={teardownOpen}
       title='Delete infrastructure'
-      description='This permanently deletes all provisioned infrastructure for this project — the CloudFormation stack and every resource it created. This cannot be undone.'
+      description='This permanently deletes all provisioned infrastructure for this project: the CloudFormation stack and every resource it created. This cannot be undone.'
       confirmText={infraActionLoading ? 'Deleting…' : 'Yes, delete infrastructure'}
       onCancel={() => setTeardownOpen(false)}
       onConfirm={confirmTeardown}
@@ -305,7 +305,7 @@ function StepSixPanel({ projectId, onBackToIac, onAdvanceToStepSeven }) {
     <ConfirmDialog
       open={recreateOpen}
       title='Rebuild from scratch'
-      description='This deletes the current failed infrastructure and provisions it again from a clean slate, applying the latest fixes. Nothing has gone live yet, so no data is lost — but the current stack is destroyed and rebuilt. This can take 10–15 minutes.'
+      description='This deletes the current failed infrastructure and provisions it again from a clean slate, applying the latest fixes. Nothing has gone live yet, so no data is lost, but the current stack is destroyed and rebuilt. This can take 10 to 15 minutes.'
       confirmText='Yes, rebuild from scratch'
       onCancel={() => setRecreateOpen(false)}
       onConfirm={confirmRecreate}

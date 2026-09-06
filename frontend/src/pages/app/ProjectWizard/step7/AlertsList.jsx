@@ -18,7 +18,7 @@ function AlertsList({ alerts, alarms = [], className = '' }) {
         {alerts.length === 0 ? (
           <p className='flex items-center gap-2 rounded-lg border border-white/[0.07] bg-gradient-to-br from-white/[0.04] to-transparent px-3 py-3 text-sm text-text-muted'>
             <CheckCircle2 className='h-4 w-4 shrink-0 text-success' />
-            No active alerts — everything looks healthy.
+            No active alerts. Everything looks healthy.
           </p>
         ) : (
           alerts.map((alert) => {

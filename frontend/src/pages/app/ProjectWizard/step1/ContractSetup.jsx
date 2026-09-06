@@ -144,7 +144,7 @@ export default function ContractSetup({
             ) : (
               <>
                 Clyro reads a <span className='font-mono text-white/70'>CLYRO.md</span> contract from your
-                repo instead of scanning it in the cloud. Your own coding agent writes it — and fixes
+                repo instead of scanning it in the cloud. Your own coding agent writes it, and fixes
                 anything that would break the deploy first.
               </>
             )}
@@ -237,7 +237,7 @@ export default function ContractSetup({
             ) : (
               <>
                 <RefreshCw className='h-4 w-4' />
-                I've pushed CLYRO.md — check again
+                I've pushed CLYRO.md, check again
               </>
             )}
           </button>

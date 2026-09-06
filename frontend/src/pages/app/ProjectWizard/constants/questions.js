@@ -4,12 +4,12 @@
 export const ACCOUNT_TYPE_OPTIONS = [
   {
     value: 'paid',
-    label: 'Paid account — I\'m fine paying for the right resources',
+    label: 'Paid account: I\'m fine paying for the right resources',
     recommended: true,
   },
   {
     value: 'free_tier',
-    label: 'Free tier — I want to stay within free limits',
+    label: 'Free tier: I want to stay within free limits',
     note: 'NAT Gateway and some services will be excluded to avoid charges',
   },
 ]
@@ -32,9 +32,9 @@ export function getQuestions() {
       type: 'choice',
       options: [
         { value: 'solo', label: 'Just me or a small internal team' },
-        { value: 'small', label: 'Small user base — under 1,000 users' },
-        { value: 'medium', label: 'Public product — expecting real traffic' },
-        { value: 'large', label: 'High scale — expecting significant load' },
+        { value: 'small', label: 'Small user base, under 1,000 users' },
+        { value: 'medium', label: 'Public product, expecting real traffic' },
+        { value: 'large', label: 'High scale, expecting significant load' },
       ],
     },
     {
@@ -42,9 +42,9 @@ export function getQuestions() {
       question: 'Do you have a custom domain for this app?',
       type: 'choice',
       options: [
-        { value: 'yes', label: 'Yes — I want to use my own domain' },
-        { value: 'no', label: 'No — use the default AWS-provided URL' },
-        { value: 'internal', label: 'Internal only — no public domain needed' },
+        { value: 'yes', label: 'Yes, I want to use my own domain' },
+        { value: 'no', label: 'No, use the default AWS-provided URL' },
+        { value: 'internal', label: 'Internal only, no public domain needed' },
       ],
     },
     {

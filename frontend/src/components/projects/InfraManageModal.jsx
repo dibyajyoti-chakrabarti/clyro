@@ -79,7 +79,7 @@ export default function InfraManageModal({ open, project, onClose, onChanged }) 
         <ConfirmDialog
           open={teardownOpen}
           title='Delete infrastructure'
-          description='This permanently deletes all provisioned AWS infrastructure for this project — the CloudFormation stack and every resource it created. The project itself is kept. This cannot be undone.'
+          description='This permanently deletes all provisioned AWS infrastructure for this project: the CloudFormation stack and every resource it created. The project itself is kept. This cannot be undone.'
           consequences={[
             'The CloudFormation stack and all its resources (ECS, RDS, ALB, S3, CloudFront…)',
             'Any data stored in the database and buckets',

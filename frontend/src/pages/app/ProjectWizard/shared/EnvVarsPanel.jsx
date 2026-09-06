@@ -124,7 +124,7 @@ function EnvVarsPanel({
               <h3 className='text-lg font-medium text-text-primary'>Values required from you</h3>
               <p className='mt-0.5 text-sm text-text-muted'>
                 These secrets are needed to run your app. Anything Clyro can generate itself is
-                marked — fill in the rest to continue.
+                marked, so fill in the rest to continue.
               </p>
             </div>
           </div>
@@ -162,9 +162,9 @@ function EnvVarsPanel({
                     value={secretValues[field.key_name] || ''}
                     placeholder={
                       field.secrets_manager_arn
-                        ? 'Saved — leave blank to keep'
+                        ? 'Saved. Leave blank to keep.'
                         : field.hint === 'agent_generatable'
-                          ? 'Leave blank — Clyro generates this for you'
+                          ? 'Leave blank and Clyro generates this for you'
                           : ''
                     }
                     onChange={(event) => onSecretValueChange(field.key_name, event.target.value)}

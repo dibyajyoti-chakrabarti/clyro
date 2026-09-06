@@ -157,7 +157,7 @@ export default function HeroSection() {
 
           <p className='mt-6 max-w-[30rem] text-[1.375rem] leading-[1.75] text-marketing-muted lg:mt-7'>
             Clyro designs, reviews and deploys production-ready cloud infrastructure in
-            minutes — so you can ship faster.
+            minutes, so you can ship faster.
           </p>
 
           <div className='mt-9 flex flex-col gap-3 sm:flex-row sm:items-center'>
@@ -232,7 +232,7 @@ export default function HeroSection() {
               your cloud infrastructure
             </h2>
             <p className='mt-4 max-w-[32rem] text-[1.375rem] leading-[1.6] text-marketing-text-secondary'>
-              From architecture to production — Clyro{' '}
+              From architecture to production, Clyro{' '}
               <span className='font-semibold text-marketing-amber-core'>handles the complexity</span>{' '}
               behind your AWS infrastructure.
             </p>

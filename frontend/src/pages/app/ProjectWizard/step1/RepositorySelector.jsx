@@ -33,11 +33,11 @@ function RepositorySelector({
 
         <p className='mx-auto mt-5 max-w-[650px] text-[22px] leading-[1.7] text-white/75'>
           Clyro reads a <span className='font-mono text-white/90'>CLYRO.md</span> contract from your
-          repo — your own coding agent writes it, so nothing about your stack is guessed.
+          repo. Your own coding agent writes it, so nothing about your stack is guessed.
         </p>
 
         <p className='mx-auto mt-3 max-w-[600px] text-[14px] leading-[1.6] text-white/45'>
-          Haven't made one yet? Pick your repo and branch — we'll hand you the one-line install and
+          Haven't made one yet? Pick your repo and branch, and we'll hand you the one-line install and
           the command to run.
         </p>
 

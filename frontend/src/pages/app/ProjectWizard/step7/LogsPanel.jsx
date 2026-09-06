@@ -193,7 +193,7 @@ function LogsPanel({ projectId, services, className = '', footer = null }) {
           )}
         </div>
         {truncated ? (
-          <p className='mt-2 text-xs text-text-muted'>Showing the most recent events — older entries in this range were left out.</p>
+          <p className='mt-2 text-xs text-text-muted'>Showing the most recent events. Older entries in this range were left out.</p>
         ) : null}
         {footer}
       </div>

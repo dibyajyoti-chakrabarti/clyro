@@ -184,7 +184,7 @@ const CARD_COPY = {
     headingLine1: "DEPLOY YOUR",
     headingAccent: "INFRASTRUCTURE",
     body: "Provision all cloud resources and go live automatically.",
-    desc: "With one click, we provision load balancers, databases, compute, and networking — fully automated.",
+    desc: "With one click, we provision load balancers, databases, compute, and networking. Fully automated.",
     taglinePrefix: "One click. ",
     taglineAccent: "Full stack.",
     taglineSub: "Live in minutes, not days.",

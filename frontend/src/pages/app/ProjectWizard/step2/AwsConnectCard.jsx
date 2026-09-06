@@ -239,7 +239,7 @@ function AwsConnectCard({
             <div>
               <div style={{ fontSize: 16, fontWeight: 700, color: GOLD }}>You're one step away</div>
               <div style={{ fontSize: 13, fontWeight: 400, color: WHITE_55, marginTop: 4, maxWidth: 380 }}>
-                Securely connect your AWS account using a temporary IAM role — no long-term credentials needed.
+                Securely connect your AWS account using a temporary IAM role. No long-term credentials needed.
               </div>
             </div>
           </div>
@@ -310,7 +310,7 @@ function AwsConnectCard({
               {[
                 <>Wait for the stack status to show <strong style={{ color: '#fff' }}>CREATE_COMPLETE</strong> (≈30s)</>,
                 <>Click the <strong style={{ color: '#fff' }}>Outputs</strong> tab in the CloudFormation console</>,
-                <>Copy the value next to <strong style={{ color: '#fff' }}>RoleArn</strong> — it starts with <code style={{ fontSize: 11, background: WHITE_05, padding: '1px 4px', borderRadius: 3 }}>arn:aws:iam::</code></>,
+                <>Copy the value next to <strong style={{ color: '#fff' }}>RoleArn</strong>. It starts with <code style={{ fontSize: 11, background: WHITE_05, padding: '1px 4px', borderRadius: 3 }}>arn:aws:iam::</code></>,
               ].map((text, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12 }}>
                   <div style={{
@@ -496,7 +496,7 @@ function AwsConnectCard({
           <p className='mx-auto flex max-w-md items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-left text-sm text-amber-300'>
             <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
             This AWS account looks like a {accountType === 'free_tier' ? 'paid' : 'free-tier'} account,
-            not what you selected above. Infrastructure will be generated for what we detected — you
+            not what you selected above. Infrastructure will be generated for what we detected. You
             can continue, or re-verify with the correct account.
           </p>
         ) : null}

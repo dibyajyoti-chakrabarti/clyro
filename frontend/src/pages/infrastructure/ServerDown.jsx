@@ -111,7 +111,7 @@ export default function ServerDown() {
 
         <p className="mx-auto mt-5 max-w-lg text-base leading-7 text-text-muted sm:text-lg">
           Clyro runs on AWS{' '}
-          <strong className="font-semibold text-text-primary">9 AM – 9 PM IST</strong>{' '}
+          <strong className="font-semibold text-text-primary">9 AM to 9 PM IST</strong>{' '}
           every day to keep cloud costs low. Come back during those hours and
           you&apos;ll be all set.
         </p>
@@ -125,7 +125,7 @@ export default function ServerDown() {
             />
           </div>
 
-          <StatusRow label="Service window" value="9:00 AM – 9:00 PM IST, daily" />
+          <StatusRow label="Service window" value="9:00 AM to 9:00 PM IST, daily" />
           <StatusRow label="Current IST time" value={formatISTTime(now)} accent />
           <StatusRow
             label="Next active window"
@@ -153,14 +153,14 @@ export default function ServerDown() {
             <span>
               Service state:{' '}
               <strong className="font-semibold text-text-primary">
-                Offline — resumes at 9:00 AM IST tomorrow
+                Offline, resumes at 9:00 AM IST tomorrow
               </strong>
               .
             </span>
           </div>
           <div className="flex items-start gap-3 text-sm text-text-muted sm:text-base">
             <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-300" />
-            <span>This page checks the backend automatically — no need to refresh.</span>
+            <span>This page checks the backend automatically. No need to refresh.</span>
           </div>
         </div>
       </div>

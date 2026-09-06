@@ -55,11 +55,11 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
             {deployFailed
               ? 'Provisioning failed'
               : rollingBack
-                ? 'Provisioning failed — rolling back…'
+                ? 'Provisioning failed, rolling back…'
                 : buildFailed
                 ? 'Build failed'
                 : rawFailed && deployCorrecting
-                  ? 'Deploy failed — retrying with a correction…'
+                  ? 'Deploy failed, retrying with a correction…'
                   : building
                     ? 'Building your application…'
                     : 'Provisioning infrastructure'}
@@ -72,21 +72,21 @@ function ProvisionLog({ provisioningLog, deployStatus, deployError, deployCorrec
           </p>
         ) : rawFailed && deployCorrecting ? (
           <p className='mt-1 text-sm text-text-muted'>
-            The last attempt hit a real AWS error — automatically applying one correction and
+            The last attempt hit a real AWS error. Applying one correction automatically and
             retrying before giving up.
           </p>
         ) : building ? (
           <p className='mt-1 text-sm text-text-muted'>
-            Your infrastructure is up — compiling and pushing your code to it now. This
-            usually takes 2–5 minutes.
+            Your infrastructure is up. Compiling and pushing your code to it now. This
+            usually takes 2 to 5 minutes.
           </p>
         ) : buildFailed ? (
           <p className='mt-1 text-sm text-text-muted'>
-            Your infrastructure is live, but the build didn't complete — check the error below,
+            Your infrastructure is live, but the build didn't complete. Check the error below,
             fix it in your repo, and retry the build (no need to re-provision).
           </p>
         ) : !deployFailed ? (
-          <p className='mt-1 text-sm text-text-muted'>This typically takes 8–12 minutes — you can keep this tab open.</p>
+          <p className='mt-1 text-sm text-text-muted'>This typically takes 8 to 12 minutes. You can keep this tab open.</p>
         ) : null}
 
         {/* ── Progress summary ── */}

@@ -38,7 +38,7 @@ export default function ManageInfrastructurePanel({
         <h4 className='text-sm font-semibold text-text-primary'>Manage infrastructure</h4>
         <p className='mt-1 text-xs leading-relaxed text-text-muted'>
           {isPaused
-            ? 'Infra is paused — ECS tasks are scaled to 0 and the database is stopped. Nothing is billed for compute while paused.'
+            ? 'Infra is paused. ECS tasks are scaled to 0 and the database is stopped. Nothing is billed for compute while paused.'
             : isDeleting
               ? 'Deleting all provisioned resources…'
               : 'Pause to stop billing without losing anything, or permanently delete the stack.'}
