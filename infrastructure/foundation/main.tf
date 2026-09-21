@@ -14,6 +14,15 @@ module "route53" {
   domain = var.domain
 }
 
+# Adopted, not created. The zone was made by hand on 2026-09-21 so the
+# registrar could be pointed at it while the rest of the estate was still being
+# built. Creating it here instead would mint a second zone with different
+# nameservers. Safe to delete this block once the import has applied.
+import {
+  to = module.route53.aws_route53_zone.main
+  id = "Z09881471D4BCLB99RIGC"
+}
+
 # One certificate covers every hostname this project serves through CloudFront
 # or Cognito: the apex, www., admin., and auth. The old design also issued a
 # second certificate in ap-south-1 for the API Gateway custom domain. There is
