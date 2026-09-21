@@ -229,7 +229,7 @@ jobs:
             # this package's own synth entrypoint, which ignores `bootstrap`
             # and exits 0 having done nothing.
             echo "  cd backend/agents/CryloIac/agentcore/cdk"
-            echo "  AWS_PROFILE=jan-saathi ./node_modules/.bin/cdk bootstrap aws://${ACCT}/${AWS_REGION} \\"
+            echo "  AWS_PROFILE=clyro ./node_modules/.bin/cdk bootstrap aws://${ACCT}/${AWS_REGION} \\"
             echo "    --cloudformation-execution-policies arn:aws:iam::${ACCT}:policy/clyro-cdk-exec"
             echo ""
             echo "The execution policy matters. A default bootstrap gives"

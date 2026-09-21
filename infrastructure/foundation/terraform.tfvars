@@ -1,7 +1,7 @@
 project     = "clyro"
 environment = "prod"
 domain      = "clyro.cloud"
-account_id  = "190084967282"
+account_id  = "042743439363"
 aws_region  = "ap-south-1"
 
 # Flip to true after the registrar's nameservers point at the hosted zone

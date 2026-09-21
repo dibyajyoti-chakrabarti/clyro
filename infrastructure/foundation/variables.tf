@@ -19,12 +19,11 @@ variable "domain" {
   default = "clyro.cloud"
 }
 
-# Account 190084967282. Shared with Jan Saathi and Structra, which is why every
-# resource here is clyro-prefixed and why the VPC CIDR below avoids the ranges
-# already in use.
+# Account 042743439363, Clyro's own since 2026-09. Resources stay clyro-prefixed
+# because the bootstrap guardrails scope CI's IAM and S3 access by that prefix.
 variable "account_id" {
   type    = string
-  default = "190084967282"
+  default = "042743439363"
 }
 
 # ACM issues a certificate only after it can resolve the DNS validation record

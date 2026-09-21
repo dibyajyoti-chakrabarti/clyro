@@ -8,17 +8,12 @@
 
 # The provider ARN is constructed, not looked up.
 #
-# An account holds exactly one OIDC provider per issuer URL, and this one
-# belongs to a neighbouring product: it is tagged Project=jan-saathi. The
-# Terraform role's guardrails deny reading it three times over, by that tag, by
-# the foreign-resource rule, and by the rule protecting shared bootstrap
-# resources. All three are right. Clyro consumes this provider; it does not own
-# it and has no business enumerating IAM providers in a shared account.
-#
+# The provider belongs to the bootstrap layer, which this CI role must not edit.
 # Since the ARN is fully determined by the account id and the issuer, a data
-# source bought nothing but a permission this role should not hold. A first
-# apply from a laptop worked and the CI plan then failed, which is exactly the
-# kind of gap running it in CI is supposed to surface.
+# source would buy nothing but a read permission the role does not need. (In the
+# previous, shared account the provider belonged to another product and the
+# guardrails denied reading it outright; a first apply from a laptop worked and
+# the CI plan then failed on exactly that.)
 locals {
   github_oidc_provider_arn = "arn:aws:iam::${var.account_id}:oidc-provider/token.actions.githubusercontent.com"
 }

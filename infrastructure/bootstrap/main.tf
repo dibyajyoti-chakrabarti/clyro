@@ -8,7 +8,7 @@
 # not exist on any current machine, so every plan failed before it started.
 # Run this layer as:
 #
-#   export AWS_PROFILE=home
+#   export AWS_PROFILE=clyro
 #   terraform -chdir=infrastructure/bootstrap apply
 
 terraform {
@@ -33,9 +33,8 @@ locals {
   env     = "prod"
   region  = "ap-south-1"
 
-  # Account 469465348250 also hosts an unrelated product (Structra), so every
-  # name this project creates carries the clyro- prefix. The account id and
-  # region are in the bucket name because S3 names are globally unique.
+  # Every name this project creates carries the clyro- prefix. The account id
+  # and region are in the bucket name because S3 names are globally unique.
   bucket = "${local.project}-tfstate-${data.aws_caller_identity.current.account_id}-${local.region}"
 
   tags = {

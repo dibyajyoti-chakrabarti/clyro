@@ -15,7 +15,7 @@
 #    it (see the guardrails policy), closes that path.
 #
 # Apply this layer locally:
-#   export AWS_PROFILE=home
+#   export AWS_PROFILE=clyro
 #   terraform -chdir=infrastructure/bootstrap apply
 #
 # then set the role ARN as the GH_TERRAFORM_ROLE_ARN repository secret.
@@ -23,27 +23,19 @@
 locals {
   github_repo = "dibyajyoti-chakrabarti/clyro"
   account_id  = data.aws_caller_identity.current.account_id
-
-  # This account is shared. It runs Jan Saathi (jansaathi.co.in, an RDS
-  # instance, an EC2 box, two CloudFront distributions) and is also taking on
-  # Structra. Every project here, Clyro included, tags each resource with
-  # Project, which is what the guardrail below keys on.
-  #
-  # Hosted zones are the exception: route53 evaluates neither resource tags nor
-  # name prefixes, and a zone's id is not known until it exists, so foreign
-  # zones have to be denied one id at a time.
-  foreign_zone_ids = [
-    "Z03659202S6IG9Y440JH4", # jansaathi.co.in
-    "Z0289754SSFXLFSNJFFH",  # console.jansaathi.co.in
-    "Z048163752SZ07B44U3X",  # structra.cloud
-  ]
 }
 
-# Adopted, not created. An AWS account may hold exactly one OIDC provider per
-# issuer URL, and Structra already created this one. Declaring it as a resource
-# here would fail with EntityAlreadyExists.
-data "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
+# Created here, not adopted. The previous account was shared and a neighbouring
+# product already owned the one provider an account may hold per issuer URL, so
+# this was a data source. Clyro now has an account to itself, and a fresh
+# account has no provider at all, so the lookup would fail on the first plan.
+#
+# No thumbprint_list: IAM verifies GitHub's issuer against its own trusted CA
+# store and ignores thumbprints for it, and provider 5.x no longer requires one.
+resource "aws_iam_openid_connect_provider" "github" {
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
+  tags           = local.tags
 }
 
 data "aws_iam_policy_document" "terraform_assume" {
@@ -53,7 +45,7 @@ data "aws_iam_policy_document" "terraform_assume" {
 
     principals {
       type        = "Federated"
-      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
     }
 
     condition {
@@ -287,10 +279,11 @@ resource "aws_iam_role_policy" "terraform_build" {
 
 # ── Guardrails ───────────────────────────────────────────────────────────────
 #
-# An explicit Deny beats any Allow, including the wildcards above. This is the
-# policy that makes sharing an account with Structra defensible: without it,
-# "ec2:*" and "s3:*" on "*" would let a bad plan delete another product's
-# production infrastructure.
+# An explicit Deny beats any Allow, including the wildcards above. These rules
+# were written when Clyro shared an account with two other products. It no
+# longer does, but they are kept: they are generic (keyed on the clyro prefix
+# and the Project tag, not on a list of neighbours), cost nothing, and bound
+# what a bad plan can reach if anything else ever lands in this account.
 data "aws_iam_policy_document" "terraform_guardrails" {
   # The broad net, and the one rule that does not need editing when another
   # product moves into this account.
@@ -322,16 +315,6 @@ data "aws_iam_policy_document" "terraform_guardrails" {
       variable = "aws:ResourceTag/Project"
       values   = ["false"]
     }
-  }
-
-  # Hosted zones carry no usable tag or name condition, so the neighbours' zones
-  # are named explicitly. Clyro's own zone is created by Terraform and is not in
-  # this list, so it stays writable.
-  statement {
-    sid       = "DenyForeignHostedZones"
-    effect    = "Deny"
-    actions   = ["route53:*"]
-    resources = [for id in local.foreign_zone_ids : "arn:aws:route53:::hostedzone/${id}"]
   }
 
   # S3 is allow-listed by name above, and denied by name here. Belt and braces
@@ -381,9 +364,7 @@ data "aws_iam_policy_document" "terraform_guardrails" {
   }
 
   # Clyro runs Postgres in a container on its own instance, by design, so it has
-  # no business calling RDS at all. This account holds jan-saathi-staging, and
-  # denying the whole service is both accurate and the strongest protection for
-  # it.
+  # no business calling RDS at all, and denying the whole service says so.
   statement {
     sid       = "DenyRDSEntirely"
     effect    = "Deny"
@@ -392,7 +373,7 @@ data "aws_iam_policy_document" "terraform_guardrails" {
   }
 
   # Self-modification. Terraform running in CI must never rewrite the role it is
-  # running as, the state bucket, or the shared OIDC provider. All three belong
+  # running as, the state bucket, or the OIDC provider. All three belong
   # to the bootstrap layer, which is applied by hand.
   statement {
     sid    = "DenyEditingOwnRoleAndBootstrap"
@@ -413,7 +394,7 @@ data "aws_iam_policy_document" "terraform_guardrails" {
     ]
     resources = [
       aws_iam_role.terraform.arn,
-      data.aws_iam_openid_connect_provider.github.arn,
+      aws_iam_openid_connect_provider.github.arn,
       aws_s3_bucket.state.arn,
     ]
   }

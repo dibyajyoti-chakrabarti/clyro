@@ -5,11 +5,11 @@
 # previous value, profile = "clyro", named a profile that does not exist, so
 # `terraform init` failed on every machine.
 #
-#   export AWS_PROFILE=home
+#   export AWS_PROFILE=clyro
 #   terraform -chdir=infrastructure/foundation init
 terraform {
   backend "s3" {
-    bucket       = "clyro-tfstate-190084967282-ap-south-1"
+    bucket       = "clyro-tfstate-042743439363-ap-south-1"
     key          = "foundation/terraform.tfstate"
     region       = "ap-south-1"
     use_lockfile = true

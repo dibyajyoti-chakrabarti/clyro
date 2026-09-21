@@ -15,7 +15,7 @@
 # value, so a second run only fills in what is still missing. Pass --force to
 # overwrite. Values are never printed; only names and byte counts reach stdout.
 #
-#   export AWS_PROFILE=home
+#   export AWS_PROFILE=clyro
 #   ./put-secrets.sh --github-pem ~/clyro-github-app.pem \
 #                    --github-app-id 123456 --github-app-name clyro \
 #                    --google-client-id "..." --google-client-secret "..."
