@@ -12,7 +12,12 @@ dependencies = [
     "aws-opentelemetry-distro",
     "bedrock-agentcore >= 1.9.1",
     "botocore[crt] >= 1.35.0",
-    "mcp >= 1.19.0",
+    # Capped below 2 for the same reason as backend/mcp/*/requirements.txt.
+    # mcp 2 removed mcp.client.streamable_http.streamablehttp_client, which
+    # mcp_client/client.py imports, and the CodeZip build resolves fresh rather
+    # than from a lock, so an unbounded spec shipped a runtime that reached
+    # READY and then failed every init with ImportError.
+    "mcp >= 1.19.0, < 2",
     "strands-agents >= 1.13.0",
 ]
 
