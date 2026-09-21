@@ -178,7 +178,10 @@ resource "aws_instance" "app" {
     delete_on_termination = true
   }
 
-  user_data = templatefile("${path.module}/templates/cloud-init.yaml.tftpl", {
+  # Gzipped because EC2 caps user data at 16 KB and the commented template
+  # outgrew it. cloud-init detects the gzip header on its own; the comments
+  # stay, since they are where this box's decisions are written down.
+  user_data_base64 = base64gzip(templatefile("${path.module}/templates/cloud-init.yaml.tftpl", {
     data_volume_id    = aws_ebs_volume.data.id
     aws_region        = var.aws_region
     ssm_prefix        = "/${var.project}/${var.environment}"
@@ -186,7 +189,7 @@ resource "aws_instance" "app" {
     api_domain        = var.api_domain
     backups_bucket    = aws_s3_bucket.backups.bucket
     letsencrypt_email = var.letsencrypt_email
-  })
+  }))
 
   # Changing user_data on a running box does nothing, since cloud-init only
   # runs on first boot. Making it replace the instance keeps the code and the

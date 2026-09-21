@@ -80,6 +80,7 @@ write_files:
       BACKEND_IMAGE=${backend_image}
       API_DOMAIN=${api_domain}
       BACKUPS_BUCKET=${backups_bucket}
+      LETSENCRYPT_EMAIL=${letsencrypt_email}
       POSTGRES_USER=clyro
       POSTGRES_DB=clyro_db
 
@@ -324,6 +325,19 @@ write_files:
 
       docker image prune -f
 
+      # Issue the API certificate if there is none yet. At first boot this used
+      # to run once from runcmd and never again, so a box whose first up.sh
+      # failed (the instance role's policy had not propagated, so nginx never
+      # started and the ACME challenge was refused) stayed on plain HTTP until
+      # someone noticed. Here every deploy retries it, and once the certificate
+      # exists this is a no-op. Renewal is the cron below, not this.
+      if [ ! -e "/etc/letsencrypt/live/$${API_DOMAIN}/fullchain.pem" ] && command -v certbot >/dev/null; then
+        certbot certonly --webroot -w /var/www/certbot -d "$${API_DOMAIN}" \
+          --email "$${LETSENCRYPT_EMAIL}" --agree-tos --non-interactive \
+          --deploy-hook /opt/clyro/enable-tls.sh \
+          || echo "certificate not issued yet; the next deploy retries" >&2
+      fi
+
   - path: /opt/clyro/backup.sh
     permissions: '0750'
     content: |
@@ -368,6 +382,17 @@ write_files:
       # both artefacts from the same quiet window.
       0 20 * * * root /opt/clyro/backup.sh >> /var/log/clyro-backup.log 2>&1
 
+  # Let's Encrypt certificates last 90 days and nothing renewed them. Twice a
+  # day is certbot's own recommendation; renew is a no-op until the certificate
+  # is within 30 days of expiry, and it reuses the deploy hook recorded at
+  # issue, so nginx picks the new certificate up.
+  - path: /etc/cron.d/clyro-certbot
+    permissions: '0644'
+    content: |
+      # pip installs certbot to /usr/local/bin, which cron's PATH lacks.
+      PATH=/usr/local/bin:/usr/bin:/bin
+      17 3,15 * * * root certbot renew --quiet >> /var/log/clyro-certbot.log 2>&1
+
   # Certbot rewrites nginx.conf to the TLS version and reloads. Run as a deploy
   # hook so it fires on renewal too, not only on first issue.
   - path: /opt/clyro/enable-tls.sh
@@ -397,7 +422,9 @@ runcmd:
   # Brings up postgres, redis and nginx immediately. The backend containers
   # stay down until an image has been pushed, which is expected on a first
   # build and is what the deploy workflow fixes.
-  - /opt/clyro/up.sh || true
-  # webroot rather than standalone: nginx is already holding port 80, and
-  # taking it down to answer the challenge would mean downtime on every renewal.
-  - certbot certonly --webroot -w /var/www/certbot -d ${api_domain} --email ${letsencrypt_email} --agree-tos --non-interactive --deploy-hook /opt/clyro/enable-tls.sh || true
+  #
+  # Retried because the instance can boot before its role policy has
+  # propagated: on the 2026-09-21 build the first SSM read was AccessDenied,
+  # up.sh exited, and nothing came up. up.sh also issues the certificate
+  # (webroot, since nginx already holds port 80), so this covers both.
+  - for i in $(seq 1 10); do /opt/clyro/up.sh && break; sleep 20; done || true
