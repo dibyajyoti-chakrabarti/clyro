@@ -50,6 +50,12 @@ locals {
     "oidc/signing-key"   = "RSA private key signing the shim's ID tokens"
     "oidc/client-secret" = "Secret Cognito uses to authenticate to the shim"
 
+    # Read by `manage.py create_admin --password-from-ssm`, so the operator
+    # password never passes through a workflow input, a CI log, the SSM command
+    # history or the container's process list. Rotate it by overwriting this
+    # parameter and re-running the command.
+    "admin/bootstrap-password" = "Password for the admin panel operator account"
+
     "cognito/google-client-id"     = "Google OAuth client id for the Cognito IdP"
     "cognito/google-client-secret" = "Google OAuth client secret for the Cognito IdP"
   }

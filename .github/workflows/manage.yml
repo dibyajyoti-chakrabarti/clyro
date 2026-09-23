@@ -23,8 +23,14 @@ on:
           - whitelist_email remove
           - showmigrations
           - migrate
+          # Seeds (or resets) an admin panel operator. The password is NOT an
+          # input here: the command reads it from the SSM parameter
+          # /clyro/prod/admin/bootstrap-password inside the container, because
+          # anything passed here would land in the SSM command history and the
+          # step log.
+          - create_admin
       argument:
-        description: Argument for the command (an email, for whitelist_email add/remove)
+        description: Argument — an email for whitelist_email add/remove, a username for create_admin
         required: false
         type: string
 
@@ -74,9 +80,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The allowed commands only ever take an email address. Anything
-          # outside that shape is refused rather than escaped, so nothing the
-          # dispatcher types can reach the shell the SSM document runs.
+          # Every argument is matched against a shape and refused rather than
+          # escaped, so nothing the dispatcher types can reach the shell the
+          # SSM document runs. create_admin takes a bare username; everything
+          # else takes an email.
+          if [ "$CMD" = "create_admin" ]; then
+            if [ -z "$ARG" ]; then
+              echo "::error::create_admin needs a username in the argument field."
+              exit 1
+            fi
+            if ! printf '%s' "$ARG" | grep -Eq '^[A-Za-z0-9._-]{3,64}$'; then
+              echo "::error::The username must be 3-64 characters of letters, digits, dot, underscore or hyphen."
+              exit 1
+            fi
+            # The password comes from SSM inside the container, never from here.
+            echo "full=create_admin $ARG --password-from-ssm" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ -n "$ARG" ] && ! printf '%s' "$ARG" | grep -Eq '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'; then
             echo "::error::The argument must be a plain email address."
             exit 1
